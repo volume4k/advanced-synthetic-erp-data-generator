@@ -1,0 +1,7 @@
+[project]
+name = "advanced-synthetic-erp-data-generator"
+version = "0.1.0"
+description = "This project is part of the research project SeLLMa and contains a configurable scenario generator as well as a generating trace executor for SAP Fiori."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []
