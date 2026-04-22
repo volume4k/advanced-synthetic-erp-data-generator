@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fake Fiori Fixture</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 2rem;
+      }
+
+      [hidden] {
+        display: none;
+      }
+
+      form {
+        display: grid;
+        gap: 0.75rem;
+        max-width: 24rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Fake Fiori Fixture</h1>
+
+    <section data-testid="login-shell">
+      <form id="login-form">
+        <label>
+          Username
+          <input data-testid="username" id="username" name="username" />
+        </label>
+        <label>
+          Password
+          <input data-testid="password" id="password" name="password" type="password" />
+        </label>
+        <button data-testid="login-submit" type="submit">Login</button>
+      </form>
+    </section>
+
+    <section data-testid="session-shell" hidden>
+      <p>Logged in as <strong data-testid="session-user"></strong></p>
+      <form id="order-form">
+        <label>
+          Item
+          <input data-testid="item-name" id="item-name" name="item-name" />
+        </label>
+        <label>
+          Quantity
+          <input data-testid="item-quantity" id="item-quantity" name="item-quantity" type="number" min="1" />
+        </label>
+        <button data-testid="order-submit" type="submit">Create order</button>
+      </form>
+      <p>Order count: <span data-testid="order-count">0</span></p>
+      <p>Latest order: <span data-testid="latest-order">none</span></p>
+    </section>
+
+    <script>
+      const loginShell = document.querySelector('[data-testid="login-shell"]');
+      const sessionShell = document.querySelector('[data-testid="session-shell"]');
+      const sessionUser = document.querySelector('[data-testid="session-user"]');
+      const orderCount = document.querySelector('[data-testid="order-count"]');
+      const latestOrder = document.querySelector('[data-testid="latest-order"]');
+
+      const render = () => {
+        const username = window.sessionStorage.getItem("fixture-user");
+        const orders = JSON.parse(window.localStorage.getItem("fixture-orders") || "[]");
+
+        if (username) {
+          loginShell.hidden = true;
+          sessionShell.hidden = false;
+          sessionUser.textContent = username;
+        } else {
+          loginShell.hidden = false;
+          sessionShell.hidden = true;
+          sessionUser.textContent = "";
+        }
+
+        orderCount.textContent = String(orders.length);
+        latestOrder.textContent = orders.length ? `${orders[orders.length - 1].item_name}:${orders[orders.length - 1].quantity}` : "none";
+      };
+
+      document.getElementById("login-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const username = document.getElementById("username").value.trim();
+        const password = document.getElementById("password").value.trim();
+        if (!username || !password) {
+          return;
+        }
+
+        window.sessionStorage.setItem("fixture-user", username);
+        render();
+      });
+
+      document.getElementById("order-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const itemName = document.getElementById("item-name").value.trim();
+        const quantity = Number(document.getElementById("item-quantity").value);
+        const orders = JSON.parse(window.localStorage.getItem("fixture-orders") || "[]");
+
+        orders.push({ item_name: itemName, quantity });
+        window.localStorage.setItem("fixture-orders", JSON.stringify(orders));
+        render();
+      });
+
+      render();
+    </script>
+  </body>
+</html>
