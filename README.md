@@ -42,7 +42,7 @@ uv run --project generator erp-trace-exec path/to/trace.jsonl --headed
 A trace can start with an initialization record that logs in all users once:
 
 ```json
-{"kind":"init","users":[{"session_id":"buyer-session","user_id":"buyer-a","username":"<SAP_USERNAME>","password":"<SAP_PASSWORD>","login_url":"https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE"}]}
+{"kind":"init","users":[{"session_id":"buyer-session","user_id":"buyer-a","username":"<SAP_USERNAME>","login_url":"https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE"}]}
 {"task_id":"task-001","session_id":"buyer-session","user_id":"buyer-a","tool":"fiori.create_order","input":{"item_name":"widget","quantity":3}}
 ```
 
@@ -84,6 +84,8 @@ uv run --project generator pytest generator/tests -q
 ```
 
 The executor is documented in more detail in `generator/README.md`.
+
+External contributors adding browser tools should start with `generator/docs/adding-tools.md`.
 
 ## Commit Conventions
 
