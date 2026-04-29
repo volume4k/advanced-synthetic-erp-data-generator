@@ -2,6 +2,8 @@
 
 This guide is for external contributors adding Playwright-backed tools to the ERP trace executor.
 
+Start with `recording-tools.md` if you are converting a manually recorded SAP flow. Use `locator-guidelines.md` before committing selectors.
+
 ## What A Tool Is
 
 A tool is one executable browser action referenced from a JSONL trace record:
@@ -60,6 +62,27 @@ MY_TOOL = ToolSpec(
 
 Register it in `src/erp_trace_executor/registry.py` so traces can call it.
 
+## Recorded Tool Workflow
+
+Recorded code is draft material. Use it to discover the flow, then rewrite it into the tool shape above.
+
+Minimum contribution:
+
+- input model
+- runner function
+- `ToolSpec`
+- registry entry
+- password-free example trace
+- manual smoke notes with the command used and observed success value
+
+Recommended contribution:
+
+- fixture integration test
+- input validation test
+- example trace parse test
+
+Mark newly recorded SAP tools as experimental in the PR description until they have either fixture coverage or repeated live smoke confidence.
+
 ## Browser Flow Rules
 
 - Prefer accessible selectors: `get_by_label`, `get_by_role`, `get_by_text`.
@@ -70,12 +93,14 @@ Register it in `src/erp_trace_executor/registry.py` so traces can call it.
 
 ## Testing
 
-Each new tool should have:
+Core-maintained tools should have:
 
 - input validation tests for required fields and bounds
 - registry test that default registry exposes the tool
 - fixture integration test that logs in, runs the tool, and checks result data
 - example trace parse test if you add an example JSONL file
+
+External contributors are not blocked on full fixture coverage for every SAP tool. If a contributor cannot build a fixture, they should provide a password-free example trace and manual smoke notes instead.
 
 Run:
 

@@ -85,7 +85,11 @@ Passwords are used only to fill the login form and are not returned in tool resu
 
 ## Add A New Playwright Tool
 
-See `docs/adding-tools.md` for the contributor guide.
+See these contributor guides:
+
+- `docs/adding-tools.md`
+- `docs/recording-tools.md`
+- `docs/locator-guidelines.md`
 
 1. Add a small input model and runner under `src/erp_trace_executor/tools/`.
 2. Keep page selectors and flows in a page-object helper instead of inside the tool module.

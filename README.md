@@ -85,7 +85,11 @@ uv run --project generator pytest generator/tests -q
 
 The executor is documented in more detail in `generator/README.md`.
 
-External contributors adding browser tools should start with `generator/docs/adding-tools.md`.
+External contributors adding browser tools should start with:
+
+- `generator/docs/adding-tools.md`
+- `generator/docs/recording-tools.md`
+- `generator/docs/locator-guidelines.md`
 
 ## Commit Conventions
 
