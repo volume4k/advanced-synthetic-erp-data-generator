@@ -9,6 +9,7 @@ from pathlib import Path
 
 from erp_trace_executor.browser.session import BrowserSessionManager
 from erp_trace_executor.context import ExecutionContext
+from erp_trace_executor.credentials import load_env_credentials
 from erp_trace_executor.errors import TraceExecutorError
 from erp_trace_executor.executor import TraceExecutor
 from erp_trace_executor.trace_loader import load_trace_records
@@ -17,6 +18,12 @@ from erp_trace_executor.trace_loader import load_trace_records
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Execute a JSONL ERP browser trace.")
     parser.add_argument("trace_path", type=Path, help="Path to the JSONL trace file")
+    parser.add_argument(
+        "--env-file",
+        type=Path,
+        default=Path("configuration/.env"),
+        help="Path to .env credentials file. Defaults to configuration/.env",
+    )
     parser.add_argument(
         "--headed",
         action="store_true",
@@ -30,7 +37,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         records = load_trace_records(args.trace_path)
-        executor = TraceExecutor()
+        credential_store = load_env_credentials(args.env_file)
+        executor = TraceExecutor(credential_store=credential_store)
         with BrowserSessionManager(headless=not args.headed) as session_manager:
             results = executor.execute(
                 records,

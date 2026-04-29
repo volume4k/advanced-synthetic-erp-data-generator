@@ -33,7 +33,7 @@ class TraceInitUser(BaseModel):
     session_id: str
     user_id: str
     username: str
-    password: str
+    password: str | None = None
     login_url: HttpUrl | None = None
     username_selector: str | None = None
     password_selector: str | None = None

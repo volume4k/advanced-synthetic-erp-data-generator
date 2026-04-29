@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import ValidationError
 
 from erp_trace_executor.context import ExecutionContext
+from erp_trace_executor.credentials import EnvCredentialStore
 from erp_trace_executor.errors import SessionUserMismatchError, ToolInputValidationError
 from erp_trace_executor.models import ToolResult, TraceDefinition, TraceInitUser, TraceRecord
 from erp_trace_executor.registry import ToolRegistry, build_default_registry
@@ -14,8 +15,14 @@ from erp_trace_executor.tools.fiori.login import LoginInput, run_login
 class TraceExecutor:
     """Executes validated trace records in file order."""
 
-    def __init__(self, *, registry: ToolRegistry | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        registry: ToolRegistry | None = None,
+        credential_store: EnvCredentialStore | None = None,
+    ) -> None:
         self._registry = registry or build_default_registry()
+        self._credential_store = credential_store or EnvCredentialStore()
 
     def execute(self, trace: TraceDefinition | list[TraceRecord], context_factory) -> list[ToolResult]:
         results: list[ToolResult] = []
@@ -64,10 +71,11 @@ class TraceExecutor:
         )
 
     def _build_init_login_input(self, init_user: TraceInitUser) -> LoginInput:
+        password = init_user.password or self._credential_store.password_for_username(init_user.username)
         payload = {
             "url": init_user.login_url,
             "username": init_user.username,
-            "password": init_user.password,
+            "password": password,
             "username_selector": init_user.username_selector,
             "password_selector": init_user.password_selector,
             "submit_selector": init_user.submit_selector,

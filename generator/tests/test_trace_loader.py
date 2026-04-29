@@ -47,6 +47,20 @@ def test_load_trace_records_accepts_first_init_record(tmp_path):
     assert [record.task_id for record in trace.tasks] == ["task-1"]
 
 
+def test_load_trace_records_accepts_init_users_without_password(tmp_path):
+    trace_path = tmp_path / "trace.jsonl"
+    trace_path.write_text(
+        '{"kind":"init","users":[{"session_id":"buyer-session","user_id":"buyer-a","username":"BUYERA"}]}',
+        encoding="utf-8",
+    )
+
+    trace = load_trace_records(trace_path)
+
+    assert trace.init is not None
+    assert trace.init.users[0].username == "BUYERA"
+    assert trace.init.users[0].password is None
+
+
 def test_load_trace_records_rejects_late_init_record(tmp_path):
     trace_path = tmp_path / "trace.jsonl"
     trace_path.write_text(

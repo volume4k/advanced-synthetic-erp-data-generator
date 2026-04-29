@@ -4,6 +4,7 @@ import pytest
 
 from erp_trace_executor.browser.session import BrowserSessionManager
 from erp_trace_executor.context import ExecutionContext
+from erp_trace_executor.credentials import EnvCredentialStore
 from erp_trace_executor.errors import SessionUserMismatchError, ToolInputValidationError, UnknownToolError
 from erp_trace_executor.executor import TraceExecutor
 from erp_trace_executor.models import TraceDefinition, TraceInitRecord, TraceInitUser, TraceRecord
@@ -186,6 +187,49 @@ def test_executor_runs_init_logins_before_tasks_against_fixture_app(fixture_app_
     assert results[2].data["order_count"] == 1
     assert results[3].data["latest_order"] == "gadget:1"
     assert results[3].data["order_count"] == 1
+
+
+def test_executor_resolves_init_passwords_from_credentials_against_fixture_app(fixture_app_url):
+    trace = TraceDefinition(
+        init=TraceInitRecord(
+            line_number=1,
+            users=[
+                TraceInitUser(
+                    session_id="buyer-session",
+                    user_id="buyer-a",
+                    username="buyer-a",
+                    login_url=fixture_app_url,
+                    username_selector='[data-testid="username"]',
+                    password_selector='[data-testid="password"]',
+                    submit_selector='[data-testid="login-submit"]',
+                    success_selector='[data-testid="session-user"]',
+                )
+            ],
+        ),
+        tasks=[
+            TraceRecord(
+                task_id="task-1",
+                session_id="buyer-session",
+                user_id="buyer-a",
+                tool="fiori.create_order",
+                input={"item_name": "widget", "quantity": 1},
+                line_number=2,
+            )
+        ],
+    )
+
+    executor = TraceExecutor(credential_store=EnvCredentialStore({"buyer-a": "secret"}))
+    with BrowserSessionManager() as session_manager:
+        results = executor.execute(
+            trace,
+            context_factory=lambda record: ExecutionContext(
+                record=record,
+                session_manager=session_manager,
+            ),
+        )
+
+    assert results[0].data["username"] == "buyer-a"
+    assert results[1].data["latest_order"] == "widget:1"
 
 
 def test_executor_rejects_uninitialized_task_sessions_before_login():
