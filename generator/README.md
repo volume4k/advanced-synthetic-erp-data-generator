@@ -19,7 +19,7 @@ The CLI prints one JSON object per executed task result as a JSON array.
 
 ## Trace Format
 
-Each JSONL line must contain:
+Task JSONL lines must contain:
 
 ```json
 {
@@ -28,7 +28,6 @@ Each JSONL line must contain:
   "user_id": "buyer-a",
   "tool": "fiori.login",
   "input": {
-    "base_url": "http://127.0.0.1:8000",
     "username": "buyer-a",
     "password": "secret"
   },
@@ -39,6 +38,35 @@ Each JSONL line must contain:
 ```
 
 `session_id` is the only key used for browser-session reuse. Reusing a `session_id` with a different `user_id` is an error.
+
+### Optional Init Login Record
+
+A trace can start with one `kind: "init"` record. The executor logs in each configured user before running task records. Later tasks reuse the initialized `session_id` and `user_id`, so username and password do not need to be repeated.
+
+```json
+{"kind":"init","users":[{"session_id":"buyer-session","user_id":"buyer-a","username":"BUYERA","password":"secret","login_url":"https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE"},{"session_id":"approver-session","user_id":"approver-a","username":"APPROVERA","password":"secret"}]}
+{"task_id":"task-001","session_id":"buyer-session","user_id":"buyer-a","tool":"fiori.create_order","input":{"item_name":"widget","quantity":3}}
+{"task_id":"task-002","session_id":"approver-session","user_id":"approver-a","tool":"fiori.create_order","input":{"item_name":"gadget","quantity":1}}
+```
+
+`login_url` is optional and defaults to:
+
+```text
+https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE
+```
+
+For non-SAP fixtures or custom logon forms, each init user and `fiori.login` task can override selectors:
+
+```json
+{
+  "username_selector": "[data-testid=\"username\"]",
+  "password_selector": "[data-testid=\"password\"]",
+  "submit_selector": "[data-testid=\"login-submit\"]",
+  "success_selector": "[data-testid=\"session-user\"]"
+}
+```
+
+Passwords are used only to fill the login form and are not returned in tool results.
 
 ## Add A New Playwright Tool
 
