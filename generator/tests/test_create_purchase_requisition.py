@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from re import Pattern
+
 import pytest
 from pydantic import ValidationError
 
@@ -66,7 +68,7 @@ class FakeLocator:
     def press(self, key: str) -> None:
         self._page.actions.append(("press", self._name, key))
 
-    def wait_for(self, *, state: str) -> None:
+    def wait_for(self, *, state: str, timeout: int | None = None) -> None:
         self._page.actions.append(("wait_for", self._name, state))
 
     def inner_text(self) -> str:
@@ -79,9 +81,10 @@ class FakeRecordedPage:
     def __init__(self) -> None:
         self.actions: list[tuple[str, ...]] = []
 
-    def get_by_role(self, role: str, *, name: str, exact: bool | None = None) -> FakeLocator:
+    def get_by_role(self, role: str, *, name: str | Pattern[str], exact: bool | None = None) -> FakeLocator:
         exact_marker = " exact" if exact else ""
-        return FakeLocator(self, f"role:{role}:{name}{exact_marker}")
+        locator_name = name.pattern if isinstance(name, Pattern) else name
+        return FakeLocator(self, f"role:{role}:{locator_name}{exact_marker}")
 
     def get_by_text(self, text: str) -> FakeLocator:
         return FakeLocator(self, f"text:{text}")
@@ -104,7 +107,8 @@ def test_sap_purchase_requisition_flow_uses_recorded_steps_and_input_values():
     data = SapPurchaseRequisitionFlow(page).create(params)
 
     assert ("fill", "role:searchbox:Suchen", "Bestellanforderung anle") in page.actions
-    assert ("fill", "role:textbox:Material exact", "PUMP1902") in page.actions
+    assert ("wait_for", "role:textbox:Material", "visible") in page.actions
+    assert ("fill", "role:textbox:Material", "PUMP1902") in page.actions
     assert ("fill", "role:textbox:Bewertungspreis exact", "30") in page.actions
     assert ("fill", "role:textbox:Währung Bewertungspreis", "USD") in page.actions
     assert ("fill", "role:textbox:Preiseinheit", "1") in page.actions
