@@ -52,6 +52,54 @@
       </form>
       <p>Order count: <span data-testid="order-count">0</span></p>
       <p>Latest order: <span data-testid="latest-order">none</span></p>
+
+      <form id="purchase-requisition-form">
+        <label>
+          Material
+          <input data-testid="pr-material" id="pr-material" name="pr-material" />
+        </label>
+        <label>
+          Anforderungsmenge
+          <input data-testid="pr-quantity" id="pr-quantity" name="pr-quantity" type="number" min="1" />
+        </label>
+        <label>
+          Bewertungspreis
+          <input data-testid="pr-valuation-price" id="pr-valuation-price" name="pr-valuation-price" type="number" min="1" />
+        </label>
+        <label>
+          Currency
+          <input data-testid="pr-currency" id="pr-currency" name="pr-currency" />
+        </label>
+        <label>
+          Preiseinheit
+          <input data-testid="pr-price-unit" id="pr-price-unit" name="pr-price-unit" type="number" min="1" />
+        </label>
+        <label>
+          Lieferdatum
+          <input data-testid="pr-delivery-date" id="pr-delivery-date" name="pr-delivery-date" />
+        </label>
+        <label>
+          Werk
+          <input data-testid="pr-plant" id="pr-plant" name="pr-plant" />
+        </label>
+        <label>
+          Einkäufergruppe
+          <input data-testid="pr-purchasing-group" id="pr-purchasing-group" name="pr-purchasing-group" />
+        </label>
+        <label>
+          EinkOrganisation
+          <input data-testid="pr-purchasing-organization" id="pr-purchasing-organization" name="pr-purchasing-organization" />
+        </label>
+        <label>
+          Buchungskreis
+          <input data-testid="pr-company-code" id="pr-company-code" name="pr-company-code" />
+        </label>
+        <button data-testid="pr-cart" id="application-PurchaseRequisition-create-component---Freetext--btnCart" type="button">
+          Add to cart
+        </button>
+        <button id="pr-submit" type="submit">Bestellen</button>
+      </form>
+      <p>Purchase requisition: <a id="idPRNoLinkId" hidden></a></p>
     </section>
 
     <script>
@@ -60,6 +108,7 @@
       const sessionUser = document.querySelector('[data-testid="session-user"]');
       const orderCount = document.querySelector('[data-testid="order-count"]');
       const latestOrder = document.querySelector('[data-testid="latest-order"]');
+      const requisitionLink = document.getElementById("idPRNoLinkId");
 
       const render = () => {
         const username = window.sessionStorage.getItem("fixture-user");
@@ -100,6 +149,12 @@
         orders.push({ item_name: itemName, quantity });
         window.localStorage.setItem("fixture-orders", JSON.stringify(orders));
         render();
+      });
+
+      document.getElementById("purchase-requisition-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        requisitionLink.textContent = "PR-0001";
+        requisitionLink.hidden = false;
       });
 
       render();

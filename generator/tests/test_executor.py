@@ -232,6 +232,64 @@ def test_executor_resolves_init_passwords_from_credentials_against_fixture_app(f
     assert results[1].data["latest_order"] == "widget:1"
 
 
+def test_executor_creates_purchase_requisition_against_fixture_app(fixture_app_url):
+    trace = TraceDefinition(
+        init=TraceInitRecord(
+            line_number=1,
+            users=[
+                TraceInitUser(
+                    session_id="buyer-session",
+                    user_id="buyer-a",
+                    username="buyer-a",
+                    password="secret",
+                    login_url=fixture_app_url,
+                    username_selector='[data-testid="username"]',
+                    password_selector='[data-testid="password"]',
+                    submit_selector='[data-testid="login-submit"]',
+                    success_selector='[data-testid="session-user"]',
+                )
+            ],
+        ),
+        tasks=[
+            TraceRecord(
+                task_id="task-1",
+                session_id="buyer-session",
+                user_id="buyer-a",
+                tool="fiori.create_purchase_requisition",
+                input={
+                    "material": "PUMP1902",
+                    "quantity": 20,
+                    "valuation_price": 30,
+                    "currency": "USD",
+                    "price_unit": 1,
+                    "delivery_date": "20.05.2026",
+                    "plant": "MI00",
+                    "purchasing_group": "N00",
+                    "purchasing_organization": "US00",
+                    "company_code": "US00",
+                },
+                line_number=2,
+            )
+        ],
+    )
+
+    executor = TraceExecutor()
+    with BrowserSessionManager() as session_manager:
+        results = executor.execute(
+            trace,
+            context_factory=lambda record: ExecutionContext(
+                record=record,
+                session_manager=session_manager,
+            ),
+        )
+
+    assert results[1].tool == "fiori.create_purchase_requisition"
+    assert results[1].data["status"] == "created"
+    assert results[1].data["purchase_requisition"] == "PR-0001"
+    assert results[1].data["material"] == "PUMP1902"
+    assert results[1].data["quantity"] == 20
+
+
 def test_executor_rejects_uninitialized_task_sessions_before_login():
     trace = TraceDefinition(
         init=TraceInitRecord(
