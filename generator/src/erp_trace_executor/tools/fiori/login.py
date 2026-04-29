@@ -44,7 +44,7 @@ def run_login(context: ExecutionContext, params: LoginInput) -> ToolResult:
     if params.success_selector is not None:
         page.locator(params.success_selector).wait_for(state="visible")
     else:
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("load")
 
     return ToolResult(
         task_id=context.record.task_id,
