@@ -17,6 +17,12 @@ uv run --project generator erp-trace-exec path/to/trace.jsonl
 
 The CLI prints one JSON object per executed task result as a JSON array.
 
+Credentials can be loaded from `configuration/.env` by default, or from another file with `--env-file`:
+
+```bash
+uv run --project generator erp-trace-exec path/to/trace.jsonl --env-file path/to/credentials.env
+```
+
 ## Trace Format
 
 Task JSONL lines must contain:
@@ -44,9 +50,18 @@ Task JSONL lines must contain:
 A trace can start with one `kind: "init"` record. The executor logs in each configured user before running task records. Later tasks reuse the initialized `session_id` and `user_id`, so username and password do not need to be repeated.
 
 ```json
-{"kind":"init","users":[{"session_id":"buyer-session","user_id":"buyer-a","username":"BUYERA","password":"secret","login_url":"https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE"},{"session_id":"approver-session","user_id":"approver-a","username":"APPROVERA","password":"secret"}]}
+{"kind":"init","users":[{"session_id":"buyer-session","user_id":"buyer-a","username":"BUYERA","login_url":"https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE"},{"session_id":"approver-session","user_id":"approver-a","username":"APPROVERA"}]}
 {"task_id":"task-001","session_id":"buyer-session","user_id":"buyer-a","tool":"fiori.create_order","input":{"item_name":"widget","quantity":3}}
 {"task_id":"task-002","session_id":"approver-session","user_id":"approver-a","tool":"fiori.create_order","input":{"item_name":"gadget","quantity":1}}
+```
+
+When an init user omits `password`, the executor looks up that password by username in the env file:
+
+```text
+SAP_USER_1_UN=BUYERA
+SAP_USER_1_PW=secret
+SAP_USER_2_UN=APPROVERA
+SAP_USER_2_PW=secret
 ```
 
 `login_url` is optional and defaults to:

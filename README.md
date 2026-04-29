@@ -52,14 +52,27 @@ Keep real credentials out of Git. Use a local temporary trace file for manual lo
 
 ```bash
 cat > /tmp/sap-init-login.trace.jsonl <<'EOF'
-{"kind":"init","users":[{"session_id":"tour-user-session","user_id":"tour-user","username":"<SAP_USERNAME>","password":"<SAP_PASSWORD>","login_url":"https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE"}]}
+{"kind":"init","users":[{"session_id":"tour-user-session","user_id":"tour-user","username":"<SAP_USERNAME>","login_url":"https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE"}]}
 EOF
+```
+
+Put credentials in `configuration/.env`:
+
+```bash
+SAP_USER_1_UN=<SAP_USERNAME>
+SAP_USER_1_PW=<SAP_PASSWORD>
 ```
 
 Edit placeholders in `/tmp/sap-init-login.trace.jsonl`, then run:
 
 ```bash
 uv run --project generator erp-trace-exec /tmp/sap-init-login.trace.jsonl --headed
+```
+
+The executor matches the trace username against `*_UN` values in the env file and uses the matching `*_PW` value at runtime. To use a different env file:
+
+```bash
+uv run --project generator erp-trace-exec /tmp/sap-init-login.trace.jsonl --env-file path/to/credentials.env --headed
 ```
 
 ## Development
