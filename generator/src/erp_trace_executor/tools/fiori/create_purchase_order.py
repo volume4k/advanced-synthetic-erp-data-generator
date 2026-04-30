@@ -12,6 +12,7 @@ from erp_trace_executor.tooling import ToolSpec
 
 
 IFRAME_SELECTOR = 'iframe[name="application-PurchaseOrder-create-iframe"]'
+PURCHASE_ORDER_CREATE_HASH = "#PurchaseOrder-create?sap-ui-tech-hint=GUI"
 SUCCESS_MESSAGE_PATTERN = re.compile(r"Normalbestellung unter der Nummer\s+(\d+)\s+angelegt")
 
 
@@ -36,7 +37,7 @@ class SapPurchaseOrderFlow:
         page.get_by_role("button", name="Suche öffnen").click()
         page.get_by_role("searchbox", name="Suchen").fill("Bestellung")
         page.get_by_text("Bestellung anlegen in Apps").click()
-        page.get_by_title("Bestellung anlegen").click(retry_on_next_wait=True)
+        page.locator(f'a[href*="{PURCHASE_ORDER_CREATE_HASH}"]').click(retry_on_next_wait=True)
 
         frame = page.locator(IFRAME_SELECTOR).content_frame
         frame.get_by_role("button", name="Positionen aufklappen Strg+F3").wait_for(state="visible")
