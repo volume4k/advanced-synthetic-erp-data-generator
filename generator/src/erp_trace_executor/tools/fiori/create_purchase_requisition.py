@@ -118,7 +118,7 @@ def run_create_purchase_requisition(
     if page.get_by_test_id("session-shell").is_visible():
         requisition_data = FixtureFioriPage(page).create_purchase_requisition(**params.model_dump())
     else:
-        requisition_data = SapPurchaseRequisitionFlow(page).create(params)
+        requisition_data = SapPurchaseRequisitionFlow(context.get_fiori_page()).create(params)
 
     return ToolResult(
         task_id=context.record.task_id,

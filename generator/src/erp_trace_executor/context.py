@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from erp_trace_executor.browser.session import BrowserSession, BrowserSessionManager
+from erp_trace_executor.fiori_page import FioriPage
 from erp_trace_executor.models import TraceRecord
 
 
@@ -20,3 +21,8 @@ class ExecutionContext:
             session_id=self.record.session_id,
             user_id=self.record.user_id,
         )
+
+    def get_fiori_page(self) -> FioriPage:
+        """Return current session page wrapped with Fiori-aware settle waits."""
+
+        return FioriPage(self.get_browser_session().page)
