@@ -79,6 +79,11 @@ class FioriPage:
 
         return self._wrap(self.raw_page.locator(*args, **kwargs))
 
+    def frame_locator(self, *args: Any, **kwargs: Any) -> "FioriFrameLocator":
+        """Create a frame locator whose nested locators keep Fiori wait behavior."""
+
+        return FioriFrameLocator(self, self.raw_page.frame_locator(*args, **kwargs))
+
     def wait_until_ready(self) -> None:
         """Wait until common SAPUI5/Fiori async and render work has settled."""
 
@@ -180,6 +185,23 @@ class FioriLocator:
 
         return self._locator.inner_text(*args, **kwargs)
 
+    def locator(self, *args: Any, **kwargs: Any) -> "FioriLocator":
+        """Create a wrapped locator scoped below this locator."""
+
+        return FioriLocator(self._page, self._locator.locator(*args, **kwargs))
+
+    @property
+    def first(self) -> "FioriLocator":
+        """Return first matching locator while keeping Fiori wait behavior."""
+
+        return FioriLocator(self._page, self._locator.first)
+
+    @property
+    def content_frame(self) -> "FioriFrameLocator":
+        """Return this iframe locator's content frame with wrapped locators."""
+
+        return FioriFrameLocator(self._page, self._locator.content_frame)
+
     def __getattr__(self, name: str) -> Any:
         """Delegate unknown attributes to the raw Playwright locator."""
 
@@ -188,6 +210,44 @@ class FioriLocator:
     def _retry_click(self, *args: Any, **kwargs: Any) -> None:
         self._locator.click(*args, **kwargs)
         self._page.wait_until_ready()
+
+
+class FioriFrameLocator:
+    """Wrap a Playwright frame locator with the same Fiori locator behavior."""
+
+    def __init__(self, page: FioriPage, frame_locator: Any) -> None:
+        self._page = page
+        self._frame_locator = frame_locator
+
+    def get_by_role(self, *args: Any, **kwargs: Any) -> FioriLocator:
+        """Create a wrapped role locator inside this frame."""
+
+        return FioriLocator(self._page, self._frame_locator.get_by_role(*args, **kwargs))
+
+    def get_by_label(self, *args: Any, **kwargs: Any) -> FioriLocator:
+        """Create a wrapped label locator inside this frame."""
+
+        return FioriLocator(self._page, self._frame_locator.get_by_label(*args, **kwargs))
+
+    def get_by_text(self, *args: Any, **kwargs: Any) -> FioriLocator:
+        """Create a wrapped text locator inside this frame."""
+
+        return FioriLocator(self._page, self._frame_locator.get_by_text(*args, **kwargs))
+
+    def get_by_title(self, *args: Any, **kwargs: Any) -> FioriLocator:
+        """Create a wrapped title locator inside this frame."""
+
+        return FioriLocator(self._page, self._frame_locator.get_by_title(*args, **kwargs))
+
+    def locator(self, *args: Any, **kwargs: Any) -> FioriLocator:
+        """Create a wrapped CSS/XPath locator inside this frame."""
+
+        return FioriLocator(self._page, self._frame_locator.locator(*args, **kwargs))
+
+    def __getattr__(self, name: str) -> Any:
+        """Delegate unknown attributes to the raw Playwright frame locator."""
+
+        return getattr(self._frame_locator, name)
 
 
 def wait_for_fiori_settled(
