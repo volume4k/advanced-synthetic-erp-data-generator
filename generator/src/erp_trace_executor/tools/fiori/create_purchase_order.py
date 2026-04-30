@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from pydantic import BaseModel, Field
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.models import ToolResult
@@ -13,6 +14,8 @@ from erp_trace_executor.tooling import ToolSpec
 
 IFRAME_SELECTOR = 'iframe[name="application-PurchaseOrder-create-iframe"]'
 PURCHASE_ORDER_CREATE_HASH = "#PurchaseOrder-create?sap-ui-tech-hint=GUI"
+GRID_SCROLL_RIGHT_SELECTOR = ".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock"
+GRID_HORIZONTAL_SCROLLBAR_SELECTOR = '[id="M0:46:1:3:2:1:1_hscroll-bar"]'
 SUCCESS_MESSAGE_PATTERN = re.compile(r"Normalbestellung unter der Nummer\s+(\d+)\s+angelegt")
 
 
@@ -76,21 +79,20 @@ class SapPurchaseOrderFlow:
         }
 
     def _scroll_to_purchase_requisition(self, frame) -> None:
-        frame.locator(".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock").click(retry_on_next_wait=True)
-        frame.locator('[id="M0:46:1:3:2:1:1_hscroll-bar"]').click()
+        frame.locator(GRID_SCROLL_RIGHT_SELECTOR).click(retry_on_next_wait=True)
+        frame.locator(GRID_HORIZONTAL_SCROLLBAR_SELECTOR).click()
         frame.locator('[id="M0:46:1:3:2:1:1-mrss-cont-none"]').click()
-        frame.locator('[id="M0:46:1:3:2:1:1_hscroll-bar"]').click()
-        frame.locator('[id="M0:46:1:3:2:1:1_hscroll-bar"]').click()
-        frame.locator(".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock").click()
-        frame.locator(".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock").click()
-        frame.locator('[id="M0:46:1:3:2:1:1_hscroll-bar"]').click()
-        frame.locator(".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock").click()
-        frame.locator(".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock").click()
+        frame.locator(GRID_HORIZONTAL_SCROLLBAR_SELECTOR).click()
+        frame.locator(GRID_HORIZONTAL_SCROLLBAR_SELECTOR).click()
+        frame.locator(GRID_SCROLL_RIGHT_SELECTOR).click()
+        frame.locator(GRID_SCROLL_RIGHT_SELECTOR).click()
+        frame.locator(GRID_HORIZONTAL_SCROLLBAR_SELECTOR).click()
+        self._scroll_right_until_cell_visible(frame, "Banf")
 
     def _scroll_to_storage_location(self, frame) -> None:
-        frame.locator(".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock").click()
-        frame.locator(".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock").click()
-        frame.locator('[id="M0:46:1:3:2:1:1_hscroll-bar"]').dblclick()
+        frame.locator(GRID_SCROLL_RIGHT_SELECTOR).click()
+        frame.locator(GRID_SCROLL_RIGHT_SELECTOR).click()
+        frame.locator(GRID_HORIZONTAL_SCROLLBAR_SELECTOR).dblclick()
 
     def _fill_grid_textbox(self, frame, label: str, value: str, *, wait_for_cell: bool = False) -> None:
         """Fill SAP GUI grid cell by activating its transient InputField editor."""
@@ -103,6 +105,16 @@ class SapPurchaseOrderFlow:
         active_input.wait_for(state="visible")
         active_input.fill(value)
         active_input.press("Enter")
+
+    def _scroll_right_until_cell_visible(self, frame, label: str, *, max_scrolls: int = 8) -> None:
+        cell = frame.get_by_role("textbox", name=label).first
+        for _ in range(max_scrolls):
+            try:
+                cell.wait_for(state="visible", timeout=1000)
+                return
+            except PlaywrightTimeoutError:
+                frame.locator(GRID_SCROLL_RIGHT_SELECTOR).click()
+        cell.wait_for(state="visible")
 
 
 def run_create_purchase_order(
