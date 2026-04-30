@@ -1,5 +1,81 @@
 import "generated_tool_config.pkl"
+import "tool_config_schema.pkl"
 
-tools = generated_tool_config.tools
+toolRequirements = generated_tool_config.toolRequirements
 
-procureToPayProcess = generated_tool_config.procureToPayProcess
+procureToPayProcess: tool_config_schema.ProcureToPayProcess = new tool_config_schema
+  .ProcureToPayProcess {
+  processType = "procure_to_pay"
+
+  steps {
+    new tool_config_schema.ProcessStep {
+      stepId = "A1"
+      stepType = "create_purchase_requisition"
+      tool = toolRequirements["fiori.create_purchase_requisition"]
+      requiredRole = "procurement"
+    }
+    new tool_config_schema.ProcessStep {
+      stepId = "A2"
+      stepType = "create_purchase_order"
+      tool = toolRequirements["fiori.create_purchase_order"]
+      requiredRole = "procurement"
+    }
+    new tool_config_schema.ProcessStep {
+      stepId = "A3"
+      stepType = "release_purchase_order"
+      tool = null
+      requiredRole = "procurement_manager"
+    }
+    new tool_config_schema.ProcessStep {
+      stepId = "A4"
+      stepType = "post_goods_receipt"
+      tool = null
+      requiredRole = "warehouse"
+    }
+    new tool_config_schema.ProcessStep {
+      stepId = "A5"
+      stepType = "enter_incoming_invoice"
+      tool = null
+      requiredRole = "accounts_payable"
+    }
+    new tool_config_schema.ProcessStep {
+      stepId = "A6"
+      stepType = "post_outgoing_payment"
+      tool = null
+      requiredRole = "accounts_payable"
+    }
+  }
+
+  dependencies {
+    new tool_config_schema.ProcessDependency {
+      fromStep = "create_purchase_requisition"
+      toStep = "create_purchase_order"
+      edgeType = "data_dependency"
+      reason = "Purchase order requires purchase requisition number."
+    }
+    new tool_config_schema.ProcessDependency {
+      fromStep = "create_purchase_order"
+      toStep = "release_purchase_order"
+      edgeType = "business_dependency"
+      reason = "Purchase order must exist before release."
+    }
+    new tool_config_schema.ProcessDependency {
+      fromStep = "release_purchase_order"
+      toStep = "post_goods_receipt"
+      edgeType = "business_dependency"
+      reason = "Goods receipt requires released purchase order."
+    }
+    new tool_config_schema.ProcessDependency {
+      fromStep = "post_goods_receipt"
+      toStep = "enter_incoming_invoice"
+      edgeType = "business_dependency"
+      reason = "Invoice follows goods receipt in version-one P2P."
+    }
+    new tool_config_schema.ProcessDependency {
+      fromStep = "enter_incoming_invoice"
+      toStep = "post_outgoing_payment"
+      edgeType = "accounting_dependency"
+      reason = "Payment requires posted incoming invoice."
+    }
+  }
+}
