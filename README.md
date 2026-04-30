@@ -4,13 +4,15 @@ This repository contains tools for generating and executing synthetic SAP Fiori 
 
 The current implementation focuses on a Playwright-backed trace executor in `generator/`. It reads JSONL traces, initializes browser sessions for configured users, logs them into SAP Fiori, then executes tool calls in trace order.
 
+The broader generator vision and planned architecture are documented in `generator_vision_architecture_specification.md`.
+
 ## Repository Layout
 
 ```text
 .
 ├── generator/       # Independent uv project for trace execution
 ├── configuration/   # Scenario/configuration artifacts
-├── pyproject.toml   # Root package metadata
+├── generator_vision_architecture_specification.md
 └── README.md        # Project overview
 ```
 
