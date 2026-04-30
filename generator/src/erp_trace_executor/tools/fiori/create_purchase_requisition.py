@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 
 from pydantic import BaseModel, Field
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.models import ToolResult
@@ -27,7 +26,7 @@ class CreatePurchaseRequisitionInput(BaseModel):
 
 
 class SapPurchaseRequisitionFlow:
-    """Recorded SAP Fiori purchase requisition flow."""
+    """Recorded SAP Fiori purchase requisition flow using a Fiori-aware page."""
 
     def __init__(self, page) -> None:
         self._page = page
@@ -38,8 +37,10 @@ class SapPurchaseRequisitionFlow:
         page.get_by_role("button", name="Suche öffnen").click()
         page.get_by_role("searchbox", name="Suchen").fill("Bestellanforderung anle")
         page.get_by_text("Bestellanforderung anlegen").click()
-        material_field = self._open_item_form()
 
+        page.get_by_role("button", name="Position anlegen", exact=True).click()
+        material_field = self._textbox("Material")
+        material_field.wait_for(state="visible")
         material_field.click()
         material_field.fill(params.material)
         material_field.press("Enter")
@@ -92,17 +93,6 @@ class SapPurchaseRequisitionFlow:
             "material": params.material,
             "quantity": params.quantity,
         }
-
-    def _open_item_form(self):
-        position_button = self._page.get_by_role("button", name="Position anlegen", exact=True)
-        material_field = self._textbox("Material")
-        position_button.click()
-        try:
-            material_field.wait_for(state="visible", timeout=5000)
-        except PlaywrightTimeoutError:
-            position_button.click()
-            material_field.wait_for(state="visible")
-        return material_field
 
     def _textbox(self, name: str):
         return self._page.get_by_role("textbox", name=re.compile(re.escape(name)))
