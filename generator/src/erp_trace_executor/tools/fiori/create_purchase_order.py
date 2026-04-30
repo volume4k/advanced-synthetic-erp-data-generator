@@ -14,6 +14,7 @@ from erp_trace_executor.tooling import ToolSpec
 
 IFRAME_SELECTOR = 'iframe[name="application-PurchaseOrder-create-iframe"]'
 PURCHASE_ORDER_CREATE_HASH = "#PurchaseOrder-create?sap-ui-tech-hint=GUI"
+STATUS_BAR_MESSAGE_SELECTOR = '[id="wnd[0]/sbar_msg-txt"]'
 SUCCESS_MESSAGE_PATTERN = re.compile(r"Normalbestellung unter der Nummer\s+(\d+)\s+angelegt")
 
 
@@ -66,7 +67,7 @@ class SapPurchaseOrderFlow:
         tax_code.press("Enter")
         frame.get_by_role("button", name=re.compile(r"Sichern\s+Hervorgehoben")).click()
 
-        success_message = frame.get_by_text(SUCCESS_MESSAGE_PATTERN)
+        success_message = frame.locator(STATUS_BAR_MESSAGE_SELECTOR)
         success_message.wait_for(state="visible")
         message = success_message.inner_text()
         purchase_order = _extract_purchase_order(message)
