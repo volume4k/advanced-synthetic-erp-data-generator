@@ -190,6 +190,11 @@ class FioriLocator:
 
         return FioriLocator(self._page, self._locator.locator(*args, **kwargs))
 
+    def get_by_text(self, *args: Any, **kwargs: Any) -> "FioriLocator":
+        """Create a wrapped text locator scoped below this locator."""
+
+        return FioriLocator(self._page, self._locator.get_by_text(*args, **kwargs))
+
     @property
     def first(self) -> "FioriLocator":
         """Return first matching locator while keeping Fiori wait behavior."""
