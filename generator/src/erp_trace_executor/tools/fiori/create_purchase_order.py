@@ -93,12 +93,13 @@ class SapPurchaseOrderFlow:
         frame.locator('[id="M0:46:1:3:2:1:1_hscroll-bar"]').dblclick()
 
     def _fill_grid_textbox(self, frame, label: str, value: str) -> None:
-        """Fill SAP GUI grid cell by activating its transient InputField editor."""
+        """Fill SAP GUI grid cell that exposes a focusable span as textbox."""
 
-        frame.get_by_role("textbox", name=label).first.click()
-        active_input = frame.get_by_role("grid").locator('input[name="InputField"]')
-        active_input.fill(value)
-        active_input.press("Enter")
+        cell = frame.get_by_role("textbox", name=label).first
+        cell.click()
+        cell.press("ControlOrMeta+a")
+        self._page.raw_page.keyboard.type(value)
+        cell.press("Enter")
 
 
 def run_create_purchase_order(
