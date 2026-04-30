@@ -95,14 +95,13 @@ class SapPurchaseOrderFlow:
         frame.get_by_role("textbox", name="Banf").first.wait_for(state="visible")
 
     def _fill_grid_textbox(self, frame, label: str, value: str) -> None:
-        """Fill SAP GUI grid cell by activating its transient InputField editor."""
+        """Fill one SAP GUI grid textbox after it has been reached in the table."""
 
         cell = frame.get_by_role("textbox", name=label).first
-        cell.click(retry_on_next_wait=True)
-        active_input = frame.get_by_role("grid").locator('input[name="InputField"]')
-        active_input.wait_for(state="visible")
-        active_input.fill(value)
-        active_input.press("Enter")
+        cell.wait_for(state="visible")
+        cell.click()
+        cell.fill(value)
+        cell.press("Enter")
 
     def _close_start_dialog_if_visible(self, frame) -> None:
         close_button = frame.get_by_role("button", name="Schließen")
