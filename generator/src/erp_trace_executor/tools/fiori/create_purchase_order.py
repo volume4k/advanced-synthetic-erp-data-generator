@@ -44,18 +44,13 @@ class SapPurchaseOrderFlow:
         frame.get_by_role("button", name="Positionen aufklappen Strg+F3").click()
         self._scroll_to_purchase_requisition(frame)
 
-        purchase_requisition = frame.get_by_role("textbox", name="Banf").first
-        purchase_requisition.click()
-        purchase_requisition.fill(params.purchase_requisition)
-        purchase_requisition.press("Enter")
+        self._fill_grid_textbox(frame, "Banf", params.purchase_requisition)
 
         frame.locator("img").click()
         frame.locator("img").dblclick()
         self._scroll_to_storage_location(frame)
 
-        frame.get_by_role("textbox", name="Lagerort").first.click()
-        frame.get_by_role("grid").locator('input[name="InputField"]').fill(params.storage_location)
-        frame.get_by_role("grid").locator('input[name="InputField"]').press("Enter")
+        self._fill_grid_textbox(frame, "Lagerort", params.storage_location)
         frame.get_by_role("button", name="Schließen").click()
 
         supplier = frame.get_by_role("textbox", name="Lieferant")
@@ -96,6 +91,14 @@ class SapPurchaseOrderFlow:
         frame.locator(".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock").click()
         frame.locator(".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock").click()
         frame.locator('[id="M0:46:1:3:2:1:1_hscroll-bar"]').dblclick()
+
+    def _fill_grid_textbox(self, frame, label: str, value: str) -> None:
+        """Fill SAP GUI grid cell by activating its transient InputField editor."""
+
+        frame.get_by_role("textbox", name=label).first.click()
+        active_input = frame.get_by_role("grid").locator('input[name="InputField"]')
+        active_input.fill(value)
+        active_input.press("Enter")
 
 
 def run_create_purchase_order(
