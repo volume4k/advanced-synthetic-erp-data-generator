@@ -1,0 +1,5 @@
+import "generated_tool_config.pkl"
+
+tools = generated_tool_config.tools
+
+procureToPayProcess = generated_tool_config.procureToPayProcess

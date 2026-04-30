@@ -1,0 +1,59 @@
+module ToolConfigSchema
+
+/// One required object key returned by a mutating tool.
+class GeneratedObject {
+  objectType: String(this.length > 0)
+  requiredKeys: Listing<String>
+}
+
+/// One input property extracted from a Pydantic tool input schema.
+class InputProperty {
+  name: String(this.length > 0)
+  schemaType: String
+  required: Boolean
+  defaultValue: String?
+}
+
+/// Configuration-facing metadata for one executable generator tool.
+class ToolRequirement {
+  toolName: String(this.length > 0)
+  toolVersion: String(this.length > 0)
+  processType: String(this.length > 0)
+  stepType: String?
+  interfaceName: String(this.length > 0)
+  inputModel: String(this.length > 0)
+  requiredInputFields: Listing<String>
+  inputProperties: Listing<InputProperty>
+  allowedRoles: Listing<String>
+  requiredSapApp: String?
+  preconditions: Listing<String>
+  postconditions: Listing<String>
+  generatedObjects: Listing<GeneratedObject>
+  requiredPriorOutputs: Listing<String>
+  idempotencyPolicy: String(this.length > 0)
+  parallelExecutionSafe: Boolean
+  correlationFields: Listing<String>
+}
+
+/// One configured process step. toolName can be null while tool implementation is still missing.
+class ProcessStep {
+  stepId: String(this.length > 0)
+  stepType: String(this.length > 0)
+  toolName: String?
+  requiredRole: String?
+}
+
+/// Directed process dependency edge.
+class ProcessDependency {
+  fromStep: String(this.length > 0)
+  toStep: String(this.length > 0)
+  edgeType: String(this.length > 0)
+  reason: String(this.length > 0)
+}
+
+/// Procure-to-pay process configuration consumed by the trace generator.
+class ProcureToPayProcess {
+  processType: String(this.length > 0)
+  steps: Listing<ProcessStep>
+  dependencies: Listing<ProcessDependency>
+}
