@@ -55,10 +55,10 @@ class SapPurchaseOrderFlow:
         supplier.press("Enter")
 
         frame.locator("img").click()
-        quantity_input = frame.locator('input[name="InputField"]:visible').first
+        quantity_input = frame.get_by_role("textbox", name="Bestellmenge").first
+        quantity_input.wait_for(state="visible")
         quantity_input.fill(str(params.quantity))
         quantity_input.press("Enter")
-        frame.get_by_role("grid").locator('input[name="InputField"]').press("Enter")
         frame.get_by_text("Rechnung").click()
         tax_code = frame.get_by_role("textbox", name="Steuerkennz.")
         tax_code.click()
