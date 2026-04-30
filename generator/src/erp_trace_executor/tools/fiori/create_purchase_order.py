@@ -82,7 +82,7 @@ class SapPurchaseOrderFlow:
     def _focus_purchase_requisition_by_tab(self, frame) -> None:
         """Move through SAP GUI item table by keyboard until the Banf cell exists."""
 
-        frame.get_by_text("LieferantLieferant/LieferwerkBelegdatum").click()
+        frame.get_by_role("textbox", name="Bestellmenge").first.click(retry_on_next_wait=True)
         frame.get_by_role("grid").locator('input[name="InputField"]').press("Tab")
         frame.get_by_role("textbox", name="Charge").first.press("Tab")
         frame.get_by_role("textbox", name="Bestandssegment").first.press("Tab")
