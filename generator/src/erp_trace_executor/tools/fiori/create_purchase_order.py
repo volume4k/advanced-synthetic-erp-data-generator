@@ -14,8 +14,6 @@ from erp_trace_executor.tooling import ToolSpec
 
 IFRAME_SELECTOR = 'iframe[name="application-PurchaseOrder-create-iframe"]'
 PURCHASE_ORDER_CREATE_HASH = "#PurchaseOrder-create?sap-ui-tech-hint=GUI"
-GRID_SCROLL_RIGHT_SELECTOR = ".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock"
-GRID_HORIZONTAL_SCROLLBAR_SELECTOR = '[id="M0:46:1:3:2:1:1_hscroll-bar"]'
 SUCCESS_MESSAGE_PATTERN = re.compile(r"Normalbestellung unter der Nummer\s+(\d+)\s+angelegt")
 
 
@@ -26,6 +24,7 @@ class CreatePurchaseOrderInput(BaseModel):
     storage_location: str
     supplier: str
     quantity: int = Field(gt=0)
+    tax_code: str = "XI"
 
 
 class SapPurchaseOrderFlow:
@@ -43,18 +42,12 @@ class SapPurchaseOrderFlow:
         page.locator(f'a[href*="{PURCHASE_ORDER_CREATE_HASH}"]').click(retry_on_next_wait=True)
 
         frame = page.locator(IFRAME_SELECTOR).content_frame
+        self._close_start_dialog_if_visible(frame)
         frame.get_by_role("button", name="Positionen aufklappen Strg+F3").wait_for(state="visible")
         frame.get_by_role("button", name="Positionen aufklappen Strg+F3").click()
-        self._scroll_to_purchase_requisition(frame)
 
-        self._fill_grid_textbox(frame, "Banf", params.purchase_requisition, wait_for_cell=True)
-
-        frame.locator("img").click()
-        frame.locator("img").dblclick()
-        self._scroll_to_storage_location(frame)
-
-        self._fill_grid_textbox(frame, "Lagerort", params.storage_location)
-        frame.get_by_role("button", name="Schließen").click()
+        self._focus_purchase_requisition_by_tab(frame)
+        self._fill_grid_textbox(frame, "Banf", params.purchase_requisition)
 
         supplier = frame.get_by_role("textbox", name="Lieferant")
         supplier.click()
@@ -62,8 +55,15 @@ class SapPurchaseOrderFlow:
         supplier.press("Enter")
 
         frame.locator("img").click()
-        frame.locator('#u51050 input[name="InputField"]').fill(str(params.quantity))
-        frame.locator('#u51050 input[name="InputField"]').press("Enter")
+        quantity_input = frame.locator('input[name="InputField"]:visible').first
+        quantity_input.fill(str(params.quantity))
+        quantity_input.press("Enter")
+        frame.get_by_role("grid").locator('input[name="InputField"]').press("Enter")
+        frame.get_by_text("Rechnung").click()
+        tax_code = frame.get_by_role("textbox", name="Steuerkennz.")
+        tax_code.click()
+        tax_code.fill(params.tax_code)
+        tax_code.press("Enter")
         frame.get_by_role("button", name=re.compile(r"Sichern\s+Hervorgehoben")).click()
 
         success_message = frame.get_by_text(SUCCESS_MESSAGE_PATTERN)
@@ -76,45 +76,41 @@ class SapPurchaseOrderFlow:
             "storage_location": params.storage_location,
             "supplier": params.supplier,
             "quantity": params.quantity,
+            "tax_code": params.tax_code,
         }
 
-    def _scroll_to_purchase_requisition(self, frame) -> None:
-        frame.locator(GRID_SCROLL_RIGHT_SELECTOR).click(retry_on_next_wait=True)
-        frame.locator(GRID_HORIZONTAL_SCROLLBAR_SELECTOR).click()
-        frame.locator('[id="M0:46:1:3:2:1:1-mrss-cont-none"]').click()
-        frame.locator(GRID_HORIZONTAL_SCROLLBAR_SELECTOR).click()
-        frame.locator(GRID_HORIZONTAL_SCROLLBAR_SELECTOR).click()
-        frame.locator(GRID_SCROLL_RIGHT_SELECTOR).click()
-        frame.locator(GRID_SCROLL_RIGHT_SELECTOR).click()
-        frame.locator(GRID_HORIZONTAL_SCROLLBAR_SELECTOR).click()
-        self._scroll_right_until_cell_visible(frame, "Banf")
+    def _focus_purchase_requisition_by_tab(self, frame) -> None:
+        """Move through SAP GUI item table by keyboard until the Banf cell exists."""
 
-    def _scroll_to_storage_location(self, frame) -> None:
-        frame.locator(GRID_SCROLL_RIGHT_SELECTOR).click()
-        frame.locator(GRID_SCROLL_RIGHT_SELECTOR).click()
-        frame.locator(GRID_HORIZONTAL_SCROLLBAR_SELECTOR).dblclick()
+        frame.get_by_text("LieferantLieferant/LieferwerkBelegdatum").click()
+        frame.get_by_role("grid").locator('input[name="InputField"]').press("Tab")
+        frame.get_by_role("textbox", name="Charge").first.press("Tab")
+        frame.get_by_role("textbox", name="Bestandssegment").first.press("Tab")
+        frame.get_by_role("textbox", name="BedarfsNr.").first.press("Tab")
+        frame.get_by_role("textbox", name="Anforderer").first.press("Tab")
+        frame.get_by_role("textbox", name="Art der Lohnbearbeitung").first.press("Tab")
+        frame.get_by_role("textbox", name="Infosatz").first.press("Tab")
+        frame.get_by_role("checkbox").first.press("Tab")
+        frame.get_by_role("checkbox").nth(1).press("Tab")
+        frame.get_by_role("textbox", name="Banf").first.wait_for(state="visible")
 
-    def _fill_grid_textbox(self, frame, label: str, value: str, *, wait_for_cell: bool = False) -> None:
+    def _fill_grid_textbox(self, frame, label: str, value: str) -> None:
         """Fill SAP GUI grid cell by activating its transient InputField editor."""
 
         cell = frame.get_by_role("textbox", name=label).first
-        if wait_for_cell:
-            cell.wait_for(state="visible")
         cell.click(retry_on_next_wait=True)
         active_input = frame.get_by_role("grid").locator('input[name="InputField"]')
         active_input.wait_for(state="visible")
         active_input.fill(value)
         active_input.press("Enter")
 
-    def _scroll_right_until_cell_visible(self, frame, label: str, *, max_scrolls: int = 8) -> None:
-        cell = frame.get_by_role("textbox", name=label).first
-        for _ in range(max_scrolls):
-            try:
-                cell.wait_for(state="visible", timeout=1000)
-                return
-            except PlaywrightTimeoutError:
-                frame.locator(GRID_SCROLL_RIGHT_SELECTOR).click()
-        cell.wait_for(state="visible")
+    def _close_start_dialog_if_visible(self, frame) -> None:
+        close_button = frame.get_by_role("button", name="Schließen")
+        try:
+            close_button.wait_for(state="visible", timeout=3000)
+        except PlaywrightTimeoutError:
+            return
+        close_button.click()
 
 
 def run_create_purchase_order(
