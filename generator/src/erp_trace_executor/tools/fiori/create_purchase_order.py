@@ -44,7 +44,7 @@ class SapPurchaseOrderFlow:
         frame.get_by_role("button", name="Positionen aufklappen Strg+F3").click()
         self._scroll_to_purchase_requisition(frame)
 
-        self._fill_grid_textbox(frame, "Banf", params.purchase_requisition)
+        self._fill_grid_textbox(frame, "Banf", params.purchase_requisition, wait_for_cell=True)
 
         frame.locator("img").click()
         frame.locator("img").dblclick()
@@ -76,7 +76,7 @@ class SapPurchaseOrderFlow:
         }
 
     def _scroll_to_purchase_requisition(self, frame) -> None:
-        frame.locator(".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock").click()
+        frame.locator(".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock").click(retry_on_next_wait=True)
         frame.locator('[id="M0:46:1:3:2:1:1_hscroll-bar"]').click()
         frame.locator('[id="M0:46:1:3:2:1:1-mrss-cont-none"]').click()
         frame.locator('[id="M0:46:1:3:2:1:1_hscroll-bar"]').click()
@@ -92,14 +92,17 @@ class SapPurchaseOrderFlow:
         frame.locator(".urSCBBtn.urBorderBox.lsScrollbar--inlineBlock").click()
         frame.locator('[id="M0:46:1:3:2:1:1_hscroll-bar"]').dblclick()
 
-    def _fill_grid_textbox(self, frame, label: str, value: str) -> None:
-        """Fill SAP GUI grid cell that exposes a focusable span as textbox."""
+    def _fill_grid_textbox(self, frame, label: str, value: str, *, wait_for_cell: bool = False) -> None:
+        """Fill SAP GUI grid cell by activating its transient InputField editor."""
 
         cell = frame.get_by_role("textbox", name=label).first
-        cell.click()
-        cell.press("ControlOrMeta+a")
-        self._page.raw_page.keyboard.type(value)
-        cell.press("Enter")
+        if wait_for_cell:
+            cell.wait_for(state="visible")
+        cell.click(retry_on_next_wait=True)
+        active_input = frame.get_by_role("grid").locator('input[name="InputField"]')
+        active_input.wait_for(state="visible")
+        active_input.fill(value)
+        active_input.press("Enter")
 
 
 def run_create_purchase_order(
