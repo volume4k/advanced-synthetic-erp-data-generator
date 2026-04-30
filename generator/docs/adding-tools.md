@@ -42,8 +42,7 @@ class MyToolInput(BaseModel):
 
 
 def run_my_tool(context: ExecutionContext, params: MyToolInput) -> ToolResult:
-    session = context.get_browser_session()
-    page = session.page
+    page = context.get_fiori_page()
     # Call a page helper here.
     return ToolResult(
         task_id=context.record.task_id,
@@ -85,11 +84,33 @@ Mark newly recorded SAP tools as experimental in the PR description until they h
 
 ## Browser Flow Rules
 
+- Use `context.get_fiori_page()` for SAP tool flows. It returns a Playwright-style wrapper that waits after clicks, double-clicks, `Enter`, and `Tab`.
 - Prefer accessible selectors: `get_by_label`, `get_by_role`, `get_by_text`.
 - Use stable SAP IDs only when labels are not enough.
 - Wait for a visible success element before returning.
 - Return only useful structured data. Never return passwords or full credential payloads.
 - Avoid live SAP writes in automated tests.
+
+## Fiori Page Wrapper
+
+`context.get_fiori_page()` keeps tool code close to recorded Playwright code while adding Fiori-safe waiting behavior. Normal locator calls still look familiar:
+
+```python
+page = context.get_fiori_page()
+page.get_by_role("button", name="Position anlegen", exact=True).click()
+page.get_by_role("textbox", name="Material").wait_for(state="visible")
+```
+
+For safe open/navigation clicks, use `retry_on_next_wait=True`:
+
+```python
+page.get_by_role("button", name="Position anlegen", exact=True).click(retry_on_next_wait=True)
+page.get_by_role("textbox", name="Material").wait_for(state="visible")
+```
+
+That tells the wrapper: if the next explicit `wait_for()` cannot find its target within three seconds, replay the previous click once, then continue the normal wait. Use this only for idempotent UI-opening actions, such as opening a section or app form. Do not use it for `Sichern`, `Bestellen`, submit, approve, or any action that creates or changes business data.
+
+Use explicit business waits after important steps. The wrapper helps with Fiori timing, but a tool should still wait for proof that the next screen or business value exists.
 
 ## Testing
 
