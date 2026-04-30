@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from re import Pattern
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -9,6 +10,7 @@ from erp_trace_executor.tools.fiori.create_purchase_requisition import (
     CreatePurchaseRequisitionInput,
     SapPurchaseRequisitionFlow,
 )
+from erp_trace_executor.fiori_page import FioriPage
 
 
 def _valid_payload() -> dict[str, object]:
@@ -69,7 +71,7 @@ class FakeLocator:
         self._page.actions.append(("press", self._name, key))
 
     def wait_for(self, *, state: str, timeout: int | None = None) -> None:
-        self._page.actions.append(("wait_for", self._name, state))
+        self._page.actions.append(("wait_for", self._name, state, timeout))
 
     def inner_text(self) -> str:
         return "10000001"
@@ -79,7 +81,7 @@ class FakeRecordedPage:
     url = "https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204"
 
     def __init__(self) -> None:
-        self.actions: list[tuple[str, ...]] = []
+        self.actions: list[tuple[Any, ...]] = []
 
     def get_by_role(self, role: str, *, name: str | Pattern[str], exact: bool | None = None) -> FakeLocator:
         exact_marker = " exact" if exact else ""
@@ -99,15 +101,21 @@ class FakeRecordedPage:
     def locator(self, selector: str) -> FakeLocator:
         return FakeLocator(self, f"locator:{selector}")
 
+    def wait_for_load_state(self, state: str, *, timeout: int) -> None:
+        self.actions.append(("wait_for_load_state", state, timeout))
+
+    def wait_for_function(self, expression: str, **kwargs: Any) -> None:
+        self.actions.append(("wait_for_function", "quietMs" in str(kwargs.get("arg")), kwargs.get("timeout")))
+
 
 def test_sap_purchase_requisition_flow_uses_recorded_steps_and_input_values():
     page = FakeRecordedPage()
     params = CreatePurchaseRequisitionInput.model_validate(_valid_payload())
 
-    data = SapPurchaseRequisitionFlow(page).create(params)
+    data = SapPurchaseRequisitionFlow(FioriPage(page)).create(params)
 
     assert ("fill", "role:searchbox:Suchen", "Bestellanforderung anle") in page.actions
-    assert ("wait_for", "role:textbox:Material", "visible") in page.actions
+    assert ("wait_for", "role:textbox:Material", "visible", 3000) in page.actions
     assert ("fill", "role:textbox:Material", "PUMP1902") in page.actions
     assert ("fill", "role:textbox:Bewertungspreis exact", "30") in page.actions
     assert ("fill", "role:textbox:Währung Bewertungspreis", "USD") in page.actions
@@ -119,5 +127,5 @@ def test_sap_purchase_requisition_flow_uses_recorded_steps_and_input_values():
     assert ("fill", "role:textbox:Buchungskreis", "US00") in page.actions
     assert ("fill", "role:textbox:Werk", "MI00") in page.actions
     assert page.actions.count(("click", "role:button:Bestellen")) == 2
-    assert ("wait_for", "locator:#idPRNoLinkId", "visible") in page.actions
+    assert ("wait_for", "locator:#idPRNoLinkId", "visible", None) in page.actions
     assert data["purchase_requisition"] == "10000001"

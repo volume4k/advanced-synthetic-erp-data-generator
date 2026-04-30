@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
 from erp_trace_executor.fiori_page import FioriPage
 
 
@@ -19,12 +21,19 @@ class FakeLocator:
     def press(self, key: str) -> None:
         self._page.actions.append(("press", self._name, key))
 
+    def wait_for(self, **kwargs: Any) -> None:
+        self._page.actions.append(("wait_for", self._name, kwargs.get("timeout")))
+        if self._page.wait_failures_remaining > 0:
+            self._page.wait_failures_remaining -= 1
+            raise PlaywrightTimeoutError("missing")
+
 
 class FakePage:
     url = "https://example.test/fiori"
 
     def __init__(self) -> None:
         self.actions: list[tuple[Any, ...]] = []
+        self.wait_failures_remaining = 0
 
     def get_by_role(self, role: str, *, name: str) -> FakeLocator:
         return FakeLocator(self, f"role:{role}:{name}")
@@ -60,3 +69,16 @@ def test_fiori_locator_press_settles_only_for_commit_keys():
     assert ("press", "role:textbox:Material", "A") in raw_page.actions
     assert raw_page.actions.count(("wait_for_function", False, 30_000)) == 1
     assert raw_page.actions.count(("wait_for_function", True, 30_000)) == 1
+
+
+def test_fiori_locator_replays_retryable_click_when_next_wait_misses():
+    raw_page = FakePage()
+    raw_page.wait_failures_remaining = 1
+    page = FioriPage(raw_page)
+
+    page.get_by_role("button", name="Position anlegen").click(retry_on_next_wait=True)
+    page.get_by_role("textbox", name="Material").wait_for(state="visible")
+
+    assert raw_page.actions.count(("click", "role:button:Position anlegen")) == 2
+    assert ("wait_for", "role:textbox:Material", 3000) in raw_page.actions
+    assert ("wait_for", "role:textbox:Material", None) in raw_page.actions

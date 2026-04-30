@@ -38,7 +38,7 @@ class SapPurchaseRequisitionFlow:
         page.get_by_role("searchbox", name="Suchen").fill("Bestellanforderung anle")
         page.get_by_text("Bestellanforderung anlegen").click()
 
-        page.get_by_role("button", name="Position anlegen", exact=True).click()
+        page.get_by_role("button", name="Position anlegen", exact=True).click(retry_on_next_wait=True)
         material_field = self._textbox("Material")
         material_field.wait_for(state="visible")
         material_field.click()

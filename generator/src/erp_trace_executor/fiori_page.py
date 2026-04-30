@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -9,6 +10,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 DEFAULT_FIORI_TIMEOUT_MS = 30_000
 DEFAULT_DOM_QUIET_MS = 500
+DEFAULT_NEXT_WAIT_RETRY_TIMEOUT_MS = 3_000
 SETTLING_KEYS = {"Enter", "Tab"}
 
 
@@ -32,6 +34,7 @@ class FioriPage:
         self.raw_page = page
         self._timeout_ms = timeout_ms
         self._quiet_ms = quiet_ms
+        self._retry_previous_click: Callable[[], None] | None = None
 
     @property
     def url(self) -> str:
@@ -85,6 +88,22 @@ class FioriPage:
             quiet_ms=self._quiet_ms,
         )
 
+    def register_retryable_click(self, retry_click: Callable[[], None]) -> None:
+        """Store one click that may be replayed if the next explicit wait misses.
+
+        Use this only for idempotent UI-opening actions, such as expanding a
+        form section. Do not use it for save, submit, or purchase buttons.
+        """
+
+        self._retry_previous_click = retry_click
+
+    def consume_retryable_click(self) -> Callable[[], None] | None:
+        """Return and clear the last click allowed to retry the next wait."""
+
+        retry_click = self._retry_previous_click
+        self._retry_previous_click = None
+        return retry_click
+
     def _wrap(self, locator: Any) -> "FioriLocator":
         return FioriLocator(self, locator)
 
@@ -102,10 +121,20 @@ class FioriLocator:
         self._locator = locator
 
     def click(self, *args: Any, **kwargs: Any) -> Any:
-        """Click locator, then wait for SAPUI5 rendering and DOM churn to quiet."""
+        """Click locator, then wait for SAPUI5 rendering and DOM churn to quiet.
 
+        Pass ``retry_on_next_wait=True`` for safe open/navigation clicks. The
+        next ``wait_for`` then probes for three seconds, replays this click once
+        if the awaited object is still missing, and finally runs the normal wait.
+        """
+
+        retry_on_next_wait = bool(kwargs.pop("retry_on_next_wait", False))
         result = self._locator.click(*args, **kwargs)
         self._page.wait_until_ready()
+        if retry_on_next_wait:
+            self._page.register_retryable_click(lambda: self._retry_click(*args, **kwargs))
+        else:
+            self._page.consume_retryable_click()
         return result
 
     def dblclick(self, *args: Any, **kwargs: Any) -> Any:
@@ -129,9 +158,22 @@ class FioriLocator:
         return self._locator.fill(*args, **kwargs)
 
     def wait_for(self, *args: Any, **kwargs: Any) -> Any:
-        """Delegate explicit waits; callers choose the business-ready condition."""
+        """Wait for locator, optionally replaying one safe previous click first."""
 
-        return self._locator.wait_for(*args, **kwargs)
+        retry_click = self._page.consume_retryable_click()
+        if retry_click is None:
+            return self._locator.wait_for(*args, **kwargs)
+
+        probe_kwargs = dict(kwargs)
+        probe_kwargs["timeout"] = min(
+            int(probe_kwargs.get("timeout", DEFAULT_NEXT_WAIT_RETRY_TIMEOUT_MS)),
+            DEFAULT_NEXT_WAIT_RETRY_TIMEOUT_MS,
+        )
+        try:
+            return self._locator.wait_for(*args, **probe_kwargs)
+        except PlaywrightTimeoutError:
+            retry_click()
+            return self._locator.wait_for(*args, **kwargs)
 
     def inner_text(self, *args: Any, **kwargs: Any) -> str:
         """Read text from wrapped locator."""
@@ -142,6 +184,10 @@ class FioriLocator:
         """Delegate unknown attributes to the raw Playwright locator."""
 
         return getattr(self._locator, name)
+
+    def _retry_click(self, *args: Any, **kwargs: Any) -> None:
+        self._locator.click(*args, **kwargs)
+        self._page.wait_until_ready()
 
 
 def wait_for_fiori_settled(
