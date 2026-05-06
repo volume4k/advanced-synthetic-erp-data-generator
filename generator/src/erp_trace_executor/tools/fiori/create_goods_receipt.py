@@ -5,17 +5,18 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from pydantic import BaseModel
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from pydantic import BaseModel
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.models import ToolResult
 from erp_trace_executor.tooling import ToolSpec
 
-
 MATERIAL_DOCUMENT_LINK_PATTERN = re.compile(r"Materialbeleg\s+(\d+)/?")
-NO_SELECTABLE_POSITION_PATTERN = re.compile(r"Beleg\s+\d+\s+enthält keine wählbare Position")
+NO_SELECTABLE_POSITION_PATTERN = re.compile(
+    r"Beleg\s+\d+\s+enthält keine wählbare Position"
+)
 STORAGE_LOCATION_CELL_SELECTOR = '[id*="idStorageLocation_inputCell"][id$="-inner"]'
 STORAGE_LOCATION_OPTION_SELECTOR = 'span[id*="idStorageLocation"]'
 StorageLocation = Literal["Finished Goods", "Trading Goods", "Miscellaneous", "Returns"]
@@ -40,10 +41,12 @@ class SapGoodsReceiptFlow:
         page = self._page
 
         page.get_by_role("button", name="Suche öffnen").click()
-        page.get_by_role("searchbox", name="Suchen").fill("Wareneingang")
-        page.get_by_role("gridcell", name="Wareneingang zu Einkaufsbeleg").locator("b").click(
-            retry_on_next_wait=True
+        page.get_by_role("searchbox", name="Suchen").fill(
+            "Wareneingang zu Einkaufsbeleg buchen"
         )
+        page.get_by_role("gridcell", name="Wareneingang zu Einkaufsbeleg").locator(
+            "b"
+        ).click(retry_on_next_wait=True)
 
         purchase_order = page.get_by_role("textbox", name="Einkaufsbeleg")
         purchase_order.wait_for(state="visible")
@@ -56,14 +59,16 @@ class SapGoodsReceiptFlow:
         self._fill_textbox(page, "Buchungsdatum", params.posting_date)
 
         page.locator(STORAGE_LOCATION_CELL_SELECTOR).first.click()
-        page.locator(STORAGE_LOCATION_OPTION_SELECTOR, has_text=params.storage_location).first.click()
+        page.locator(
+            STORAGE_LOCATION_OPTION_SELECTOR, has_text=params.storage_location
+        ).first.click()
         page.get_by_role("button", name="Buchen", exact=True).click()
-        page.get_by_role("button", name="OK").click()
 
-        material_document_link = page.locator("a", has_text="Materialbeleg").first
-        material_document_link.wait_for(state="visible")
-        material_document_text = material_document_link.inner_text()
-        material_document = _extract_material_document(material_document_text)
+        success_dialog = page.locator('[role="dialog"]', has_text="Materialbeleg").first
+        success_dialog.wait_for(state="visible")
+        material_document = _extract_material_document(success_dialog.inner_text())
+
+        page.get_by_role("button", name="OK").click()
         return {
             "material_document": material_document,
             "purchase_order": params.purchase_order,
@@ -119,5 +124,7 @@ CREATE_GOODS_RECEIPT_TOOL = ToolSpec(
 def _extract_material_document(message: str) -> str:
     match = MATERIAL_DOCUMENT_LINK_PATTERN.search(message)
     if match is None:
-        raise ValueError(f"Could not extract material document number from success link: {message}")
+        raise ValueError(
+            f"Could not extract material document number from success link: {message}"
+        )
     return match.group(1)
