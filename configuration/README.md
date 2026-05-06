@@ -1,33 +1,69 @@
 # Configuration
 
-This folder owns planning configuration. The generator remains execution-only: it reads a trace and runs browser tools.
+This folder owns trace-planning configuration. The generator stays execution-only: it reads a trace and runs browser tools.
 
 ## Current Flow
 
-1. `generate_tool_config.py` reads the registered generator tools.
-2. It writes `generated_tool_config.pkl` with raw tool facts only:
-   - tool name;
-   - human title;
-   - input model name;
-   - required input fields;
-   - input property schema/default information.
-3. `tool_configuration.pkl` imports those raw tool facts and defines process meaning in Pkl.
-4. `tool_configuration.pkl` assigns tools to procure-to-pay process steps.
-5. `tool_configuration.pkl` defines graph dependencies between steps.
+1. `generate_tool_config.py` reads registered generator tools.
+2. It writes `generated_tool_config.pkl` with raw tool facts only.
+3. Hand-written Pkl modules define actors, technical users, mappings, master data, processes, fraud placeholders, and run settings.
+4. `main.pkl` imports every module and exposes one complete configuration object.
+5. `create-config.sh` validates Pkl and writes YAML.
 
 ## File Roles
 
-- `generate_tool_config.py`: small extraction script. It must not contain process logic, step ordering, role mapping, or graph dependencies.
+- `objects.pkl`: shared class definitions.
 - `generated_tool_config.pkl`: generated raw tool catalogue. Do not edit manually.
-- `tool_config_schema.pkl`: Pkl classes used by generated and hand-written configuration.
-- `tool_configuration.pkl`: hand-written process configuration. Edit this file to assign tools to process steps and define dependencies.
+- `actors.pkl`: virtual actors and realism profiles.
+- `technical_users.pkl`: SAP technical user references. Contains env var names only, no secrets.
+- `identity_mapping.pkl`: mapping from virtual actors to technical SAP users.
+- `master_data.pkl`: material/vendor/plant/storage-location matrix and sampling ranges.
+- `processes.pkl`: process steps, tool assignments, and process dependencies.
+- `fraud_scenarios.pkl`: enabled fraud scenario placeholders and target shares.
+- `run_settings.pkl`: case count, concurrency, timezone, active process types.
+- `main.pkl`: final public entrypoint for compiled config.
+- `create-config.sh`: regenerates tool facts, validates Pkl, writes YAML.
 
-## Process Steps
+## Actors And Technical Users
 
-Each process step has:
+Add synthetic business users in `actors.pkl`:
 
 ```pkl
-new tool_config_schema.ProcessStep {
+new objects.VirtualActor {
+  id = "procurement_01"
+  displayName = "Dieter Einkauf"
+  role = "procurement"
+  timezone = "Europe/Berlin"
+  workLocation = "HD00"
+  speedFactor = 1.2
+  realismProfile {
+    workerType = "relaxed procurement clerk"
+    workingHoursDeviation = -2.5
+    pauseCharacteristicsIndex = 12
+  }
+  exposeInFinalDatasetAs = "procurement_01"
+}
+```
+
+Add SAP accounts in `technical_users.pkl` using environment variable names only:
+
+```pkl
+new objects.TechnicalUser {
+  id = "GBGEN_P01"
+  usernameEnvVar = "SAP_USER_1_UN"
+  passwordEnvVar = "SAP_USER_1_PW"
+  loginUrlEnvVar = "SAP_URL"
+}
+```
+
+Connect both in `identity_mapping.pkl`.
+
+## Processes
+
+Edit `processes.pkl` to assign tools to process steps:
+
+```pkl
+new objects.ProcessStep {
   stepId = "A1"
   stepType = "create_purchase_requisition"
   tool = toolRequirements["fiori.create_purchase_requisition"]
@@ -35,17 +71,12 @@ new tool_config_schema.ProcessStep {
 }
 ```
 
-- `stepId` is the graph node id. It should be unique inside the process template.
-- `stepType` describes what the step does.
-- `tool` assigns an available generator tool. Use `null` while the tool does not exist yet.
-- `requiredRole` defines the role expected to execute the step.
+Use `tool = null` while a step has no implemented generator tool.
 
-## Dependencies
-
-Dependencies define directed graph edges between process steps:
+Dependencies define directed graph edges:
 
 ```pkl
-new tool_config_schema.ProcessDependency {
+new objects.ProcessDependency {
   fromStepType = "create_purchase_requisition"
   toStepType = "create_purchase_order"
   description = "Create purchase order after purchase requisition because A2 needs the purchase requisition number produced by A1."
@@ -54,9 +85,7 @@ new tool_config_schema.ProcessDependency {
 
 This means `create_purchase_requisition` must happen before `create_purchase_order`.
 
-The dependency list currently describes ordering only. Add richer fields later only if the scheduler needs them.
-
-## Regenerating Tool Facts
+## Build YAML
 
 Run:
 
@@ -64,12 +93,12 @@ Run:
 configuration/create-config.sh
 ```
 
-This regenerates `generated_tool_config.pkl`, validates the Pkl modules, and writes:
+This regenerates `generated_tool_config.pkl`, validates all Pkl modules, and writes:
 
-- `configuration/build/tool_configuration.yaml`
+- `configuration/build/main.yaml`
 
-To choose another YAML output path:
+Custom output:
 
 ```bash
-configuration/create-config.sh /tmp/tool_configuration.yaml
+configuration/create-config.sh /tmp/main.yaml
 ```

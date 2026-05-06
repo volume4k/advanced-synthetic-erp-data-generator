@@ -1,0 +1,14 @@
+import "objects.pkl"
+
+fraudScenarios: Listing<objects.FraudScenario> = new Listing {
+  new objects.FraudScenario {
+    id = "VENDOR_FLIPFLOP"
+    enabled = false
+    targetShare = 0.0
+  }
+  new objects.FraudScenario {
+    id = "LARCENY"
+    enabled = false
+    targetShare = 0.0
+  }
+}
