@@ -8,6 +8,7 @@ from erp_trace_executor.tools.fiori.create_order import CREATE_ORDER_TOOL
 from erp_trace_executor.tools.fiori.create_goods_receipt import CREATE_GOODS_RECEIPT_TOOL
 from erp_trace_executor.tools.fiori.create_purchase_order import CREATE_PURCHASE_ORDER_TOOL
 from erp_trace_executor.tools.fiori.create_purchase_requisition import CREATE_PURCHASE_REQUISITION_TOOL
+from erp_trace_executor.tools.fiori.create_supplier_invoice import CREATE_SUPPLIER_INVOICE_TOOL
 from erp_trace_executor.tools.fiori.login import LOGIN_TOOL
 
 
@@ -39,4 +40,5 @@ def build_default_registry() -> ToolRegistry:
     registry.register(CREATE_GOODS_RECEIPT_TOOL)
     registry.register(CREATE_PURCHASE_REQUISITION_TOOL)
     registry.register(CREATE_PURCHASE_ORDER_TOOL)
+    registry.register(CREATE_SUPPLIER_INVOICE_TOOL)
     return registry
