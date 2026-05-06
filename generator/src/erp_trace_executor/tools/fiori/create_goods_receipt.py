@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from pydantic import BaseModel
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from erp_trace_executor.context import ExecutionContext
+from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.models import ToolResult
 from erp_trace_executor.tooling import ToolSpec
 
 
 MATERIAL_DOCUMENT_LINK_PATTERN = re.compile(r"Materialbeleg\s+(\d+)/")
+NO_SELECTABLE_POSITION_PATTERN = re.compile(r"Beleg\s+\d+\s+enthält keine wählbare Position")
 STORAGE_LOCATION_CELL_SELECTOR = '[id*="idStorageLocation_inputCell"][id$="-inner"]'
+STORAGE_LOCATION_OPTION_SELECTOR = 'span[id*="idStorageLocation"]'
+StorageLocation = Literal["Finished Goods", "Trading Goods", "Miscellaneous", "Returns"]
 
 
 class CreateGoodsReceiptInput(BaseModel):
@@ -21,7 +27,7 @@ class CreateGoodsReceiptInput(BaseModel):
     purchase_order: str
     document_date: str
     posting_date: str
-    storage_location_text: str
+    storage_location: StorageLocation
 
 
 class SapGoodsReceiptFlow:
@@ -44,12 +50,13 @@ class SapGoodsReceiptFlow:
         purchase_order.click()
         purchase_order.fill(params.purchase_order)
         purchase_order.press("Enter")
+        self._raise_if_no_selectable_position(page, params.purchase_order)
 
         self._fill_textbox(page, "Belegdatum", params.document_date)
         self._fill_textbox(page, "Buchungsdatum", params.posting_date)
 
         page.locator(STORAGE_LOCATION_CELL_SELECTOR).first.click()
-        page.get_by_text(params.storage_location_text, exact=True).click()
+        page.locator(STORAGE_LOCATION_OPTION_SELECTOR, has_text=params.storage_location).first.click()
         page.get_by_role("button", name="Buchen", exact=True).click()
         page.get_by_role("button", name="OK").click()
 
@@ -62,7 +69,7 @@ class SapGoodsReceiptFlow:
             "purchase_order": params.purchase_order,
             "document_date": params.document_date,
             "posting_date": params.posting_date,
-            "storage_location_text": params.storage_location_text,
+            "storage_location": params.storage_location,
         }
 
     def _fill_textbox(self, page, name: str, value: str) -> None:
@@ -70,6 +77,17 @@ class SapGoodsReceiptFlow:
         textbox.click()
         textbox.press("ControlOrMeta+a")
         textbox.fill(value)
+
+    def _raise_if_no_selectable_position(self, page, purchase_order: str) -> None:
+        message = page.get_by_text(NO_SELECTABLE_POSITION_PATTERN).first
+        try:
+            message.wait_for(state="visible", timeout=3000)
+        except PlaywrightTimeoutError:
+            return
+
+        raise ToolExecutionError(
+            f"Purchase order '{purchase_order}' contains no selectable goods receipt position: {message.inner_text()}"
+        )
 
 
 def run_create_goods_receipt(
