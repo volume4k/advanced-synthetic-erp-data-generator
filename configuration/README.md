@@ -61,12 +61,15 @@ The dependency list currently describes ordering only. Add richer fields later o
 Run:
 
 ```bash
-uv run --project generator python configuration/generate_tool_config.py
-pkl format --write configuration/generated_tool_config.pkl
+configuration/create-config.sh
 ```
 
-Then validate:
+This regenerates `generated_tool_config.pkl`, validates the Pkl modules, and writes:
+
+- `configuration/build/tool_configuration.yaml`
+
+To choose another YAML output path:
 
 ```bash
-pkl eval configuration/tool_configuration.pkl
+configuration/create-config.sh /tmp/tool_configuration.yaml
 ```
