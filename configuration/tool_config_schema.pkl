@@ -27,11 +27,10 @@ class ProcessStep {
 
 /// Directed dependency between two configured process steps.
 ///
-/// The trace planner must schedule `fromStepId` before `toStepId`.
-/// Use step ids instead of step types because step types can repeat in variants or fraud flows.
+/// The trace planner must schedule `fromStepType` before `toStepType`.
 class ProcessDependency {
-  fromStepId: String(this.length > 0)
-  toStepId: String(this.length > 0)
+  fromStepType: String(this.length > 0)
+  toStepType: String(this.length > 0)
   description: String(this.length > 0)
 }
 

@@ -46,39 +46,37 @@ procureToPayProcess: tool_config_schema.ProcureToPayProcess = new tool_config_sc
     }
   }
 
+  // Dependencies define directed graph edges between process steps.
+  // The trace planner must execute `fromStepType` before `toStepType`.
+  // The description explains why the edge exists and which business object/data flows across it.
   dependencies {
-    // A2 needs the purchase requisition number produced by A1.
     new tool_config_schema.ProcessDependency {
-      fromStepId = "A1"
-      toStepId = "A2"
+      fromStepType = "create_purchase_requisition"
+      toStepType = "create_purchase_order"
       description =
         "Create purchase order after purchase requisition because A2 needs the purchase requisition number produced by A1."
     }
-    // A3 can only release a purchase order that already exists.
     new tool_config_schema.ProcessDependency {
-      fromStepId = "A2"
-      toStepId = "A3"
+      fromStepType = "create_purchase_order"
+      toStepType = "release_purchase_order"
       description =
         "Release purchase order after creation because A3 needs the purchase order created by A2."
     }
-    // A4 posts receipt against a released purchase order.
     new tool_config_schema.ProcessDependency {
-      fromStepId = "A3"
-      toStepId = "A4"
+      fromStepType = "release_purchase_order"
+      toStepType = "post_goods_receipt"
       description =
         "Post goods receipt after release because A4 requires a released purchase order."
     }
-    // A5 follows goods receipt in the version-one single-line P2P flow.
     new tool_config_schema.ProcessDependency {
-      fromStepId = "A4"
-      toStepId = "A5"
+      fromStepType = "post_goods_receipt"
+      toStepType = "enter_incoming_invoice"
       description =
         "Enter incoming invoice after goods receipt in the version-one procure-to-pay flow."
     }
-    // A6 pays only after invoice entry.
     new tool_config_schema.ProcessDependency {
-      fromStepId = "A5"
-      toStepId = "A6"
+      fromStepType = "enter_incoming_invoice"
+      toStepType = "post_outgoing_payment"
       description =
         "Post outgoing payment after incoming invoice entry because payment requires an invoice."
     }

@@ -46,13 +46,13 @@ Dependencies define directed graph edges between process steps:
 
 ```pkl
 new tool_config_schema.ProcessDependency {
-  fromStepId = "A1"
-  toStepId = "A2"
+  fromStepType = "create_purchase_requisition"
+  toStepType = "create_purchase_order"
   description = "Create purchase order after purchase requisition because A2 needs the purchase requisition number produced by A1."
 }
 ```
 
-This means `A1` must happen before `A2`. Dependencies use `stepId`, not `stepType`, because the same `stepType` can appear more than once in variants, fraud flows, or cleanup steps.
+This means `create_purchase_requisition` must happen before `create_purchase_order`.
 
 The dependency list currently describes ordering only. Add richer fields later only if the scheduler needs them.
 
