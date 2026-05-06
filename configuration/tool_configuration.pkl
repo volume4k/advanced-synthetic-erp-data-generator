@@ -47,35 +47,40 @@ procureToPayProcess: tool_config_schema.ProcureToPayProcess = new tool_config_sc
   }
 
   dependencies {
+    // A2 needs the purchase requisition number produced by A1.
     new tool_config_schema.ProcessDependency {
-      fromStep = "create_purchase_requisition"
-      toStep = "create_purchase_order"
-      edgeType = "data_dependency"
-      reason = "Purchase order requires purchase requisition number."
+      fromStepId = "A1"
+      toStepId = "A2"
+      description =
+        "Create purchase order after purchase requisition because A2 needs the purchase requisition number produced by A1."
     }
+    // A3 can only release a purchase order that already exists.
     new tool_config_schema.ProcessDependency {
-      fromStep = "create_purchase_order"
-      toStep = "release_purchase_order"
-      edgeType = "business_dependency"
-      reason = "Purchase order must exist before release."
+      fromStepId = "A2"
+      toStepId = "A3"
+      description =
+        "Release purchase order after creation because A3 needs the purchase order created by A2."
     }
+    // A4 posts receipt against a released purchase order.
     new tool_config_schema.ProcessDependency {
-      fromStep = "release_purchase_order"
-      toStep = "post_goods_receipt"
-      edgeType = "business_dependency"
-      reason = "Goods receipt requires released purchase order."
+      fromStepId = "A3"
+      toStepId = "A4"
+      description =
+        "Post goods receipt after release because A4 requires a released purchase order."
     }
+    // A5 follows goods receipt in the version-one single-line P2P flow.
     new tool_config_schema.ProcessDependency {
-      fromStep = "post_goods_receipt"
-      toStep = "enter_incoming_invoice"
-      edgeType = "business_dependency"
-      reason = "Invoice follows goods receipt in version-one P2P."
+      fromStepId = "A4"
+      toStepId = "A5"
+      description =
+        "Enter incoming invoice after goods receipt in the version-one procure-to-pay flow."
     }
+    // A6 pays only after invoice entry.
     new tool_config_schema.ProcessDependency {
-      fromStep = "enter_incoming_invoice"
-      toStep = "post_outgoing_payment"
-      edgeType = "accounting_dependency"
-      reason = "Payment requires posted incoming invoice."
+      fromStepId = "A5"
+      toStepId = "A6"
+      description =
+        "Post outgoing payment after incoming invoice entry because payment requires an invoice."
     }
   }
 }

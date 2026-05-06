@@ -25,12 +25,14 @@ class ProcessStep {
   requiredRole: String?
 }
 
-/// Directed process dependency edge.
+/// Directed dependency between two configured process steps.
+///
+/// The trace planner must schedule `fromStepId` before `toStepId`.
+/// Use step ids instead of step types because step types can repeat in variants or fraud flows.
 class ProcessDependency {
-  fromStep: String(this.length > 0)
-  toStep: String(this.length > 0)
-  edgeType: String(this.length > 0)
-  reason: String(this.length > 0)
+  fromStepId: String(this.length > 0)
+  toStepId: String(this.length > 0)
+  description: String(this.length > 0)
 }
 
 /// Procure-to-pay process configuration consumed by trace planning.
