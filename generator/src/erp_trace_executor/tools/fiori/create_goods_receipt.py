@@ -14,7 +14,7 @@ from erp_trace_executor.models import ToolResult
 from erp_trace_executor.tooling import ToolSpec
 
 
-MATERIAL_DOCUMENT_LINK_PATTERN = re.compile(r"Materialbeleg\s+(\d+)/")
+MATERIAL_DOCUMENT_LINK_PATTERN = re.compile(r"Materialbeleg\s+(\d+)/?")
 NO_SELECTABLE_POSITION_PATTERN = re.compile(r"Beleg\s+\d+\s+enthält keine wählbare Position")
 STORAGE_LOCATION_CELL_SELECTOR = '[id*="idStorageLocation_inputCell"][id$="-inner"]'
 STORAGE_LOCATION_OPTION_SELECTOR = 'span[id*="idStorageLocation"]'
@@ -60,7 +60,7 @@ class SapGoodsReceiptFlow:
         page.get_by_role("button", name="Buchen", exact=True).click()
         page.get_by_role("button", name="OK").click()
 
-        material_document_link = page.get_by_role("link", name=MATERIAL_DOCUMENT_LINK_PATTERN)
+        material_document_link = page.locator("a", has_text="Materialbeleg").first
         material_document_link.wait_for(state="visible")
         material_document_text = material_document_link.inner_text()
         material_document = _extract_material_document(material_document_text)
