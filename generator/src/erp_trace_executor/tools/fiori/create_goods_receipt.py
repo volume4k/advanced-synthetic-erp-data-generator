@@ -107,8 +107,17 @@ def run_create_goods_receipt(
         session_id=context.record.session_id,
         tool=context.record.tool,
         data={
+            "success": True,
             "status": "created",
             "current_url": page.url,
+            "returned_objects": [
+                {
+                    "object_type": "material_document",
+                    "keys": {
+                        "material_document_number": goods_receipt_data["material_document"],
+                    },
+                }
+            ],
             **goods_receipt_data,
         },
     )

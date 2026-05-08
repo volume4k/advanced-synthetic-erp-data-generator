@@ -1,13 +1,73 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import BaseModel
 
 from erp_trace_executor.browser.session import BrowserSessionManager
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.credentials import EnvCredentialStore
-from erp_trace_executor.errors import SessionUserMismatchError, ToolInputValidationError, UnknownToolError
+from erp_trace_executor.errors import SessionUserMismatchError, StateResolutionError, ToolInputValidationError, UnknownToolError
 from erp_trace_executor.executor import TraceExecutor
-from erp_trace_executor.models import TraceDefinition, TraceInitRecord, TraceInitUser, TraceRecord
+from erp_trace_executor.models import ToolResult, TraceDefinition, TraceInitRecord, TraceInitUser, TraceRecord
+from erp_trace_executor.registry import ToolRegistry
+from erp_trace_executor.tooling import ToolSpec
+
+
+class ProducePurchaseRequisitionInput(BaseModel):
+    pr_number: str
+
+
+class ConsumePurchaseRequisitionInput(BaseModel):
+    purchase_requisition: str
+
+
+def _state_test_registry(captured_inputs: list[ConsumePurchaseRequisitionInput] | None = None) -> ToolRegistry:
+    registry = ToolRegistry()
+
+    def run_produce(context, params: ProducePurchaseRequisitionInput) -> ToolResult:
+        return ToolResult(
+            task_id=context.task_id,
+            session_id=context.session_id,
+            tool=context.tool,
+            data={
+                "success": True,
+                "returned_objects": [
+                    {
+                        "object_type": "purchase_requisition",
+                        "keys": {
+                            "pr_number": params.pr_number,
+                            "pr_item": "00010",
+                        },
+                    }
+                ],
+            },
+        )
+
+    def run_consume(context, params: ConsumePurchaseRequisitionInput) -> ToolResult:
+        if captured_inputs is not None:
+            captured_inputs.append(params)
+        return ToolResult(
+            task_id=context.task_id,
+            session_id=context.session_id,
+            tool=context.tool,
+            data={"status": "consumed"},
+        )
+
+    registry.register(
+        ToolSpec(
+            name="test.produce_purchase_requisition",
+            input_model=ProducePurchaseRequisitionInput,
+            run=run_produce,
+        )
+    )
+    registry.register(
+        ToolSpec(
+            name="test.consume_purchase_requisition",
+            input_model=ConsumePurchaseRequisitionInput,
+            run=run_consume,
+        )
+    )
+    return registry
 
 
 def test_executor_rejects_unknown_tools():
@@ -38,6 +98,72 @@ def test_executor_reports_tool_input_validation_errors():
 
     with pytest.raises(ToolInputValidationError, match="line 1"):
         executor.execute([record], context_factory=lambda item: item)
+
+
+def test_executor_resolves_process_scoped_state_variables_before_validation():
+    captured_inputs: list[ConsumePurchaseRequisitionInput] = []
+    records = [
+        TraceRecord(
+            task_id="C042_A1",
+            session_id="buyer-session",
+            user_id="buyer-a",
+            tool="test.produce_purchase_requisition",
+            input={"pr_number": "10000030"},
+            meta={"case_id": "P2P_C042"},
+            line_number=1,
+        ),
+        TraceRecord(
+            task_id="C042_A2",
+            session_id="buyer-session",
+            user_id="buyer-a",
+            tool="test.consume_purchase_requisition",
+            input={"purchase_requisition": "$purchase_requisition.pr_number"},
+            meta={"case_id": "P2P_C042"},
+            line_number=2,
+        ),
+    ]
+
+    executor = TraceExecutor(registry=_state_test_registry(captured_inputs))
+    results = executor.execute(records, context_factory=lambda record: record)
+
+    assert [result.tool for result in results] == [
+        "test.produce_purchase_requisition",
+        "test.consume_purchase_requisition",
+    ]
+    assert captured_inputs[0].purchase_requisition == "10000030"
+
+
+def test_executor_fails_unresolved_state_variable_before_context_creation():
+    record = TraceRecord(
+        task_id="C042_A2",
+        session_id="buyer-session",
+        user_id="buyer-a",
+        tool="test.consume_purchase_requisition",
+        input={"purchase_requisition": "$purchase_requisition.pr_number"},
+        meta={"case_id": "P2P_C042"},
+        line_number=1,
+    )
+
+    executor = TraceExecutor(registry=_state_test_registry())
+
+    with pytest.raises(StateResolutionError, match="C042_A2"):
+        executor.execute([record], context_factory=lambda _record: pytest.fail("context should not be created"))
+
+
+def test_executor_fails_state_variable_without_case_id_before_context_creation():
+    record = TraceRecord(
+        task_id="C042_A2",
+        session_id="buyer-session",
+        user_id="buyer-a",
+        tool="test.consume_purchase_requisition",
+        input={"purchase_requisition": "$purchase_requisition.pr_number"},
+        line_number=1,
+    )
+
+    executor = TraceExecutor(registry=_state_test_registry())
+
+    with pytest.raises(StateResolutionError, match="missing case_id"):
+        executor.execute([record], context_factory=lambda _record: pytest.fail("context should not be created"))
 
 
 def test_browser_session_manager_reuses_session_ids():
@@ -288,6 +414,16 @@ def test_executor_creates_purchase_requisition_against_fixture_app(fixture_app_u
     assert results[1].data["purchase_requisition"] == "PR-0001"
     assert results[1].data["material"] == "PUMP1902"
     assert results[1].data["quantity"] == 20
+    assert results[1].data["success"] is True
+    assert results[1].data["returned_objects"] == [
+        {
+            "object_type": "purchase_requisition",
+            "keys": {
+                "pr_number": "PR-0001",
+                "pr_item": "00010",
+            },
+        }
+    ]
 
 
 def test_executor_rejects_uninitialized_task_sessions_before_login():

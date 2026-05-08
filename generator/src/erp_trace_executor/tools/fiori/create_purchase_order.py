@@ -125,8 +125,18 @@ def run_create_purchase_order(
         session_id=context.record.session_id,
         tool=context.record.tool,
         data={
+            "success": True,
             "status": "created",
             "current_url": page.url,
+            "returned_objects": [
+                {
+                    "object_type": "purchase_order",
+                    "keys": {
+                        "po_number": order_data["purchase_order"],
+                        "po_item": "00010",
+                    },
+                }
+            ],
             **order_data,
         },
     )

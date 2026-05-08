@@ -115,8 +115,18 @@ def run_create_supplier_invoice(
         session_id=context.record.session_id,
         tool=context.record.tool,
         data={
+            "success": True,
             "status": "created",
             "current_url": page.url,
+            "returned_objects": [
+                {
+                    "object_type": "supplier_invoice",
+                    "keys": {
+                        "invoice_number": invoice_data["supplier_invoice"],
+                        "fiscal_year": invoice_data["fiscal_year"],
+                    },
+                }
+            ],
             **invoice_data,
         },
     )

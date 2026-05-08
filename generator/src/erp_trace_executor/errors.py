@@ -29,3 +29,7 @@ class SessionUserMismatchError(TraceExecutorError):
 
 class ToolExecutionError(TraceExecutorError):
     """Raised when a tool cannot complete its browser action."""
+
+
+class StateResolutionError(TraceExecutorError):
+    """Raised when a runtime state variable cannot be resolved."""
