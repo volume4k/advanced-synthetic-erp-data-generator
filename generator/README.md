@@ -51,8 +51,8 @@ A trace can start with one `kind: "init"` record. The executor logs in each conf
 
 ```json
 {"kind":"init","users":[{"session_id":"buyer-session","user_id":"buyer-a","username":"BUYERA","login_url":"https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE"},{"session_id":"approver-session","user_id":"approver-a","username":"APPROVERA"}]}
-{"task_id":"task-001","session_id":"buyer-session","user_id":"buyer-a","tool":"fiori.create_order","input":{"item_name":"widget","quantity":3}}
-{"task_id":"task-002","session_id":"approver-session","user_id":"approver-a","tool":"fiori.create_order","input":{"item_name":"gadget","quantity":1}}
+{"task_id":"task-001","session_id":"buyer-session","user_id":"buyer-a","tool":"fiori.create_purchase_requisition","input":{"material":"PUMP1902","quantity":10,"valuation_price":20,"currency":"USD","price_unit":1,"delivery_date":"05/20/2026","plant":"MI00","purchasing_group":"N00","purchasing_organization":"US00","company_code":"US00"}}
+{"task_id":"task-002","session_id":"approver-session","user_id":"approver-a","tool":"fiori.create_purchase_requisition","input":{"material":"GEAR1000","quantity":1,"valuation_price":20,"currency":"USD","price_unit":1,"delivery_date":"05/20/2026","plant":"MI00","purchasing_group":"N00","purchasing_organization":"US00","company_code":"US00"}}
 ```
 
 When an init user omits `password`, the executor looks up that password by username in the env file:
@@ -95,7 +95,7 @@ See these contributor guides:
 2. Keep page selectors and flows in a page-object helper instead of inside the tool module.
 3. Register the new `ToolSpec` in `src/erp_trace_executor/registry.py`.
 
-Use the existing `fiori.login` and `fiori.create_order` tools as the reference shape:
+Use the existing `fiori.login` and `fiori.create_purchase_requisition` tools as the reference shape:
 
 - validate `input` with a `pydantic` model
 - obtain the browser session from `ExecutionContext`

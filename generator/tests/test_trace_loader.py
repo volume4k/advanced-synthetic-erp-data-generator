@@ -15,7 +15,7 @@ def test_load_trace_records_preserves_order(tmp_path):
         textwrap.dedent(
             """
             {"task_id":"task-1","session_id":"session-1","user_id":"user-1","tool":"fiori.login","input":{"base_url":"http://127.0.0.1:8000","username":"user-1","password":"secret"}}
-            {"task_id":"task-2","session_id":"session-1","user_id":"user-1","tool":"fiori.create_order","input":{"item_name":"widget","quantity":2}}
+            {"task_id":"task-2","session_id":"session-1","user_id":"user-1","tool":"fiori.create_purchase_requisition","input":{}}
             """
         ).strip(),
         encoding="utf-8",
@@ -34,7 +34,7 @@ def test_load_trace_records_accepts_first_init_record(tmp_path):
         textwrap.dedent(
             """
             {"kind":"init","users":[{"session_id":"buyer-session","user_id":"buyer-a","username":"BUYERA","password":"secret"},{"session_id":"approver-session","user_id":"approver-a","username":"APPROVERA","password":"secret"}]}
-            {"task_id":"task-1","session_id":"buyer-session","user_id":"buyer-a","tool":"fiori.create_order","input":{"item_name":"widget","quantity":2}}
+            {"task_id":"task-1","session_id":"buyer-session","user_id":"buyer-a","tool":"fiori.create_purchase_requisition","input":{}}
             """
         ).strip(),
         encoding="utf-8",
@@ -67,7 +67,7 @@ def test_load_trace_records_rejects_late_init_record(tmp_path):
     trace_path.write_text(
         textwrap.dedent(
             """
-            {"task_id":"task-1","session_id":"buyer-session","user_id":"buyer-a","tool":"fiori.create_order","input":{"item_name":"widget","quantity":2}}
+            {"task_id":"task-1","session_id":"buyer-session","user_id":"buyer-a","tool":"fiori.create_purchase_requisition","input":{}}
             {"kind":"init","users":[{"session_id":"buyer-session","user_id":"buyer-a","username":"BUYERA","password":"secret"}]}
             """
         ).strip(),

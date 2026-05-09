@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from erp_trace_executor.errors import DuplicateToolRegistrationError, UnknownToolError
 from erp_trace_executor.tooling import ToolSpec
-from erp_trace_executor.tools.fiori.create_order import CREATE_ORDER_TOOL
 from erp_trace_executor.tools.fiori.create_goods_receipt import CREATE_GOODS_RECEIPT_TOOL
 from erp_trace_executor.tools.fiori.create_purchase_order import CREATE_PURCHASE_ORDER_TOOL
 from erp_trace_executor.tools.fiori.create_purchase_requisition import CREATE_PURCHASE_REQUISITION_TOOL
@@ -36,7 +35,6 @@ class ToolRegistry:
 def build_default_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(LOGIN_TOOL)
-    registry.register(CREATE_ORDER_TOOL)
     registry.register(CREATE_GOODS_RECEIPT_TOOL)
     registry.register(CREATE_PURCHASE_REQUISITION_TOOL)
     registry.register(CREATE_PURCHASE_ORDER_TOOL)

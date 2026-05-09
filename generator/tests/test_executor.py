@@ -29,6 +29,23 @@ class NoInput(BaseModel):
     pass
 
 
+def _purchase_requisition_input(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "material": "PUMP1902",
+        "quantity": 20,
+        "valuation_price": 30,
+        "currency": "USD",
+        "price_unit": 1,
+        "delivery_date": "05/20/2026",
+        "plant": "MI00",
+        "purchasing_group": "N00",
+        "purchasing_organization": "US00",
+        "company_code": "US00",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def _state_test_registry(captured_inputs: list[ConsumePurchaseRequisitionInput] | None = None) -> ToolRegistry:
     registry = ToolRegistry()
 
@@ -109,8 +126,8 @@ def test_executor_reports_tool_input_validation_errors():
         task_id="task-1",
         session_id="session-1",
         user_id="user-1",
-        tool="fiori.create_order",
-        input={"item_name": "widget", "quantity": 0},
+        tool="fiori.create_purchase_requisition",
+        input=_purchase_requisition_input(quantity=0),
         line_number=1,
     )
 
@@ -308,7 +325,7 @@ def test_browser_session_manager_rejects_mixed_users_for_same_session():
             session_manager.get_session(session_id="session-1", user_id="user-2")
 
 
-def test_executor_runs_login_then_order_against_fixture_app(fixture_app_url):
+def test_executor_runs_login_then_purchase_requisition_against_fixture_app(fixture_app_url):
     records = [
         TraceRecord(
             task_id="task-1",
@@ -330,11 +347,8 @@ def test_executor_runs_login_then_order_against_fixture_app(fixture_app_url):
             task_id="task-2",
             session_id="session-1",
             user_id="buyer-a",
-            tool="fiori.create_order",
-            input={
-                "item_name": "widget",
-                "quantity": 3,
-            },
+            tool="fiori.create_purchase_requisition",
+            input=_purchase_requisition_input(quantity=3),
             line_number=2,
         ),
     ]
@@ -351,10 +365,10 @@ def test_executor_runs_login_then_order_against_fixture_app(fixture_app_url):
 
         assert session_manager.active_session_count() == 1
 
-    assert [result.tool for result in results] == ["fiori.login", "fiori.create_order"]
+    assert [result.tool for result in results] == ["fiori.login", "fiori.create_purchase_requisition"]
     assert results[0].data["status"] == "logged_in"
-    assert results[1].data["latest_order"] == "widget:3"
-    assert results[1].data["order_count"] == 1
+    assert results[1].data["status"] == "created"
+    assert results[1].data["purchase_requisition"] == "PR-0001"
 
 
 def test_executor_runs_init_logins_before_tasks_against_fixture_app(fixture_app_url):
@@ -391,22 +405,16 @@ def test_executor_runs_init_logins_before_tasks_against_fixture_app(fixture_app_
                 task_id="task-1",
                 session_id="buyer-session",
                 user_id="buyer-a",
-                tool="fiori.create_order",
-                input={
-                    "item_name": "widget",
-                    "quantity": 3,
-                },
+                tool="fiori.create_purchase_requisition",
+                input=_purchase_requisition_input(quantity=3),
                 line_number=2,
             ),
             TraceRecord(
                 task_id="task-2",
                 session_id="approver-session",
                 user_id="approver-a",
-                tool="fiori.create_order",
-                input={
-                    "item_name": "gadget",
-                    "quantity": 1,
-                },
+                tool="fiori.create_purchase_requisition",
+                input=_purchase_requisition_input(material="GEAR1000", quantity=1),
                 line_number=3,
             ),
         ],
@@ -427,15 +435,15 @@ def test_executor_runs_init_logins_before_tasks_against_fixture_app(fixture_app_
     assert [result.tool for result in results] == [
         "fiori.login",
         "fiori.login",
-        "fiori.create_order",
-        "fiori.create_order",
+        "fiori.create_purchase_requisition",
+        "fiori.create_purchase_requisition",
     ]
     assert results[0].data["username"] == "buyer-a"
     assert results[1].data["username"] == "approver-a"
-    assert results[2].data["latest_order"] == "widget:3"
-    assert results[2].data["order_count"] == 1
-    assert results[3].data["latest_order"] == "gadget:1"
-    assert results[3].data["order_count"] == 1
+    assert results[2].data["purchase_requisition"] == "PR-0001"
+    assert results[2].data["quantity"] == 3
+    assert results[3].data["purchase_requisition"] == "PR-0001"
+    assert results[3].data["quantity"] == 1
 
 
 def test_executor_resolves_init_passwords_from_credentials_against_fixture_app(fixture_app_url):
@@ -460,8 +468,8 @@ def test_executor_resolves_init_passwords_from_credentials_against_fixture_app(f
                 task_id="task-1",
                 session_id="buyer-session",
                 user_id="buyer-a",
-                tool="fiori.create_order",
-                input={"item_name": "widget", "quantity": 1},
+                tool="fiori.create_purchase_requisition",
+                input=_purchase_requisition_input(quantity=1),
                 line_number=2,
             )
         ],
@@ -478,7 +486,7 @@ def test_executor_resolves_init_passwords_from_credentials_against_fixture_app(f
         )
 
     assert results[0].data["username"] == "buyer-a"
-    assert results[1].data["latest_order"] == "widget:1"
+    assert results[1].data["purchase_requisition"] == "PR-0001"
 
 
 def test_executor_creates_purchase_requisition_against_fixture_app(fixture_app_url):
@@ -505,18 +513,7 @@ def test_executor_creates_purchase_requisition_against_fixture_app(fixture_app_u
                 session_id="buyer-session",
                 user_id="buyer-a",
                 tool="fiori.create_purchase_requisition",
-                input={
-                    "material": "PUMP1902",
-                    "quantity": 20,
-                    "valuation_price": 30,
-                    "currency": "USD",
-                    "price_unit": 1,
-                    "delivery_date": "05/20/2026",
-                    "plant": "MI00",
-                    "purchasing_group": "N00",
-                    "purchasing_organization": "US00",
-                    "company_code": "US00",
-                },
+                input=_purchase_requisition_input(),
                 line_number=2,
             )
         ],
@@ -565,8 +562,8 @@ def test_executor_rejects_uninitialized_task_sessions_before_login():
                 task_id="task-1",
                 session_id="missing-session",
                 user_id="buyer-a",
-                tool="fiori.create_order",
-                input={"item_name": "widget", "quantity": 1},
+                tool="fiori.create_purchase_requisition",
+                input={},
                 line_number=2,
             )
         ],
@@ -596,8 +593,8 @@ def test_executor_rejects_initialized_session_user_mismatch_before_login():
                 task_id="task-1",
                 session_id="buyer-session",
                 user_id="approver-a",
-                tool="fiori.create_order",
-                input={"item_name": "widget", "quantity": 1},
+                tool="fiori.create_purchase_requisition",
+                input={},
                 line_number=2,
             )
         ],

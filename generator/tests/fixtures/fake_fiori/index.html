@@ -39,20 +39,6 @@
 
     <section data-testid="session-shell" hidden>
       <p>Logged in as <strong data-testid="session-user"></strong></p>
-      <form id="order-form">
-        <label>
-          Item
-          <input data-testid="item-name" id="item-name" name="item-name" />
-        </label>
-        <label>
-          Quantity
-          <input data-testid="item-quantity" id="item-quantity" name="item-quantity" type="number" min="1" />
-        </label>
-        <button data-testid="order-submit" type="submit">Create order</button>
-      </form>
-      <p>Order count: <span data-testid="order-count">0</span></p>
-      <p>Latest order: <span data-testid="latest-order">none</span></p>
-
       <form id="purchase-requisition-form">
         <label>
           Material
@@ -106,13 +92,10 @@
       const loginShell = document.querySelector('[data-testid="login-shell"]');
       const sessionShell = document.querySelector('[data-testid="session-shell"]');
       const sessionUser = document.querySelector('[data-testid="session-user"]');
-      const orderCount = document.querySelector('[data-testid="order-count"]');
-      const latestOrder = document.querySelector('[data-testid="latest-order"]');
       const requisitionLink = document.getElementById("idPRNoLinkId");
 
       const render = () => {
         const username = window.sessionStorage.getItem("fixture-user");
-        const orders = JSON.parse(window.localStorage.getItem("fixture-orders") || "[]");
 
         if (username) {
           loginShell.hidden = true;
@@ -123,9 +106,6 @@
           sessionShell.hidden = true;
           sessionUser.textContent = "";
         }
-
-        orderCount.textContent = String(orders.length);
-        latestOrder.textContent = orders.length ? `${orders[orders.length - 1].item_name}:${orders[orders.length - 1].quantity}` : "none";
       };
 
       document.getElementById("login-form").addEventListener("submit", (event) => {
@@ -137,17 +117,6 @@
         }
 
         window.sessionStorage.setItem("fixture-user", username);
-        render();
-      });
-
-      document.getElementById("order-form").addEventListener("submit", (event) => {
-        event.preventDefault();
-        const itemName = document.getElementById("item-name").value.trim();
-        const quantity = Number(document.getElementById("item-quantity").value);
-        const orders = JSON.parse(window.localStorage.getItem("fixture-orders") || "[]");
-
-        orders.push({ item_name: itemName, quantity });
-        window.localStorage.setItem("fixture-orders", JSON.stringify(orders));
         render();
       });
 
