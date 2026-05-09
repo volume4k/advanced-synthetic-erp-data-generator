@@ -4,15 +4,22 @@ from __future__ import annotations
 
 from typing import Any
 
+from playwright.sync_api import Error as PlaywrightError
 from pydantic import ValidationError
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.credentials import EnvCredentialStore
-from erp_trace_executor.errors import SessionUserMismatchError, ToolInputValidationError
+from erp_trace_executor.errors import SessionUserMismatchError, ToolExecutionError, ToolInputValidationError
 from erp_trace_executor.models import ToolResult, TraceDefinition, TraceInitUser, TraceRecord
 from erp_trace_executor.registry import ToolRegistry, build_default_registry
 from erp_trace_executor.state import RuntimeStateStore
 from erp_trace_executor.tools.fiori.login import LoginInput, run_login
+
+SAP_HOME_LOGO_SELECTORS = (
+    "#shell-header-icon",
+)
+SAP_HOME_LOGO_CLICK_ATTEMPTS = 2
+SAP_HOME_NAVIGATION_TIMEOUT_MS = 1_000
 
 
 class TraceExecutor:
@@ -28,6 +35,7 @@ class TraceExecutor:
         self._registry = registry or build_default_registry()
         self._credential_store = credential_store or EnvCredentialStore()
         self._state_store = state_store or RuntimeStateStore()
+        self._home_urls: dict[str, str] = {}
 
     def execute(self, trace: TraceDefinition | list[TraceRecord], context_factory) -> list[ToolResult]:
         results: list[ToolResult] = []
@@ -44,7 +52,9 @@ class TraceExecutor:
             for init_user in trace.init.users:
                 login_record = self._build_init_login_record(init_user, line_number=trace.init.line_number)
                 login_context = context_factory(login_record)
-                results.append(run_login(login_context, self._build_init_login_input(init_user)))
+                login_result = run_login(login_context, self._build_init_login_input(init_user))
+                results.append(login_result)
+                self._remember_home_url(login_record, login_result)
 
         for record in records:
             spec = self._registry.get(record.tool)
@@ -60,6 +70,8 @@ class TraceExecutor:
             result = spec.run(context, params)
             results.append(result)
             self._record_state_if_needed(record, result)
+            self._remember_home_url(record, result)
+            self._return_home_after_tool(record, context, result)
 
         return results
 
@@ -131,3 +143,53 @@ class TraceExecutor:
     def _case_id(self, record: TraceRecord) -> str | None:
         case_id = record.meta.get("case_id")
         return case_id if isinstance(case_id, str) and case_id else None
+
+    def _remember_home_url(self, record: TraceRecord, result: ToolResult) -> None:
+        if record.tool != "fiori.login":
+            return
+
+        home_url = result.data.get("url") or result.data.get("current_url")
+        if isinstance(home_url, str) and home_url:
+            self._home_urls[record.session_id] = home_url
+
+    def _return_home_after_tool(self, record: TraceRecord, context: Any, result: ToolResult) -> None:
+        if record.tool == "fiori.login" or not record.tool.startswith("fiori."):
+            return
+        if result.data.get("success") is False:
+            return
+        if not hasattr(context, "get_browser_session"):
+            return
+
+        page = context.get_browser_session().page
+        logo_clicked = False
+        for _attempt in range(SAP_HOME_LOGO_CLICK_ATTEMPTS):
+            logo_clicked = self._click_sap_home_logo_once(page) or logo_clicked
+
+        if logo_clicked:
+            return
+
+        home_url = self._home_urls.get(record.session_id)
+        if home_url is None:
+            raise ToolExecutionError(
+                f"Could not return session '{record.session_id}' to SAP home after task '{record.task_id}': "
+                "SAP logo click failed and no home URL is known"
+            )
+
+        page.goto(home_url)
+        self._wait_for_home_navigation(page)
+
+    def _click_sap_home_logo_once(self, page: Any) -> bool:
+        for selector in SAP_HOME_LOGO_SELECTORS:
+            try:
+                page.locator(selector).click(timeout=SAP_HOME_NAVIGATION_TIMEOUT_MS)
+                self._wait_for_home_navigation(page)
+                return True
+            except (PlaywrightError, AttributeError):
+                continue
+        return False
+
+    def _wait_for_home_navigation(self, page: Any) -> None:
+        try:
+            page.wait_for_load_state("load", timeout=SAP_HOME_NAVIGATION_TIMEOUT_MS)
+        except (PlaywrightError, AttributeError):
+            return

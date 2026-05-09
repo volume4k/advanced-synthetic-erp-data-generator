@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 from pydantic import BaseModel
 
 from erp_trace_executor.browser.session import BrowserSessionManager
@@ -11,6 +14,7 @@ from erp_trace_executor.executor import TraceExecutor
 from erp_trace_executor.models import ToolResult, TraceDefinition, TraceInitRecord, TraceInitUser, TraceRecord, returned_object
 from erp_trace_executor.registry import ToolRegistry
 from erp_trace_executor.tooling import ToolSpec
+from erp_trace_executor.tools.fiori.login import LOGIN_TOOL
 
 
 class ProducePurchaseRequisitionInput(BaseModel):
@@ -19,6 +23,10 @@ class ProducePurchaseRequisitionInput(BaseModel):
 
 class ConsumePurchaseRequisitionInput(BaseModel):
     purchase_requisition: str
+
+
+class NoInput(BaseModel):
+    pass
 
 
 def _state_test_registry(captured_inputs: list[ConsumePurchaseRequisitionInput] | None = None) -> ToolRegistry:
@@ -60,6 +68,23 @@ def _state_test_registry(captured_inputs: list[ConsumePurchaseRequisitionInput] 
             run=run_consume,
         )
     )
+    return registry
+
+
+def _home_reset_registry(*, include_login: bool = False) -> ToolRegistry:
+    registry = ToolRegistry()
+    if include_login:
+        registry.register(LOGIN_TOOL)
+
+    def run_tool(context, _params: NoInput) -> ToolResult:
+        return ToolResult(
+            task_id=context.record.task_id,
+            session_id=context.record.session_id,
+            tool=context.record.tool,
+            data={"status": "done"},
+        )
+
+    registry.register(ToolSpec(name="fiori.fake_tool", input_model=NoInput, run=run_tool))
     return registry
 
 
@@ -157,6 +182,111 @@ def test_executor_fails_state_variable_without_case_id_before_context_creation()
 
     with pytest.raises(StateResolutionError, match="missing case_id"):
         executor.execute([record], context_factory=lambda _record: pytest.fail("context should not be created"))
+
+
+def test_executor_clicks_sap_home_logo_twice_after_successful_fiori_tool():
+    page = FakeHomeResetPage(logo_click_succeeds=True)
+    record = TraceRecord(
+        task_id="task-1",
+        session_id="session-1",
+        user_id="user-1",
+        tool="fiori.fake_tool",
+        input={},
+        line_number=1,
+    )
+
+    TraceExecutor(registry=_home_reset_registry()).execute(
+        [record],
+        context_factory=lambda item: FakeHomeResetContext(item, page),
+    )
+
+    assert page.logo_click_count == 2
+    assert page.goto_urls == []
+
+
+def test_executor_falls_back_to_login_url_when_home_logo_clicks_fail():
+    page = FakeHomeResetPage(logo_click_succeeds=False)
+    trace = [
+        TraceRecord(
+            task_id="login-1",
+            session_id="session-1",
+            user_id="user-1",
+            tool="fiori.login",
+            input={
+                "url": "https://sap.example.test/home",
+                "username": "user-1",
+                "password": "secret",
+                "username_selector": "#username",
+                "password_selector": "#password",
+                "submit_selector": "#login",
+            },
+            line_number=1,
+        ),
+        TraceRecord(
+            task_id="task-1",
+            session_id="session-1",
+            user_id="user-1",
+            tool="fiori.fake_tool",
+            input={},
+            line_number=2,
+        ),
+    ]
+
+    TraceExecutor(registry=_home_reset_registry(include_login=True)).execute(
+        trace,
+        context_factory=lambda item: FakeHomeResetContext(item, page),
+    )
+
+    assert page.logo_click_count == 2
+    assert page.goto_urls == [
+        "https://sap.example.test/home",
+        "https://sap.example.test/home",
+    ]
+
+
+class FakeHomeResetContext:
+    def __init__(self, record: TraceRecord, page: "FakeHomeResetPage") -> None:
+        self.record = record
+        self._session = SimpleNamespace(page=page)
+
+    def get_browser_session(self):
+        return self._session
+
+
+class FakeHomeResetPage:
+    url = "https://sap.example.test/current"
+
+    def __init__(self, *, logo_click_succeeds: bool) -> None:
+        self.logo_click_succeeds = logo_click_succeeds
+        self.logo_click_count = 0
+        self.goto_urls: list[str] = []
+
+    def goto(self, url: str) -> None:
+        self.goto_urls.append(url)
+
+    def locator(self, selector: str):
+        return FakeHomeResetLocator(self, selector)
+
+    def wait_for_load_state(self, _state: str, *, timeout: int | None = None) -> None:
+        return None
+
+
+class FakeHomeResetLocator:
+    def __init__(self, page: FakeHomeResetPage, selector: str) -> None:
+        self._page = page
+        self._selector = selector
+
+    def fill(self, _value: str) -> None:
+        return None
+
+    def click(self, *, timeout: int | None = None) -> None:
+        if self._selector == "#login":
+            return None
+        if self._selector == "#shell-header-icon":
+            self._page.logo_click_count += 1
+            if self._page.logo_click_succeeds:
+                return None
+        raise PlaywrightError(f"cannot click {self._selector}")
 
 
 def test_browser_session_manager_reuses_session_ids():
