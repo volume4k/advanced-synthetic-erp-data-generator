@@ -8,6 +8,20 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
+def returned_object(object_type: str, **keys: Any) -> dict[str, Any]:
+    """Build one generated SAP object entry for a tool result."""
+
+    if not object_type:
+        raise ValueError("object_type must not be empty")
+    if not keys:
+        raise ValueError("returned object keys must not be empty")
+
+    return {
+        "object_type": object_type,
+        "keys": keys,
+    }
+
+
 class TraceTaskRecord(BaseModel):
     """One JSONL task record."""
 

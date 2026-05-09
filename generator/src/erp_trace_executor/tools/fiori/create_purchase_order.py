@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from erp_trace_executor.context import ExecutionContext
-from erp_trace_executor.models import ToolResult
+from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
 
 
@@ -125,17 +125,10 @@ def run_create_purchase_order(
         session_id=context.record.session_id,
         tool=context.record.tool,
         data={
-            "success": True,
             "status": "created",
             "current_url": page.url,
             "returned_objects": [
-                {
-                    "object_type": "purchase_order",
-                    "keys": {
-                        "po_number": order_data["purchase_order"],
-                        "po_item": "00010",
-                    },
-                }
+                returned_object("purchase_order", po_number=order_data["purchase_order"])
             ],
             **order_data,
         },

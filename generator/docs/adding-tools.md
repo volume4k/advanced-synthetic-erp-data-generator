@@ -33,7 +33,7 @@ Use this shape:
 from pydantic import BaseModel, Field
 
 from erp_trace_executor.context import ExecutionContext
-from erp_trace_executor.models import ToolResult
+from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
 
 
@@ -48,7 +48,12 @@ def run_my_tool(context: ExecutionContext, params: MyToolInput) -> ToolResult:
         task_id=context.record.task_id,
         session_id=context.record.session_id,
         tool=context.record.tool,
-        data={"status": "done"},
+        data={
+            "status": "done",
+            "returned_objects": [
+                returned_object("purchase_order", po_number="4500008732")
+            ],
+        },
     )
 
 
@@ -89,6 +94,8 @@ Mark newly recorded SAP tools as experimental in the PR description until they h
 - Use stable SAP IDs only when labels are not enough.
 - Wait for a visible success element before returning.
 - Return only useful structured data. Never return passwords or full credential payloads.
+- For created SAP objects, use `returned_object(object_type, **keys)` inside `returned_objects`.
+- Only return keys observed from SAP or guaranteed by the SAP response. Do not hard-code inferred item keys such as `00010`.
 - Avoid live SAP writes in automated tests.
 
 ## Fiori Page Wrapper

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
-from erp_trace_executor.models import ToolResult
+from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
 
 MATERIAL_DOCUMENT_LINK_PATTERN = re.compile(r"Materialbeleg\s+(\d+)/?")
@@ -107,16 +107,10 @@ def run_create_goods_receipt(
         session_id=context.record.session_id,
         tool=context.record.tool,
         data={
-            "success": True,
             "status": "created",
             "current_url": page.url,
             "returned_objects": [
-                {
-                    "object_type": "material_document",
-                    "keys": {
-                        "material_document_number": goods_receipt_data["material_document"],
-                    },
-                }
+                returned_object("material_document", material_document_number=goods_receipt_data["material_document"])
             ],
             **goods_receipt_data,
         },

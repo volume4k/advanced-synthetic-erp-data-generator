@@ -8,7 +8,7 @@ from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.credentials import EnvCredentialStore
 from erp_trace_executor.errors import SessionUserMismatchError, StateResolutionError, ToolInputValidationError, UnknownToolError
 from erp_trace_executor.executor import TraceExecutor
-from erp_trace_executor.models import ToolResult, TraceDefinition, TraceInitRecord, TraceInitUser, TraceRecord
+from erp_trace_executor.models import ToolResult, TraceDefinition, TraceInitRecord, TraceInitUser, TraceRecord, returned_object
 from erp_trace_executor.registry import ToolRegistry
 from erp_trace_executor.tooling import ToolSpec
 
@@ -30,15 +30,8 @@ def _state_test_registry(captured_inputs: list[ConsumePurchaseRequisitionInput] 
             session_id=context.session_id,
             tool=context.tool,
             data={
-                "success": True,
                 "returned_objects": [
-                    {
-                        "object_type": "purchase_requisition",
-                        "keys": {
-                            "pr_number": params.pr_number,
-                            "pr_item": "00010",
-                        },
-                    }
+                    returned_object("purchase_requisition", pr_number=params.pr_number)
                 ],
             },
         )
@@ -414,13 +407,11 @@ def test_executor_creates_purchase_requisition_against_fixture_app(fixture_app_u
     assert results[1].data["purchase_requisition"] == "PR-0001"
     assert results[1].data["material"] == "PUMP1902"
     assert results[1].data["quantity"] == 20
-    assert results[1].data["success"] is True
     assert results[1].data["returned_objects"] == [
         {
             "object_type": "purchase_requisition",
             "keys": {
                 "pr_number": "PR-0001",
-                "pr_item": "00010",
             },
         }
     ]

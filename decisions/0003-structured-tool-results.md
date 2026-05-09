@@ -11,19 +11,17 @@ The generator needs a consistent way to identify which SAP objects were created 
 
 ## Decision
 
-Mutating tools return generated SAP object keys through `data.returned_objects`.
+Mutating tools return generated SAP object keys through `data.returned_objects`. They only return keys observed from SAP or deterministically guaranteed by the SAP response.
 
 Example:
 
 ```json
 {
-  "success": true,
   "returned_objects": [
     {
       "object_type": "purchase_requisition",
       "keys": {
-        "pr_number": "10000030",
-        "pr_item": "00010"
+        "pr_number": "10000030"
       }
     }
   ]
@@ -32,9 +30,16 @@ Example:
 
 Flat fields remain for compatibility during the transition.
 
+Tool authors should use the helper instead of hand-writing the nested shape:
+
+```python
+returned_object("purchase_order", po_number=purchase_order)
+```
+
 ## Consequences
 
 - Runtime state updates can use one stable result contract.
 - The object registry and post-processor can consume generated keys without scraping human-readable messages.
 - Existing tests and examples using flat fields can continue to work.
 - Each new mutating tool must declare returned objects in the same structure.
+- Item keys such as `pr_item` or `po_item` must not be hard-coded. Add them only after the tool extracts them from SAP.

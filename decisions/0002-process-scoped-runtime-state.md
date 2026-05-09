@@ -36,8 +36,7 @@ State shape:
       "objects": {
         "purchase_requisition": {
           "keys": {
-            "pr_number": "10000030",
-            "pr_item": "00010"
+            "pr_number": "10000030"
           },
           "source_task_id": "C042_A1",
           "tool": "fiori.create_purchase_requisition"
@@ -54,3 +53,4 @@ State shape:
 - The generator can resolve dynamic inputs before Pydantic validation.
 - Missing variables fail before SAP interaction.
 - Version one assumes one object of each type per process. If a future process creates multiple requisitions or orders, aliases or item-level scoping must be added deliberately.
+- Tools only store keys they observed from SAP or can prove from the SAP response. Single-line purchasing does not justify inventing item keys.

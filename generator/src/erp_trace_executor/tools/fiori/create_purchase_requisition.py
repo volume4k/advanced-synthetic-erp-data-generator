@@ -7,7 +7,7 @@ import re
 from pydantic import BaseModel, Field
 
 from erp_trace_executor.context import ExecutionContext
-from erp_trace_executor.models import ToolResult
+from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
 from erp_trace_executor.tools.fiori.pages import FixtureFioriPage
 
@@ -115,17 +115,10 @@ def run_create_purchase_requisition(
         session_id=context.record.session_id,
         tool=context.record.tool,
         data={
-            "success": True,
             "status": "created",
             "current_url": page.url,
             "returned_objects": [
-                {
-                    "object_type": "purchase_requisition",
-                    "keys": {
-                        "pr_number": requisition_data["purchase_requisition"],
-                        "pr_item": "00010",
-                    },
-                }
+                returned_object("purchase_requisition", pr_number=requisition_data["purchase_requisition"])
             ],
             **requisition_data,
         },

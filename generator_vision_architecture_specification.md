@@ -192,9 +192,9 @@ The following rules are mandatory.
 8. Every node must reference an existing tool in the tool catalogue.
 9. Every tool input must be schema-validated before execution.
 10. Every placeholder must resolve before the corresponding tool is started.
-11. Every mutating tool must return structured success information and generated SAP object keys.
+11. Every mutating tool that creates SAP objects must return structured generated SAP object keys.
 12. Every generated SAP object key must be written to the runtime state store and object registry.
-13. A missing success key marks the node as failed.
+13. A missing required generated object key marks the node as failed.
 14. A failed node marks the corresponding case as failed unless the tool explicitly declares the failure as non-mutating and recoverable.
 15. Failed cases are excluded from the final ML-facing dataset by the post-processor.
 16. Correlation must use the object registry, not only timestamps.
@@ -320,21 +320,19 @@ postconditions:
   - "purchase_requisition_created"
 generated_objects:
   - object_type: "purchase_requisition"
-    required_keys: ["pr_number", "pr_item"]
+    required_keys: ["pr_number"]
 required_prior_outputs: []
 idempotency_policy: "not_idempotent_after_save"
 parallel_execution_safe: true
 correlation_fields:
   - "pr_number"
-  - "pr_item"
 ```
 
 ### 11.2 Required tool result structure
 
-Tools must return structured results. A human-readable SAP message can be included, but it must not be the only output.
+Tools must return structured results. A human-readable SAP message can be included, but it must not be the only output. Tools should only return object keys that were observed from SAP or are deterministically guaranteed by the SAP response.
 
 ```yaml
-success: true
 tool_name: "create_purchase_requisition"
 step_id: "C042_A1"
 case_id: "C042"
@@ -344,7 +342,6 @@ returned_objects:
   - object_type: "purchase_requisition"
     keys:
       pr_number: "0010051229"
-      pr_item: "00010"
 sap_messages:
   - severity: "success"
     text: "Purchase requisition 0010051229 created"
@@ -352,7 +349,7 @@ raw_observations:
   status_bar_text: "Purchase requisition 0010051229 created"
 ```
 
-If the required object key is not found, `success` must be false or the generator must classify the node as failed.
+If a required object key cannot be extracted from SAP, the tool must fail or the generator must classify the node as failed. The tool must not invent item keys such as `00010` unless it actually extracted or otherwise proved that value.
 
 ## 12. Execution trace structure
 
@@ -410,13 +407,12 @@ tool_name: "create_purchase_order"
 virtual_actor_id: "procurement_01"
 technical_sap_user: "GBGEN_P01"
 inputs:
-  purchase_requisition_number: "${nodes.C042_A1.outputs.returned_objects.purchase_requisition.keys.pr_number}"
+  purchase_requisition_number: "$purchase_requisition.pr_number"
   purchasing_org: "US00"
   purchasing_group: "001"
   vendor_id: "V17121"
 expected_outputs:
   - "purchase_order.po_number"
-  - "purchase_order.po_item"
 business_dates:
   document_date: "2026-02-03"
   planned_delivery_date: "2026-02-17"
@@ -472,11 +468,9 @@ runtime_state:
         C042_A1:
           purchase_requisition:
             pr_number: "0010051229"
-            pr_item: "00010"
         C042_A2:
           purchase_order:
             po_number: "4500008732"
-            po_item: "00010"
 ```
 
 The runtime state store may be implemented as SQLite, JSONL plus index file, or another persistent structure. SQLite is recommended if resume, querying, and safe concurrent updates are required.
@@ -633,7 +627,7 @@ For each node, the generator must perform the following deterministic procedure:
 6. Reset browser state to the configured stable start state.
 7. Invoke the referenced tool.
 8. Capture structured tool result.
-9. Validate required success keys.
+9. Validate required returned object keys.
 10. Persist returned SAP object keys in the runtime state store.
 11. Write execution log events.
 12. Mark node successful or failed.
@@ -946,7 +940,7 @@ nodes:
       plant: "MI00"
       purchasing_group: "001"
       vendor_id: "V17121"
-    expected_outputs: ["purchase_requisition.pr_number", "purchase_requisition.pr_item"]
+    expected_outputs: ["purchase_requisition.pr_number"]
 
   - node_id: "C001_A2"
     step_type: "create_purchase_order"
@@ -954,10 +948,9 @@ nodes:
     virtual_actor_id: "procurement_01"
     technical_sap_user: "GBGEN_P01"
     inputs:
-      purchase_requisition_number: "${nodes.C001_A1.outputs.purchase_requisition.pr_number}"
-      purchase_requisition_item: "${nodes.C001_A1.outputs.purchase_requisition.pr_item}"
+      purchase_requisition_number: "$purchase_requisition.pr_number"
       vendor_id: "V17121"
-    expected_outputs: ["purchase_order.po_number", "purchase_order.po_item"]
+    expected_outputs: ["purchase_order.po_number"]
 
 edges:
   - from: "C001_A1"

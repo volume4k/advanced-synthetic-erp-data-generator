@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from erp_trace_executor.errors import StateResolutionError
-from erp_trace_executor.models import ToolResult
+from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.state import RuntimeStateStore
 
 
@@ -13,15 +13,8 @@ def _purchase_requisition_result() -> ToolResult:
         session_id="buyer-session",
         tool="fiori.create_purchase_requisition",
         data={
-            "success": True,
             "returned_objects": [
-                {
-                    "object_type": "purchase_requisition",
-                    "keys": {
-                        "pr_number": "10000030",
-                        "pr_item": "00010",
-                    },
-                }
+                returned_object("purchase_requisition", pr_number="10000030")
             ],
         },
     )
@@ -59,3 +52,24 @@ def test_runtime_state_rejects_duplicate_object_type_in_case():
 
     with pytest.raises(StateResolutionError, match="already exists"):
         state.record_tool_result("P2P_C042", "C042_A1_retry", _purchase_requisition_result())
+
+
+def test_runtime_state_fails_missing_item_key_when_tool_did_not_return_it():
+    state = RuntimeStateStore()
+    state.record_tool_result(
+        "P2P_C042",
+        "C042_A2",
+        ToolResult(
+            task_id="C042_A2",
+            session_id="buyer-session",
+            tool="fiori.create_purchase_order",
+            data={
+                "returned_objects": [
+                    returned_object("purchase_order", po_number="4500008732")
+                ],
+            },
+        ),
+    )
+
+    with pytest.raises(StateResolutionError, match="key 'po_item' not found"):
+        state.resolve("P2P_C042", "$purchase_order.po_item", task_id="C042_A3")

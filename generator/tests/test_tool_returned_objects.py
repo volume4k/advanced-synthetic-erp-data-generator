@@ -58,7 +58,6 @@ def test_purchase_order_result_includes_returned_object(monkeypatch):
             "object_type": "purchase_order",
             "keys": {
                 "po_number": "4500008732",
-                "po_item": "00010",
             },
         }
     ]
