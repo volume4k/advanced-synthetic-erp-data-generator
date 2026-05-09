@@ -20,7 +20,7 @@ def _valid_payload() -> dict[str, object]:
         "valuation_price": 30,
         "currency": "USD",
         "price_unit": 1,
-        "delivery_date": "20.05.2026",
+        "delivery_date": "05/20/2026",
         "plant": "MI00",
         "purchasing_group": "N00",
         "purchasing_organization": "US00",
@@ -121,7 +121,7 @@ def test_sap_purchase_requisition_flow_uses_recorded_steps_and_input_values():
     assert ("fill", "role:textbox:Währung Bewertungspreis", "USD") in page.actions
     assert ("fill", "role:textbox:Preiseinheit", "1") in page.actions
     assert ("fill", "role:textbox:Anforderungsmenge", "20") in page.actions
-    assert ("fill", "role:textbox:Lieferdatum", "20.05.2026") in page.actions
+    assert ("fill", "role:textbox:Lieferdatum", "05/20/2026") in page.actions
     assert ("fill", "role:textbox:Einkäufergruppe", "N00") in page.actions
     assert ("fill", "role:textbox:EinkOrganisation", "US00") in page.actions
     assert ("fill", "role:textbox:Buchungskreis", "US00") in page.actions

@@ -511,7 +511,7 @@ def test_executor_creates_purchase_requisition_against_fixture_app(fixture_app_u
                     "valuation_price": 30,
                     "currency": "USD",
                     "price_unit": 1,
-                    "delivery_date": "20.05.2026",
+                    "delivery_date": "05/20/2026",
                     "plant": "MI00",
                     "purchasing_group": "N00",
                     "purchasing_organization": "US00",

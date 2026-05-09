@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
+from erp_trace_executor.fiori_types import FioriDate
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
 
@@ -26,8 +27,8 @@ class CreateGoodsReceiptInput(BaseModel):
     """Input values for posting a goods receipt against a purchase order."""
 
     purchase_order: str
-    document_date: str
-    posting_date: str
+    document_date: FioriDate
+    posting_date: FioriDate
     storage_location: StorageLocation
 
 

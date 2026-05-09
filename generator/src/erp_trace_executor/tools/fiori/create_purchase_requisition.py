@@ -7,6 +7,7 @@ import re
 from pydantic import BaseModel, Field
 
 from erp_trace_executor.context import ExecutionContext
+from erp_trace_executor.fiori_types import FioriDate
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
 from erp_trace_executor.tools.fiori.pages import FixtureFioriPage
@@ -18,7 +19,7 @@ class CreatePurchaseRequisitionInput(BaseModel):
     valuation_price: float = Field(gt=0)
     currency: str
     price_unit: int = Field(gt=0)
-    delivery_date: str
+    delivery_date: FioriDate
     plant: str
     purchasing_group: str
     purchasing_organization: str

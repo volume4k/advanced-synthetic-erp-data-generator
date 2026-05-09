@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
+from erp_trace_executor.fiori_types import FioriDate
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
 
@@ -22,7 +23,7 @@ SUPPLIER_INVOICE_READY_POLL_MS = 500
 class CreateSupplierInvoiceInput(BaseModel):
     """Input values for creating a supplier invoice against a purchase order."""
 
-    invoice_date: str
+    invoice_date: FioriDate
     invoicing_party: str
     gross_amount: float = Field(gt=0)
     purchase_order: str
