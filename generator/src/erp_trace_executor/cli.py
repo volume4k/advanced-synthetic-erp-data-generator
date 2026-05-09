@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import argparse
+from builtins import input as console_input
 import json
 import sys
+import traceback
 from pathlib import Path
 
 from erp_trace_executor.browser.session import BrowserSessionManager
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.credentials import load_env_credentials
-from erp_trace_executor.errors import TraceExecutorError
 from erp_trace_executor.executor import TraceExecutor
 from erp_trace_executor.trace_loader import load_trace_records
 
@@ -34,22 +35,34 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    session_manager: BrowserSessionManager | None = None
 
     try:
         records = load_trace_records(args.trace_path)
         credential_store = load_env_credentials(args.env_file)
         executor = TraceExecutor(credential_store=credential_store)
-        with BrowserSessionManager(headless=not args.headed) as session_manager:
-            results = executor.execute(
-                records,
-                context_factory=lambda record: ExecutionContext(
-                    record=record,
-                    session_manager=session_manager,
-                ),
+        session_manager = BrowserSessionManager(headless=not args.headed)
+        results = executor.execute(
+            records,
+            context_factory=lambda record: ExecutionContext(
+                record=record,
+                session_manager=session_manager,
+            ),
+        )
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+        if session_manager is not None and args.headed:
+            print(
+                "Execution failed. Browser remains open for manual SAP cleanup.",
+                file=sys.stderr,
             )
-    except TraceExecutorError as exc:
-        print(str(exc), file=sys.stderr)
+            console_input("Press Enter after cleanup to close browser and exit...")
+        if session_manager is not None:
+            session_manager.close()
         return 1
+
+    if session_manager is not None:
+        session_manager.close()
 
     print(json.dumps([result.to_dict() for result in results], indent=2))
     return 0
