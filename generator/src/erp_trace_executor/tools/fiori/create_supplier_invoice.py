@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import re
+from time import monotonic
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel, Field
 
 from erp_trace_executor.context import ExecutionContext
+from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
 
 
 INVOICE_LINK_PATTERN = re.compile(r"(\d+)/(\d{4})")
-SUPPLIER_INVOICE_FORM_TIMEOUT_MS = 30_000
+SUPPLIER_INVOICE_READY_TIMEOUT_MS = 30_000
+SUPPLIER_INVOICE_READY_POLL_MS = 500
 
 
 class CreateSupplierInvoiceInput(BaseModel):
@@ -82,16 +85,38 @@ class SapSupplierInvoiceFlow:
         }
 
     def _discard_existing_draft_if_present(self, page) -> None:
-        draft_message = page.get_by_text("Rechnungsentwurf vorhanden").first
-        try:
-            draft_message.wait_for(state="visible", timeout=SUPPLIER_INVOICE_FORM_TIMEOUT_MS)
-        except PlaywrightTimeoutError:
+        if not self._wait_for_draft_or_invoice_form(page):
             return
         page.get_by_role("button", name="Nein").click()
         page.get_by_role("textbox", name="Rechnungsdatum").wait_for(
             state="visible",
-            timeout=SUPPLIER_INVOICE_FORM_TIMEOUT_MS,
+            timeout=SUPPLIER_INVOICE_READY_TIMEOUT_MS,
         )
+
+    def _wait_for_draft_or_invoice_form(self, page) -> bool:
+        draft_message = page.get_by_text("Rechnungsentwurf vorhanden").first
+        invoice_date = page.get_by_role("textbox", name="Rechnungsdatum")
+        deadline = monotonic() + (SUPPLIER_INVOICE_READY_TIMEOUT_MS / 1000)
+
+        while True:
+            remaining_ms = int((deadline - monotonic()) * 1000)
+            if remaining_ms <= 0:
+                raise ToolExecutionError(
+                    "Supplier invoice app did not show the draft dialog or invoice form before timeout"
+                )
+            poll_timeout = min(SUPPLIER_INVOICE_READY_POLL_MS, remaining_ms)
+
+            try:
+                draft_message.wait_for(state="visible", timeout=poll_timeout)
+                return True
+            except PlaywrightTimeoutError:
+                pass
+
+            try:
+                invoice_date.wait_for(state="visible", timeout=poll_timeout)
+                return False
+            except PlaywrightTimeoutError:
+                pass
 
     def _click_no_if_present(self, page) -> None:
         no_button = page.get_by_role("button", name="Nein")
