@@ -84,7 +84,6 @@ class SapPurchaseRequisitionFlow:
         page.get_by_role("button", name="Zurück").click()
         page.get_by_role("button", name="1").click()
         page.get_by_role("button", name="Bestellen").click()
-        page.get_by_role("button", name="Bestellen").click()
 
         requisition_link = page.locator("#idPRNoLinkId")
         requisition_link.wait_for(state="visible")
