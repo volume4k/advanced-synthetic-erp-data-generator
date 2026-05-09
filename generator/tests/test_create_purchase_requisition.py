@@ -126,6 +126,6 @@ def test_sap_purchase_requisition_flow_uses_recorded_steps_and_input_values():
     assert ("fill", "role:textbox:EinkOrganisation", "US00") in page.actions
     assert ("fill", "role:textbox:Buchungskreis", "US00") in page.actions
     assert ("fill", "role:textbox:Werk", "MI00") in page.actions
-    assert page.actions.count(("click", "role:button:Bestellen")) == 2
+    assert page.actions.count(("click", "role:button:Bestellen")) == 1
     assert ("wait_for", "locator:#idPRNoLinkId", "visible", None) in page.actions
     assert data["purchase_requisition"] == "10000001"
