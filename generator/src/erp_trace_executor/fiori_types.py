@@ -9,6 +9,7 @@ from typing import Annotated
 from pydantic import AfterValidator
 
 FIORI_DATE_PATTERN = re.compile(r"^\d{2}/\d{2}/\d{4}$")
+FIORI_CURRENCY_PATTERN = re.compile(r"^[A-Z]{3}$")
 
 
 def validate_fiori_date(value: str) -> str:
@@ -35,4 +36,15 @@ def validate_fiori_date(value: str) -> str:
     return value
 
 
+def validate_fiori_currency(value: str) -> str:
+    """Validate exact three-letter uppercase currency codes."""
+
+    if not isinstance(value, str):
+        raise ValueError("Fiori currency must be a string")
+    if FIORI_CURRENCY_PATTERN.fullmatch(value) is None:
+        raise ValueError("Fiori currency must use exact ISO-style uppercase format")
+    return value
+
+
 FioriDate = Annotated[str, AfterValidator(validate_fiori_date)]
+FioriCurrency = Annotated[str, AfterValidator(validate_fiori_currency)]

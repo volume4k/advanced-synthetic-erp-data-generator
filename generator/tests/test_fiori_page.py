@@ -27,6 +27,9 @@ class FakeLocator:
             self._page.wait_failures_remaining -= 1
             raise PlaywrightTimeoutError("missing")
 
+    def get_by_role(self, role: str, *, name: str) -> "FakeLocator":
+        return FakeLocator(self._page, f"{self._name}->role:{role}:{name}")
+
 
 class FakePage:
     url = "https://example.test/fiori"
@@ -82,3 +85,15 @@ def test_fiori_locator_replays_retryable_click_when_next_wait_misses():
     assert raw_page.actions.count(("click", "role:button:Position anlegen")) == 2
     assert ("wait_for", "role:textbox:Material", 3000) in raw_page.actions
     assert ("wait_for", "role:textbox:Material", None) in raw_page.actions
+
+
+def test_fiori_locator_wraps_scoped_role_locators():
+    raw_page = FakePage()
+    page = FioriPage(raw_page)
+
+    page.get_by_role("row", name="5105600103").get_by_role("button", name="Ausgleichen").click()
+
+    assert raw_page.actions[0] == (
+        "click",
+        "role:row:5105600103->role:button:Ausgleichen",
+    )

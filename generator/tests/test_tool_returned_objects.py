@@ -17,6 +17,11 @@ from erp_trace_executor.tools.fiori.create_supplier_invoice import (
     SapSupplierInvoiceFlow,
     run_create_supplier_invoice,
 )
+from erp_trace_executor.tools.fiori.send_payment import (
+    SapSendPaymentFlow,
+    SendPaymentInput,
+    run_send_payment,
+)
 
 
 class FakeContext:
@@ -129,6 +134,47 @@ def test_supplier_invoice_result_includes_returned_object(monkeypatch):
             "keys": {
                 "invoice_number": "5105600001",
                 "fiscal_year": "2026",
+            },
+        }
+    ]
+
+
+def test_send_payment_result_includes_returned_object(monkeypatch):
+    monkeypatch.setattr(
+        SapSendPaymentFlow,
+        "create",
+        lambda self, params: {
+            "payment_document": "1500000004",
+            "company_code": params.company_code,
+            "posting_document_date": params.posting_document_date,
+            "posting_date": params.posting_date or "",
+            "supplier": params.supplier,
+            "accounting_document": params.accounting_document,
+            "general_ledger_account": params.general_ledger_account,
+            "amount": params.amount,
+            "currency": params.currency,
+        },
+    )
+
+    result = run_send_payment(
+        FakeContext("fiori.send_payment"),
+        SendPaymentInput(
+            company_code="US00",
+            posting_document_date="05/09/2026",
+            supplier="107902",
+            accounting_document="5105600103",
+            general_ledger_account="1800000",
+            amount=1976,
+        ),
+    )
+
+    assert result.data["payment_document"] == "1500000004"
+    assert result.data["accounting_document"] == "5105600103"
+    assert result.data["returned_objects"] == [
+        {
+            "object_type": "payment_document",
+            "keys": {
+                "payment_document_number": "1500000004",
             },
         }
     ]

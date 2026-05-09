@@ -3,11 +3,15 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from erp_trace_executor.fiori_types import FioriDate
+from erp_trace_executor.fiori_types import FioriCurrency, FioriDate
 
 
 class DateModel(BaseModel):
     value: FioriDate
+
+
+class CurrencyModel(BaseModel):
+    value: FioriCurrency
 
 
 def test_fiori_date_accepts_exact_mm_dd_yyyy_string():
@@ -38,3 +42,15 @@ def test_fiori_date_rejects_invalid_dates(value: str):
 def test_fiori_date_rejects_non_string_values():
     with pytest.raises(ValidationError):
         DateModel.model_validate({"value": 20260509})
+
+
+def test_fiori_currency_accepts_three_uppercase_letters():
+    model = CurrencyModel.model_validate({"value": "USD"})
+
+    assert model.value == "USD"
+
+
+@pytest.mark.parametrize("value", ["usd", "US", "US01", 123])
+def test_fiori_currency_rejects_invalid_values(value: object):
+    with pytest.raises(ValidationError):
+        CurrencyModel.model_validate({"value": value})

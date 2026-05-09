@@ -195,6 +195,11 @@ class FioriLocator:
 
         return FioriLocator(self._page, self._locator.get_by_text(*args, **kwargs))
 
+    def get_by_role(self, *args: Any, **kwargs: Any) -> "FioriLocator":
+        """Create a wrapped role locator scoped below this locator."""
+
+        return FioriLocator(self._page, self._locator.get_by_role(*args, **kwargs))
+
     @property
     def first(self) -> "FioriLocator":
         """Return first matching locator while keeping Fiori wait behavior."""
