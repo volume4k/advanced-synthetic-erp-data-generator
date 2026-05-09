@@ -58,8 +58,7 @@ class SapPurchaseOrderFlow:
         frame.locator("img").click()
         quantity_input = frame.get_by_role("textbox", name="Bestellmenge").first
         quantity_input.wait_for(state="visible")
-        quantity_input.fill(str(params.quantity))
-        quantity_input.press("Enter")
+        self._replace_grid_textbox_value(quantity_input, str(params.quantity))
         frame.get_by_role("tablist").get_by_text("Rechnung").click()
         tax_code = frame.get_by_role("textbox", name="Steuerkennz.")
         tax_code.click()
@@ -100,8 +99,15 @@ class SapPurchaseOrderFlow:
 
         cell = frame.get_by_role("textbox", name=label).first
         cell.wait_for(state="visible")
+        self._replace_grid_textbox_value(cell, value)
+
+    def _replace_grid_textbox_value(self, cell, value: str) -> None:
+        """Replace SAP GUI grid text where the textbox may be a focusable span."""
+
         cell.click()
-        cell.fill(value)
+        cell.press("ControlOrMeta+a")
+        for character in value:
+            cell.press(character)
         cell.press("Enter")
 
     def _close_start_dialog_if_visible(self, frame) -> None:
