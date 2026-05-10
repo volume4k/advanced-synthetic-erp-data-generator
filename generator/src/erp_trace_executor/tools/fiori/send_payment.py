@@ -20,6 +20,12 @@ SUPPLIER_ACCOUNT_INPUT_SELECTOR = (
     'fin.ap.payment.post.supplierAccountInput-input-inner"],'
     '[id*="supplierAccountInput"][id$="-inner"]'
 )
+OPEN_ITEM_ROW_XPATH = (
+    "xpath=ancestor::*[@role='row'][1] | "
+    "ancestor::*[contains(@id, 'openItems-rows-row') and not(contains(@id, '-col'))][1] | "
+    "ancestor::tr[1]"
+)
+OPEN_ITEM_CLEAR_BUTTON_SELECTOR = '[id*="addIconToggleButton"]'
 PAYMENT_DOCUMENT_SUCCESS_PATTERN = re.compile(r"Buchungsbeleg\s+(\d+)\s*\(")
 
 
@@ -97,28 +103,57 @@ class SapSendPaymentFlow:
         supplier_input.press("Enter")
 
     def _clear_open_item(self, page, accounting_document: str) -> None:
-        document_pattern = re.compile(rf"\b{re.escape(accounting_document)}\b")
-        row = page.get_by_role("row", name=document_pattern).first
+        document_locator = self._open_item_document_locator(page, accounting_document)
+        row = document_locator.locator(OPEN_ITEM_ROW_XPATH)
+
         try:
-            row.wait_for(state="visible", timeout=10_000)
+            row.wait_for(state="visible", timeout=5000)
         except PlaywrightTimeoutError as exc:
             raise ToolExecutionError(
-                f"Could not find open supplier item with accounting document "
+                f"Could not locate table row for open supplier item "
                 f"'{accounting_document}'"
             ) from exc
 
-        try:
-            row.get_by_role("button", name=re.compile("Ausgleichen")).click()
-            return
-        except PlaywrightTimeoutError:
-            pass
+        self._click_clear_button(row, accounting_document)
 
-        document_link = row.get_by_role("link", name=document_pattern).first
-        document_link.wait_for(state="visible")
-        document_link.locator("xpath=ancestor::*[@role='row'][1]").get_by_role(
-            "button",
-            name=re.compile("Ausgleichen"),
-        ).click()
+    def _open_item_document_locator(self, page, accounting_document: str):
+        document_pattern = _accounting_document_pattern(accounting_document)
+        candidates = [
+            page.get_by_role("link", name=document_pattern).first,
+            page.get_by_text(document_pattern).first,
+        ]
+
+        for candidate in candidates:
+            try:
+                candidate.wait_for(state="visible", timeout=10_000)
+                return candidate
+            except PlaywrightTimeoutError:
+                continue
+
+        raise ToolExecutionError(
+            f"Could not find open supplier item with accounting document "
+            f"'{accounting_document}'"
+        )
+
+    def _click_clear_button(self, row, accounting_document: str) -> None:
+        button_pattern = re.compile("Ausgleichen")
+        candidates = [
+            row.get_by_role("button", name=button_pattern).first,
+            row.locator(OPEN_ITEM_CLEAR_BUTTON_SELECTOR).first,
+            row.get_by_text(button_pattern).first,
+        ]
+
+        for candidate in candidates:
+            try:
+                candidate.click(timeout=5000)
+                return
+            except PlaywrightTimeoutError:
+                continue
+
+        raise ToolExecutionError(
+            f"Could not click clear button for open supplier item "
+            f"'{accounting_document}'"
+        )
 
     def _fill_textbox(self, page, name: str, value: str, *, commit: bool = False) -> None:
         textbox = page.get_by_role("textbox", name=name, exact=True)
@@ -192,6 +227,11 @@ def _extract_payment_document(message: str) -> str:
             f"Could not extract payment document number from success message: {message}"
         )
     return match.group(1)
+
+
+def _accounting_document_pattern(accounting_document: str) -> re.Pattern[str]:
+    escaped_document = re.escape(accounting_document)
+    return re.compile(rf"(?:Buchungsbeleg\s+)?{escaped_document}\b")
 
 
 def _format_amount(value: float) -> str:
