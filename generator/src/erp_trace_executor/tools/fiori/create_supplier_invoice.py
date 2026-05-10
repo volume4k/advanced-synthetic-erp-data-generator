@@ -16,8 +16,9 @@ from erp_trace_executor.tooling import ToolSpec
 
 
 INVOICE_LINK_PATTERN = re.compile(r"(\d+)/(\d{4})")
-SUPPLIER_INVOICE_READY_TIMEOUT_MS = 30_000
-SUPPLIER_INVOICE_READY_POLL_MS = 500
+SUPPLIER_INVOICE_READY_TIMEOUT_MS = 90_000
+SUPPLIER_INVOICE_READY_POLL_MS = 1_000
+SUPPLIER_INVOICE_OPEN_RETRY_AFTER_MS = 10_000
 
 
 class CreateSupplierInvoiceInput(BaseModel):
@@ -98,6 +99,8 @@ class SapSupplierInvoiceFlow:
         draft_message = page.get_by_text("Rechnungsentwurf vorhanden").first
         invoice_date = page.get_by_role("textbox", name="Rechnungsdatum")
         deadline = monotonic() + (SUPPLIER_INVOICE_READY_TIMEOUT_MS / 1000)
+        retry_open_app = self._consume_retryable_click(page)
+        retry_deadline = monotonic() + (SUPPLIER_INVOICE_OPEN_RETRY_AFTER_MS / 1000)
 
         while True:
             remaining_ms = int((deadline - monotonic()) * 1000)
@@ -118,6 +121,15 @@ class SapSupplierInvoiceFlow:
                 return False
             except PlaywrightTimeoutError:
                 pass
+
+            if retry_open_app is not None and monotonic() >= retry_deadline:
+                retry_open_app()
+                retry_open_app = None
+
+    def _consume_retryable_click(self, page):
+        if not hasattr(page, "consume_retryable_click"):
+            return None
+        return page.consume_retryable_click()
 
     def _click_no_if_present(self, page) -> None:
         no_button = page.get_by_role("button", name="Nein")
