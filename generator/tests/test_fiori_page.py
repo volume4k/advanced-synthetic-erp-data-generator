@@ -5,6 +5,7 @@ from typing import Any
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from erp_trace_executor.fiori_page import FioriPage
+from erp_trace_executor.fiori_messages import FioriMessagePolicy
 
 
 class FakeLocator:
@@ -12,7 +13,7 @@ class FakeLocator:
         self._page = page
         self._name = name
 
-    def click(self) -> None:
+    def click(self, **_kwargs: Any) -> None:
         self._page.actions.append(("click", self._name))
 
     def fill(self, value: str) -> None:
@@ -37,15 +38,26 @@ class FakePage:
     def __init__(self) -> None:
         self.actions: list[tuple[Any, ...]] = []
         self.wait_failures_remaining = 0
+        self.messages: list[dict[str, str]] = []
 
     def get_by_role(self, role: str, *, name: str) -> FakeLocator:
         return FakeLocator(self, f"role:{role}:{name}")
+
+    def get_by_title(self, title: str) -> FakeLocator:
+        return FakeLocator(self, f"title:{title}")
 
     def wait_for_load_state(self, state: str, *, timeout: int) -> None:
         self.actions.append(("wait_for_load_state", state, timeout))
 
     def wait_for_function(self, expression: str, **kwargs: Any) -> None:
         self.actions.append(("wait_for_function", "quietMs" in str(kwargs.get("arg")), kwargs.get("timeout")))
+
+    def evaluate(self, _script: str) -> list[dict[str, str]]:
+        self.actions.append(("evaluate_messages",))
+        return self.messages
+
+    def locator(self, selector: str) -> FakeLocator:
+        return FakeLocator(self, f"locator:{selector}")
 
 
 def test_fiori_locator_click_waits_for_page_to_settle():
@@ -54,10 +66,11 @@ def test_fiori_locator_click_waits_for_page_to_settle():
 
     page.get_by_role("button", name="Bestellen").click()
 
-    assert raw_page.actions[0] == ("click", "role:button:Bestellen")
-    assert raw_page.actions[1] == ("wait_for_load_state", "domcontentloaded", 1234)
-    assert raw_page.actions[2] == ("wait_for_function", False, 1234)
-    assert raw_page.actions[3] == ("wait_for_function", True, 1234)
+    assert ("click", "role:button:Bestellen") in raw_page.actions
+    assert ("wait_for_load_state", "domcontentloaded", 1234) in raw_page.actions
+    assert ("wait_for_function", False, 1234) in raw_page.actions
+    assert ("wait_for_function", True, 1234) in raw_page.actions
+    assert ("evaluate_messages",) in raw_page.actions
 
 
 def test_fiori_locator_press_settles_only_for_commit_keys():
@@ -93,7 +106,25 @@ def test_fiori_locator_wraps_scoped_role_locators():
 
     page.get_by_role("row", name="5105600103").get_by_role("button", name="Ausgleichen").click()
 
-    assert raw_page.actions[0] == (
+    assert (
         "click",
         "role:row:5105600103->role:button:Ausgleichen",
-    )
+    ) in raw_page.actions
+
+
+def test_fiori_page_captures_and_dismisses_messages_before_blockable_actions():
+    raw_page = FakePage()
+    raw_page.messages = [
+        {
+            "severity": "error",
+            "text": "Geben Sie ein Rechnungsdatum ein.",
+            "source": "sap-message-popover",
+        }
+    ]
+    captured: list[dict[str, str]] = []
+    page = FioriPage(raw_page, message_sink=captured, message_policy=FioriMessagePolicy())
+
+    page.get_by_role("textbox", name="Bruttobetrag").fill("200.00")
+
+    assert captured[0]["text"] == "Geben Sie ein Rechnungsdatum ein."
+    assert ("click", "role:button:Schließen") in raw_page.actions

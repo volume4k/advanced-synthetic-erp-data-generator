@@ -7,6 +7,8 @@ from typing import Any
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from erp_trace_executor.fiori_messages import FioriMessageHandler, FioriMessagePolicy
+
 
 DEFAULT_FIORI_TIMEOUT_MS = 30_000
 DEFAULT_DOM_QUIET_MS = 500
@@ -30,11 +32,18 @@ class FioriPage:
         *,
         timeout_ms: int = DEFAULT_FIORI_TIMEOUT_MS,
         quiet_ms: int = DEFAULT_DOM_QUIET_MS,
+        message_sink: list[dict[str, str]] | None = None,
+        message_policy: FioriMessagePolicy | None = None,
     ) -> None:
         self.raw_page = page
         self._timeout_ms = timeout_ms
         self._quiet_ms = quiet_ms
         self._retry_previous_click: Callable[[], None] | None = None
+        self._message_handler = FioriMessageHandler(
+            page,
+            message_sink=message_sink,
+            policy=message_policy,
+        )
 
     @property
     def url(self) -> str:
@@ -92,6 +101,12 @@ class FioriPage:
             timeout_ms=self._timeout_ms,
             quiet_ms=self._quiet_ms,
         )
+        self.handle_messages()
+
+    def handle_messages(self) -> None:
+        """Capture and dismiss global SAP messages visible on the page."""
+
+        self._message_handler.handle()
 
     def register_retryable_click(self, retry_click: Callable[[], None]) -> None:
         """Store one click that may be replayed if the next explicit wait misses.
@@ -134,6 +149,7 @@ class FioriLocator:
         """
 
         retry_on_next_wait = bool(kwargs.pop("retry_on_next_wait", False))
+        self._page.handle_messages()
         result = self._locator.click(*args, **kwargs)
         self._page.wait_until_ready()
         if retry_on_next_wait:
@@ -145,6 +161,7 @@ class FioriLocator:
     def dblclick(self, *args: Any, **kwargs: Any) -> Any:
         """Double-click locator, then wait for SAPUI5 rendering to settle."""
 
+        self._page.handle_messages()
         result = self._locator.dblclick(*args, **kwargs)
         self._page.wait_until_ready()
         return result
@@ -152,6 +169,7 @@ class FioriLocator:
     def press(self, key: str, *args: Any, **kwargs: Any) -> Any:
         """Press key and settle after Enter/Tab, which often trigger Fiori updates."""
 
+        self._page.handle_messages()
         result = self._locator.press(key, *args, **kwargs)
         if key in SETTLING_KEYS:
             self._page.wait_until_ready()
@@ -160,11 +178,13 @@ class FioriLocator:
     def fill(self, *args: Any, **kwargs: Any) -> Any:
         """Fill locator without settling; commit keys like Enter/Tab settle later."""
 
+        self._page.handle_messages()
         return self._locator.fill(*args, **kwargs)
 
     def wait_for(self, *args: Any, **kwargs: Any) -> Any:
         """Wait for locator, optionally replaying one safe previous click first."""
 
+        self._page.handle_messages()
         retry_click = self._page.consume_retryable_click()
         if retry_click is None:
             return self._locator.wait_for(*args, **kwargs)

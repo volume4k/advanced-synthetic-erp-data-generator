@@ -221,6 +221,49 @@ def test_executor_clicks_sap_home_logo_twice_after_successful_fiori_tool():
     assert page.goto_urls == []
 
 
+def test_executor_attaches_fiori_messages_to_tool_result():
+    registry = ToolRegistry()
+
+    def run_tool(context, _params: NoInput) -> ToolResult:
+        context.get_browser_session().fiori_messages.append(
+            {
+                "severity": "error",
+                "text": "Geben Sie ein Rechnungsdatum ein.",
+                "source": "sap-message-popover",
+                "url": "https://sap.example.test/invoice",
+            }
+        )
+        return ToolResult(
+            task_id=context.record.task_id,
+            session_id=context.record.session_id,
+            tool=context.record.tool,
+            data={"status": "done"},
+        )
+
+    registry.register(ToolSpec(name="fiori.fake_tool", input_model=NoInput, run=run_tool))
+    record = TraceRecord(
+        task_id="task-1",
+        session_id="session-1",
+        user_id="user-1",
+        tool="fiori.fake_tool",
+        input={},
+        line_number=1,
+    )
+    context = FakeMessageContext(record)
+
+    result = TraceExecutor(registry=registry).execute([record], context_factory=lambda _record: context)[0]
+
+    assert result.data["sap_messages"] == [
+        {
+            "severity": "error",
+            "text": "Geben Sie ein Rechnungsdatum ein.",
+            "source": "sap-message-popover",
+            "url": "https://sap.example.test/invoice",
+        }
+    ]
+    assert context.session.fiori_messages == []
+
+
 def test_executor_falls_back_to_login_url_when_home_logo_clicks_fail():
     page = FakeHomeResetPage(logo_click_succeeds=False)
     trace = [
@@ -268,6 +311,18 @@ class FakeHomeResetContext:
 
     def get_browser_session(self):
         return self._session
+
+
+class FakeMessageContext:
+    def __init__(self, record: TraceRecord) -> None:
+        self.record = record
+        self.session = SimpleNamespace(
+            page=FakeHomeResetPage(logo_click_succeeds=True),
+            fiori_messages=[],
+        )
+
+    def get_browser_session(self):
+        return self.session
 
 
 class FakeHomeResetPage:

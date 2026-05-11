@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
 
@@ -17,6 +17,7 @@ class BrowserSession:
     user_id: str
     context: BrowserContext
     page: Page
+    fiori_messages: list[dict[str, str]] = field(default_factory=list)
 
 
 class BrowserSessionManager:

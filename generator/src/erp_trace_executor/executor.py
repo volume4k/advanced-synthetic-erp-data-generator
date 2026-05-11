@@ -68,6 +68,7 @@ class TraceExecutor:
 
             context = context_factory(record)
             result = spec.run(context, params)
+            self._attach_fiori_messages(context, result)
             results.append(result)
             self._record_state_if_needed(record, result)
             self._remember_home_url(record, result)
@@ -139,6 +140,32 @@ class TraceExecutor:
             return
 
         self._state_store.record_tool_result(case_id, record.task_id, result)
+
+    def _attach_fiori_messages(self, context: Any, result: ToolResult) -> None:
+        if not hasattr(context, "get_browser_session"):
+            return
+        session = context.get_browser_session()
+
+        messages = getattr(session, "fiori_messages", None)
+        if not messages:
+            return
+
+        seen: set[tuple[str, str, str]] = set()
+        unique_messages: list[dict[str, str]] = []
+        for message in messages:
+            key = (
+                str(message.get("severity", "")),
+                str(message.get("text", "")),
+                str(message.get("source", "")),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_messages.append(message)
+
+        if unique_messages:
+            result.data.setdefault("sap_messages", []).extend(unique_messages)
+        messages.clear()
 
     def _case_id(self, record: TraceRecord) -> str | None:
         case_id = record.meta.get("case_id")

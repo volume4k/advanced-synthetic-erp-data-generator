@@ -25,4 +25,5 @@ class ExecutionContext:
     def get_fiori_page(self) -> FioriPage:
         """Return current session page wrapped with Fiori-aware settle waits."""
 
-        return FioriPage(self.get_browser_session().page)
+        session = self.get_browser_session()
+        return FioriPage(session.page, message_sink=session.fiori_messages)
