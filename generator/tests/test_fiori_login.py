@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
+from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.tools.fiori.login import SAP_FIORI_LOGIN_URL, LoginInput
 from erp_trace_executor.tools.fiori.login import run_login
 
@@ -25,9 +28,10 @@ def test_login_input_keeps_base_url_compatibility():
 
 
 class FakeLocator:
-    def __init__(self) -> None:
+    def __init__(self, *, visible: bool = False) -> None:
         self.filled_value: str | None = None
         self.clicked = False
+        self.visible = visible
 
     def fill(self, value: str) -> None:
         self.filled_value = value
@@ -37,6 +41,9 @@ class FakeLocator:
 
     def wait_for(self, *, state: str) -> None:
         self.state = state
+
+    def is_visible(self) -> bool:
+        return self.visible
 
 
 class FakePage:
@@ -70,3 +77,16 @@ def test_login_waits_for_load_when_no_success_selector_is_configured():
 
     assert page.waited_state == "load"
     assert result.data["status"] == "logged_in"
+
+
+def test_login_rejects_visible_login_form_after_load_without_success_selector():
+    page = FakePage()
+    page.locators["#LOGIN_LINK"] = FakeLocator(visible=True)
+    context = SimpleNamespace(
+        record=SimpleNamespace(task_id="task-1", session_id="session-1", tool="fiori.login"),
+        get_browser_session=lambda: SimpleNamespace(page=page),
+    )
+    params = LoginInput.model_validate({"username": "buyer-a", "password": "secret"})
+
+    with pytest.raises(ToolExecutionError, match="success_selector"):
+        run_login(context, params)

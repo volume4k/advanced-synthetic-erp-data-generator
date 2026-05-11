@@ -94,3 +94,20 @@ def test_cli_headed_failure_waits_before_closing_browser(capsys, monkeypatch):
     err = capsys.readouterr().err
     assert "Execution failed. Browser remains open for manual SAP cleanup." in err
     assert "RuntimeError: tool exploded" in err
+
+
+def test_cli_headed_failure_closes_browser_when_prompt_hits_eof(capsys, monkeypatch):
+    _patch_cli(monkeypatch)
+    FakeExecutor.should_fail = True
+
+    def fake_input(_prompt: str) -> str:
+        assert FakeSessionManager.instances[0].closed is False
+        raise EOFError
+
+    monkeypatch.setattr(cli, "console_input", fake_input)
+
+    exit_code = cli.main(["trace.jsonl", "--headed"])
+
+    assert exit_code == 1
+    assert FakeSessionManager.instances[0].closed is True
+    assert "RuntimeError: tool exploded" in capsys.readouterr().err

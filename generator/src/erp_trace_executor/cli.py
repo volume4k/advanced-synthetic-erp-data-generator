@@ -56,13 +56,14 @@ def main(argv: list[str] | None = None) -> int:
                 "Execution failed. Browser remains open for manual SAP cleanup.",
                 file=sys.stderr,
             )
-            console_input("Press Enter after cleanup to close browser and exit...")
+            try:
+                console_input("Press Enter after cleanup to close browser and exit...")
+            except (EOFError, KeyboardInterrupt):
+                pass
+        return 1
+    finally:
         if session_manager is not None:
             session_manager.close()
-        return 1
-
-    if session_manager is not None:
-        session_manager.close()
 
     print(json.dumps([result.to_dict() for result in results], indent=2))
     return 0

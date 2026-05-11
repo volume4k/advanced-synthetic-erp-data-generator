@@ -175,7 +175,7 @@ class TraceExecutor:
         if record.tool != "fiori.login":
             return
 
-        home_url = result.data.get("url") or result.data.get("current_url")
+        home_url = result.data.get("current_url") or result.data.get("url")
         if isinstance(home_url, str) and home_url:
             self._home_urls[record.session_id] = home_url
 

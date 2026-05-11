@@ -116,7 +116,7 @@ def test_executor_rejects_unknown_tools():
         line_number=1,
     )
 
-    with pytest.raises(UnknownToolError, match="missing.tool"):
+    with pytest.raises(UnknownToolError, match=r"missing\.tool"):
         executor.execute([record], context_factory=lambda item: item)
 
 
@@ -264,7 +264,7 @@ def test_executor_attaches_fiori_messages_to_tool_result():
     assert context.session.fiori_messages == []
 
 
-def test_executor_falls_back_to_login_url_when_home_logo_clicks_fail():
+def test_executor_falls_back_to_current_login_url_when_home_logo_clicks_fail():
     page = FakeHomeResetPage(logo_click_succeeds=False)
     trace = [
         TraceRecord(
@@ -300,7 +300,7 @@ def test_executor_falls_back_to_login_url_when_home_logo_clicks_fail():
     assert page.logo_click_count == 2
     assert page.goto_urls == [
         "https://sap.example.test/home",
-        "https://sap.example.test/home",
+        "https://sap.example.test/current",
     ]
 
 
@@ -359,6 +359,9 @@ class FakeHomeResetLocator:
             if self._page.logo_click_succeeds:
                 return None
         raise PlaywrightError(f"cannot click {self._selector}")
+
+    def is_visible(self) -> bool:
+        return False
 
 
 def test_browser_session_manager_reuses_session_ids():

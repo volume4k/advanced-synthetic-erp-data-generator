@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, HttpUrl
 
 from erp_trace_executor.context import ExecutionContext
+from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.models import ToolResult
 from erp_trace_executor.tooling import ToolSpec
 
@@ -45,6 +46,10 @@ def run_login(context: ExecutionContext, params: LoginInput) -> ToolResult:
         page.locator(params.success_selector).wait_for(state="visible")
     else:
         page.wait_for_load_state("load")
+        if _login_form_still_visible(page, params):
+            raise ToolExecutionError(
+                "Login did not reach a post-authenticated state; configure success_selector for this login form"
+            )
 
     return ToolResult(
         task_id=context.record.task_id,
@@ -64,3 +69,14 @@ LOGIN_TOOL = ToolSpec(
     input_model=LoginInput,
     run=run_login,
 )
+
+
+def _login_form_still_visible(page, params: LoginInput) -> bool:
+    return any(
+        page.locator(selector).is_visible()
+        for selector in (
+            params.username_selector,
+            params.password_selector,
+            params.submit_selector,
+        )
+    )

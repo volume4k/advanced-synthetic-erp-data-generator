@@ -45,7 +45,8 @@ class BrowserSessionManager:
             return existing
 
         self._ensure_browser()
-        assert self._browser is not None
+        if self._browser is None:
+            raise RuntimeError("Browser not initialized")
 
         context = self._browser.new_context()
         page = context.new_page()
