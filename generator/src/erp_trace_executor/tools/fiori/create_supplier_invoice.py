@@ -62,6 +62,7 @@ class SapSupplierInvoiceFlow:
 
         self._fill_textbox(page, "Bestellung/Lieferplan", params.purchase_order)
         page.get_by_role("textbox", name="Bestellung/Lieferplan").press("Enter")
+        self._close_purchase_order_reference_warning(page)
 
         tax_code = page.get_by_role("textbox", name="Steuerkennzeichen")
         tax_code.click()
@@ -138,6 +139,9 @@ class SapSupplierInvoiceFlow:
         except PlaywrightTimeoutError:
             return
         no_button.click()
+
+    def _close_purchase_order_reference_warning(self, page) -> None:
+        page.get_by_role("button", name="Schließen").click()
 
     def _fill_textbox(self, page, name: str, value: str) -> None:
         textbox = page.get_by_role("textbox", name=name)

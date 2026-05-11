@@ -101,3 +101,11 @@ def test_supplier_invoice_form_ready_keeps_existing_flow_without_waiting_for_dra
 
     assert page.clicks == []
     assert ("role:textbox:Rechnungsdatum", "visible", SUPPLIER_INVOICE_READY_POLL_MS) in page.waits
+
+
+def test_supplier_invoice_closes_expected_purchase_order_reference_warning():
+    page = FakeSupplierInvoicePage(draft_visible=False, form_visible=True)
+
+    SapSupplierInvoiceFlow(page)._close_purchase_order_reference_warning(page)
+
+    assert page.clicks == ["role:button:Schließen"]
