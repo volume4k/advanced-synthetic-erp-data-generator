@@ -1,2 +1,2 @@
 {"kind":"init","users":[{"session_id":"tour-user-1-session","user_id":"tour-user-1","username":"LEARN-902","login_url":"https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE","success_selector":"#userActionsMenuHeaderButton"}]}
-{"task_id":"task-create-invoice-001","session_id":"tour-user-1-session","user_id":"tour-user-1","tool":"fiori.create_supplier_invoice","input":{"invoice_date":"05/06/2026","invoicing_party":"107902","gross_amount":200,"purchase_order":"4500000007","tax_code":"XI"}}
+{"task_id":"task-create-invoice-001","session_id":"tour-user-1-session","user_id":"tour-user-1","tool":"fiori.create_supplier_invoice","input":{"invoice_date":"05/06/2026","invoicing_party":"107902","gross_amount":1976,"purchase_order":"4500000002","tax_code":"XI"}}
