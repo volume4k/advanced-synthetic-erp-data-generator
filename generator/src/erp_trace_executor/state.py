@@ -60,7 +60,9 @@ class RuntimeStateStore:
         if not returned_objects:
             return
 
-        case_state = self._cases.setdefault(case_id, RuntimeCaseState())
+        case_state = self._cases.get(case_id)
+        prepared_objects: dict[str, RuntimeObject] = {}
+
         for returned_object in returned_objects:
             object_type = returned_object.get("object_type")
             keys = returned_object.get("keys")
@@ -70,16 +72,23 @@ class RuntimeStateStore:
                 raise StateResolutionError(
                     f"Cannot record state for task '{task_id}', object '{object_type}': keys must be an object"
                 )
-            if object_type in case_state.objects:
+            if case_state is not None and object_type in case_state.objects:
                 raise StateResolutionError(
                     f"Cannot record state for task '{task_id}', case '{case_id}': object '{object_type}' already exists"
                 )
+            if object_type in prepared_objects:
+                raise StateResolutionError(
+                    f"Cannot record state for task '{task_id}', case '{case_id}': duplicate object '{object_type}'"
+                )
 
-            case_state.objects[object_type] = RuntimeObject(
+            prepared_objects[object_type] = RuntimeObject(
                 keys=dict(keys),
                 source_task_id=task_id,
                 tool=result.tool,
             )
+
+        case_state = self._cases.setdefault(case_id, RuntimeCaseState())
+        case_state.objects.update(prepared_objects)
 
     def _error(self, task_id: str | None, case_id: str | None, variable: str, reason: str) -> StateResolutionError:
         task = task_id or "<unknown>"

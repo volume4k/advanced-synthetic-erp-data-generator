@@ -73,3 +73,48 @@ def test_runtime_state_fails_missing_item_key_when_tool_did_not_return_it():
 
     with pytest.raises(StateResolutionError, match="key 'po_item' not found"):
         state.resolve("P2P_C042", "$purchase_order.po_item", task_id="C042_A3")
+
+
+def test_runtime_state_rejects_invalid_batch_without_partial_commit():
+    state = RuntimeStateStore()
+
+    with pytest.raises(StateResolutionError, match="keys must be an object"):
+        state.record_tool_result(
+            "P2P_C042",
+            "C042_A1",
+            ToolResult(
+                task_id="C042_A1",
+                session_id="buyer-session",
+                tool="fiori.create_purchase_requisition",
+                data={
+                    "returned_objects": [
+                        returned_object("purchase_requisition", pr_number="10000030"),
+                        {"object_type": "purchase_order", "keys": "4500008732"},
+                    ],
+                },
+            ),
+        )
+
+    with pytest.raises(StateResolutionError, match="case has no runtime state"):
+        state.resolve("P2P_C042", "$purchase_requisition.pr_number", task_id="C042_A2")
+
+
+def test_runtime_state_rejects_duplicate_object_type_in_same_result():
+    state = RuntimeStateStore()
+
+    with pytest.raises(StateResolutionError, match="duplicate object"):
+        state.record_tool_result(
+            "P2P_C042",
+            "C042_A1",
+            ToolResult(
+                task_id="C042_A1",
+                session_id="buyer-session",
+                tool="fiori.create_purchase_requisition",
+                data={
+                    "returned_objects": [
+                        returned_object("purchase_requisition", pr_number="10000030"),
+                        returned_object("purchase_requisition", pr_number="10000031"),
+                    ],
+                },
+            ),
+        )
