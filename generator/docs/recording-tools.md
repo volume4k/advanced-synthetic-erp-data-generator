@@ -7,7 +7,7 @@ Use Playwright recording as a draft generator for SAP browser flows. Do not comm
 Run Codegen from the generator project:
 
 ```bash
-uv run --project generator playwright codegen --target=python --output /tmp/recorded_flow.py "https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE"
+uv run --project generator playwright codegen --target=python --output /tmp/recorded_flow.py "https://your-sap-host.example/path?client=XXX&lang=YY"
 ```
 
 This opens a browser and the Playwright Inspector. Log in, perform the SAP action, stop recording, and inspect `/tmp/recorded_flow.py`.
