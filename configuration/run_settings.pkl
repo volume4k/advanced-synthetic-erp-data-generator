@@ -1,0 +1,10 @@
+import "objects.pkl"
+
+runSettings: objects.RunSettings = new objects.RunSettings {
+  caseCount = 10
+  maxParallelSessions = 4
+  targetTimezone = "Europe/Berlin"
+  activeProcessTypes {
+    "procure_to_pay"
+  }
+}

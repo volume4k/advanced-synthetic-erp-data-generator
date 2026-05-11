@@ -1,0 +1,31 @@
+import "actors.pkl" as actorConfig
+import "fraud_scenarios.pkl" as fraudConfig
+import "generated_tool_config.pkl" as generatedTools
+import "identity_mapping.pkl" as identityConfig
+import "master_data.pkl" as masterDataConfig
+import "objects.pkl"
+import "processes.pkl" as processConfig
+import "run_settings.pkl" as runConfig
+import "technical_users.pkl" as technicalUserConfig
+
+version: String = "0.1.0"
+
+sap: objects.SapConfig = new objects.SapConfig {
+  loginUrlEnvVar = "SAP_URL"
+}
+
+actors = actorConfig.actors
+
+technicalUsers = technicalUserConfig.technicalUsers
+
+identityMappings = identityConfig.identityMappings
+
+masterData = masterDataConfig.masterData
+
+processes = processConfig.processes
+
+fraudScenarios = fraudConfig.fraudScenarios
+
+runSettings = runConfig.runSettings
+
+toolRequirements = generatedTools.toolRequirements

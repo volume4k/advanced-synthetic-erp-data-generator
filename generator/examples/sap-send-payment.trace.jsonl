@@ -1,0 +1,2 @@
+{"kind":"init","users":[{"session_id":"tour-user-1-session","user_id":"tour-user-1","username":"LEARN-902","login_url":"https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE","success_selector":"#userActionsMenuHeaderButton"}]}
+{"task_id":"task-send-payment-001","session_id":"tour-user-1-session","user_id":"tour-user-1","tool":"fiori.send_payment","input":{"company_code":"US00","posting_document_date":"05/09/2026","supplier":"107902","accounting_document":"5105600103","general_ledger_account":"1800000","amount":1976,"currency":"USD"}}

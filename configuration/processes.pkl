@@ -1,0 +1,87 @@
+import "generated_tool_config.pkl"
+import "objects.pkl"
+
+toolRequirements = generated_tool_config.toolRequirements
+
+procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
+  processType = "procure_to_pay"
+
+  steps {
+    new objects.ProcessStep {
+      stepId = "A1"
+      stepType = "create_purchase_requisition"
+      tool = toolRequirements["fiori.create_purchase_requisition"]
+      requiredRole = "procurement"
+    }
+    new objects.ProcessStep {
+      stepId = "A2"
+      stepType = "create_purchase_order"
+      tool = toolRequirements["fiori.create_purchase_order"]
+      requiredRole = "procurement"
+    }
+    new objects.ProcessStep {
+      stepId = "A3"
+      stepType = "release_purchase_order"
+      tool = null
+      requiredRole = "procurement_manager"
+    }
+    new objects.ProcessStep {
+      stepId = "A4"
+      stepType = "post_goods_receipt"
+      tool = null
+      requiredRole = "warehouse"
+    }
+    new objects.ProcessStep {
+      stepId = "A5"
+      stepType = "enter_incoming_invoice"
+      tool = null
+      requiredRole = "accounts_payable"
+    }
+    new objects.ProcessStep {
+      stepId = "A6"
+      stepType = "post_outgoing_payment"
+      tool = null
+      requiredRole = "accounts_payable"
+    }
+  }
+
+  // Dependencies define directed graph edges between process steps.
+  // The trace planner must execute `fromStepType` before `toStepType`.
+  // The description explains why the edge exists and which business object/data flows across it.
+  dependencies {
+    new objects.ProcessDependency {
+      fromStepType = "create_purchase_requisition"
+      toStepType = "create_purchase_order"
+      description =
+        "Create purchase order after purchase requisition because A2 needs the purchase requisition number produced by A1."
+    }
+    new objects.ProcessDependency {
+      fromStepType = "create_purchase_order"
+      toStepType = "release_purchase_order"
+      description =
+        "Release purchase order after creation because A3 needs the purchase order created by A2."
+    }
+    new objects.ProcessDependency {
+      fromStepType = "release_purchase_order"
+      toStepType = "post_goods_receipt"
+      description =
+        "Post goods receipt after release because A4 requires a released purchase order."
+    }
+    new objects.ProcessDependency {
+      fromStepType = "post_goods_receipt"
+      toStepType = "enter_incoming_invoice"
+      description =
+        "Enter incoming invoice after goods receipt in the version-one procure-to-pay flow."
+    }
+    new objects.ProcessDependency {
+      fromStepType = "enter_incoming_invoice"
+      toStepType = "post_outgoing_payment"
+      description =
+        "Post outgoing payment after incoming invoice entry because payment requires an invoice."
+    }
+  }
+}
+
+processes: Listing<objects.ProcessDefinition> = new Listing {
+  procureToPayProcess
+}

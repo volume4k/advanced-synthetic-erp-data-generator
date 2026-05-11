@@ -1,0 +1,28 @@
+import "objects.pkl"
+
+masterData: Listing<objects.MasterDataEntry> = new Listing {
+  new objects.MasterDataEntry {
+    materialId = "MA025"
+    validVendors {
+      "V17121"
+      "V17122"
+    }
+    validPlants {
+      "MI00"
+    }
+    validPurchasingOrgs {
+      "US00"
+    }
+    validStorageLocations {
+      "0001"
+      "0002"
+    }
+    quantityMin = 1
+    quantityMax = 250
+    priceMin = 10.0
+    priceMax = 120.0
+    currency = "USD"
+    deliveryLeadTimeMinDays = 5
+    deliveryLeadTimeMaxDays = 21
+  }
+}

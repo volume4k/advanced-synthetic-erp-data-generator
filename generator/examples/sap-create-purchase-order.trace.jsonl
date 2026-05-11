@@ -1,0 +1,2 @@
+{"kind":"init","users":[{"session_id":"tour-user-1-session","user_id":"tour-user-1","username":"LEARN-902","login_url":"https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE","success_selector":"#userActionsMenuHeaderButton"}]}
+{"task_id":"task-create-po-001","session_id":"tour-user-1-session","user_id":"tour-user-1","tool":"fiori.create_purchase_order","input":{"purchase_requisition":"10000030","storage_location":"FG00","supplier":"107902","quantity":10}}

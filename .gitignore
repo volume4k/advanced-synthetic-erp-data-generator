@@ -11,4 +11,6 @@
 # Secrets
 .env
 
+# Generated configuration output
+configuration/build/
 

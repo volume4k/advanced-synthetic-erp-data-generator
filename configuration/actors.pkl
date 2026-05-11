@@ -1,0 +1,60 @@
+import "objects.pkl"
+
+actors: Listing<objects.VirtualActor> = new Listing {
+  new objects.VirtualActor {
+    id = "procurement_01"
+    displayName = "Dieter Einkauf"
+    role = "procurement"
+    timezone = "Europe/Berlin"
+    workLocation = "HD00"
+    speedFactor = 1.2
+    realismProfile {
+      workerType = "relaxed procurement clerk"
+      workingHoursDeviation = -2.5
+      pauseCharacteristicsIndex = 12
+    }
+    exposeInFinalDatasetAs = "procurement_01"
+  }
+  new objects.VirtualActor {
+    id = "procurement_manager_01"
+    displayName = "Marta Freigabe"
+    role = "procurement_manager"
+    timezone = "Europe/Berlin"
+    workLocation = "HD00"
+    speedFactor = 0.9
+    realismProfile {
+      workerType = "busy procurement manager"
+      workingHoursDeviation = 1.0
+      pauseCharacteristicsIndex = 8
+    }
+    exposeInFinalDatasetAs = "procurement_manager_01"
+  }
+  new objects.VirtualActor {
+    id = "warehouse_01"
+    displayName = "Werner Lager"
+    role = "warehouse"
+    timezone = "Europe/Berlin"
+    workLocation = "HD00"
+    speedFactor = 1.1
+    realismProfile {
+      workerType = "routine warehouse clerk"
+      workingHoursDeviation = -1.0
+      pauseCharacteristicsIndex = 10
+    }
+    exposeInFinalDatasetAs = "warehouse_01"
+  }
+  new objects.VirtualActor {
+    id = "accounts_payable_01"
+    displayName = "Anna Kreditoren"
+    role = "accounts_payable"
+    timezone = "Europe/Berlin"
+    workLocation = "HD00"
+    speedFactor = 1.0
+    realismProfile {
+      workerType = "structured accounts payable clerk"
+      workingHoursDeviation = 0.5
+      pauseCharacteristicsIndex = 9
+    }
+    exposeInFinalDatasetAs = "accounts_payable_01"
+  }
+}

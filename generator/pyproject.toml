@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "erp-trace-executor"
+version = "0.1.0"
+description = "Sequential JSONL trace executor for browser-backed ERP task flows."
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "playwright>=1.55,<2",
+  "pydantic>=2.11,<3",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4,<9",
+]
+
+[project.scripts]
+erp-trace-exec = "erp_trace_executor.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/erp_trace_executor"]
+
+[tool.uv]
+package = true
+
+[tool.pytest.ini_options]
+addopts = "-m 'not live_sap'"
+markers = [
+  "live_sap: requires SAP credentials, a reachable SAP tenant, and mutable business data",
+]

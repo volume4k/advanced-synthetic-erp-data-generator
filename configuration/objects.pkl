@@ -1,0 +1,110 @@
+module Objects
+
+/// Raw input property extracted from a generator tool's Pydantic input schema.
+class ToolInputProperty {
+  name: String(this.length > 0)
+  schemaType: String(this.length > 0)
+  required: Boolean
+  defaultValue: String?
+}
+
+/// Raw generator tool facts. No process semantics live here.
+class ToolRequirement {
+  toolName: String(this.length > 0)
+  title: String(this.length > 0)
+  inputModel: String(this.length > 0)
+  requiredInputFields: Listing<String>
+  inputProperties: Listing<ToolInputProperty>
+}
+
+/// Human-behavior profile for a virtual actor.
+class RealismProfile {
+  workerType: String(this.length > 0)
+  workingHoursDeviation: Float
+  pauseCharacteristicsIndex: Int
+}
+
+/// Synthetic business actor used by the trace generator.
+class VirtualActor {
+  id: String(this.length > 0)
+  displayName: String(this.length > 0)
+  role: String(this.length > 0)
+  timezone: String(this.length > 0)
+  workLocation: String(this.length > 0)
+  speedFactor: Float(this > 0)
+  realismProfile: RealismProfile
+  exposeInFinalDatasetAs: String(this.length > 0)
+}
+
+/// Technical SAP account reference. Values are environment variable names, not secrets themselves.
+class TechnicalUser {
+  id: String(this.length > 0)
+  usernameEnvVar: String(this.length > 0)
+  passwordEnvVar: String(this.length > 0)
+  loginUrlEnvVar: String(this.length > 0)
+  maxConcurrentSessions: Int(this >= 1) = 1
+}
+
+/// Mapping between synthetic actor and real technical SAP user.
+class IdentityMapping {
+  virtualActorId: String(this.length > 0)
+  technicalUserId: String(this.length > 0)
+}
+
+/// One configured process step. Assignment to a generator tool happens in Pkl.
+class ProcessStep {
+  stepId: String(this.length > 0)
+  stepType: String(this.length > 0)
+  tool: ToolRequirement?
+  requiredRole: String(this.length > 0)
+}
+
+/// Directed dependency between two configured process step types.
+class ProcessDependency {
+  fromStepType: String(this.length > 0)
+  toStepType: String(this.length > 0)
+  description: String(this.length > 0)
+}
+
+/// Process template consumed by trace planning.
+class ProcessDefinition {
+  processType: String(this.length > 0)
+  steps: Listing<ProcessStep>
+  dependencies: Listing<ProcessDependency>
+}
+
+/// Valid master-data combination and sampling ranges.
+class MasterDataEntry {
+  materialId: String(this.length > 0)
+  validVendors: Listing<String>
+  validPlants: Listing<String>
+  validPurchasingOrgs: Listing<String>
+  validStorageLocations: Listing<String>
+  quantityMin: Int(this >= 1)
+  quantityMax: Int(this >= quantityMin)
+  priceMin: Float(this > 0)
+  priceMax: Float(this >= priceMin)
+  currency: String(this.length > 0)
+  deliveryLeadTimeMinDays: Int(this >= 0)
+  deliveryLeadTimeMaxDays: Int(this >= deliveryLeadTimeMinDays)
+}
+
+/// SAP connection metadata. Contains env var names only.
+class SapConfig {
+  loginUrlEnvVar: String(this.length > 0)
+}
+
+/// Fraud scenario switch and target share placeholder.
+class FraudScenario {
+  id: String(this.length > 0)
+  enabled: Boolean
+  targetShare: Float(this >= 0 && this <= 1)
+}
+
+/// Top-level generation run settings.
+class RunSettings {
+  caseCount: Int(this >= 1)
+  maxParallelSessions: Int(this >= 1)
+  targetTimezone: String(this.length > 0)
+  activeProcessTypes: Listing<String>
+}
