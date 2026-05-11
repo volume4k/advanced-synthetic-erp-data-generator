@@ -81,11 +81,10 @@ Minimum contribution:
 
 Recommended contribution:
 
-- fixture integration test
-- input validation test
-- example trace parse test
+- focused regression test only when the tool contains reusable pure logic
+- repeated live smoke confidence for unstable or high-impact SAP flows
 
-Mark newly recorded SAP tools as experimental in the PR description until they have either fixture coverage or repeated live smoke confidence.
+Mark newly recorded SAP tools as experimental in the PR description until they have repeated live smoke confidence.
 
 ## Browser Flow Rules
 
@@ -121,14 +120,22 @@ Use explicit business waits after important steps. The wrapper helps with Fiori 
 
 ## Testing
 
-Core-maintained tools should have:
+Default pytest proves the generator framework, not the live SAP workflow behind every tool. The mandatory test gate is core-centric:
 
-- input validation tests for required fields and bounds
-- registry test that default registry exposes the tool
-- fixture integration test that logs in, runs the tool, and checks result data
-- example trace parse test if you add an example JSONL file
+- trace parsing and validation
+- executor ordering, state resolution, result capture, and session behavior
+- registry and generic `ToolSpec` contracts
+- `FioriPage` wait/retry/message-recovery behavior
+- `FioriMessageHandler` policy, capture, dismiss, and de-dupe behavior
+- CLI, credentials, and configuration boundaries
 
-External contributors are not blocked on full fixture coverage for every SAP tool. If a contributor cannot build a fixture, they should provide a password-free example trace and manual smoke notes instead.
+SAP tools are browser scripts against a live, changing UI. Do not add or update full fake SAP click-flow tests just because a tool gained a new locator, popup, or field. New business tools are covered by the generic tool contract suite as long as they are registered and have at least one valid password-free example trace.
+
+Tool-specific tests are optional and should be reserved for:
+
+- reusable pure helpers such as parsers and formatters
+- regressions where a small focused fake is clearer than a live smoke note
+- framework behavior that belongs in `FioriPage`, `FioriMessageHandler`, or the executor rather than one tool
 
 Run:
 
@@ -140,9 +147,9 @@ uv run --project generator pytest generator/tests -q
 
 The fake Fiori app lives in `tests/fixtures/fake_fiori/index.html`. Extend it when you need a deterministic browser flow for automated tests.
 
-Fixture behavior should prove executor/tool integration, not perfectly clone SAP.
+Fixture behavior should prove executor or browser-wrapper behavior, not perfectly clone SAP and not mirror every business tool.
 
-## Manual SAP Smoke Test
+## Manual And Live SAP Smoke Tests
 
 For real SAP UI flows:
 
@@ -150,11 +157,14 @@ For real SAP UI flows:
 2. Keep trace files password-free.
 3. Run with `--headed`.
 4. Verify browser success state and CLI result.
+5. Record the command, observed object ID or status, and any relevant screenshot in the PR notes.
 
 Example:
 
 ```bash
 uv run --project generator erp-trace-exec generator/examples/sap-create-purchase-requisition.trace.jsonl --headed
 ```
+
+Live SAP smoke runs are optional and non-gating unless a PR explicitly opts into them. They should stay separate from the default pytest suite because they require credentials, a healthy SAP tenant, and mutable business data. If an automated live smoke test is added later, mark it with `@pytest.mark.live_sap`; the default pytest config excludes that marker.
 
 Do not commit real credentials, screenshots with secrets, or traces containing passwords.

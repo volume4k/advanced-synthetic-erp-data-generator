@@ -31,12 +31,3 @@ def test_registry_rejects_unknown_tool_names():
 
     with pytest.raises(UnknownToolError, match="missing.tool"):
         registry.get("missing.tool")
-
-
-def test_default_registry_includes_expected_fiori_tools():
-    from erp_trace_executor.registry import build_default_registry
-
-    registry = build_default_registry()
-
-    assert "fiori.create_purchase_requisition" in registry.names()
-    assert "fiori.send_payment" in registry.names()

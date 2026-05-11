@@ -26,3 +26,9 @@ packages = ["src/erp_trace_executor"]
 
 [tool.uv]
 package = true
+
+[tool.pytest.ini_options]
+addopts = "-m 'not live_sap'"
+markers = [
+  "live_sap: requires SAP credentials, a reachable SAP tenant, and mutable business data",
+]

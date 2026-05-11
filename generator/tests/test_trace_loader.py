@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import textwrap
-from pathlib import Path
 
 import pytest
 
@@ -136,12 +135,3 @@ def test_load_trace_records_reports_schema_errors(tmp_path):
     with pytest.raises(TraceParseError, match="Invalid trace record on line 1"):
         load_trace_records(trace_path)
 
-
-def test_purchase_requisition_example_trace_parses():
-    trace_path = Path(__file__).parents[1] / "examples" / "sap-create-purchase-requisition.trace.jsonl"
-
-    trace = load_trace_records(trace_path)
-
-    assert trace.init is not None
-    assert len(trace.init.users) == 1
-    assert [record.tool for record in trace.tasks] == ["fiori.create_purchase_requisition"]
