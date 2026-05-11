@@ -22,12 +22,12 @@ def test_registry_rejects_duplicate_tool_names():
 
     registry.register(spec)
 
-    with pytest.raises(DuplicateToolRegistrationError, match="stub.tool"):
+    with pytest.raises(DuplicateToolRegistrationError, match=r"stub\.tool"):
         registry.register(spec)
 
 
 def test_registry_rejects_unknown_tool_names():
     registry = ToolRegistry()
 
-    with pytest.raises(UnknownToolError, match="missing.tool"):
+    with pytest.raises(UnknownToolError, match=r"missing\.tool"):
         registry.get("missing.tool")

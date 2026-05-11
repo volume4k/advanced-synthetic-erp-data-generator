@@ -37,7 +37,14 @@ def test_registered_business_tools_have_valid_example_trace_inputs():
 
     for trace_path in sorted(EXAMPLES_DIR.glob("*.trace.jsonl")):
         trace = load_trace_records(trace_path)
+        if trace.init is not None:
+            assert all(
+                user.password is None and "password" not in user.model_fields_set
+                for user in trace.init.users
+            ), f"{trace_path} must not embed passwords in init users"
+
         for record in trace.tasks:
+            assert "password" not in record.input, f"{trace_path} must not embed passwords in task input"
             spec = registry.get(record.tool)
             spec.input_model.model_validate(record.input)
             seen_tools.add(record.tool)
