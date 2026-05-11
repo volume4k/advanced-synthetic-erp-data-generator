@@ -36,7 +36,7 @@ class VirtualActor {
   exposeInFinalDatasetAs: String(this.length > 0)
 }
 
-/// Technical SAP account reference. Values are environment variable names, not secrets.
+/// Technical SAP account reference. Values are environment variable names, not secrets themselves.
 class TechnicalUser {
   id: String(this.length > 0)
   usernameEnvVar: String(this.length > 0)
