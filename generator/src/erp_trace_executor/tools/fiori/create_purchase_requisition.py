@@ -9,7 +9,6 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel, Field
 
 from erp_trace_executor.context import ExecutionContext
-from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.fiori_types import FioriDate
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
@@ -17,6 +16,7 @@ from erp_trace_executor.tools.fiori.pages import FixtureFioriPage
 
 PURCHASE_REQUISITION_READY_TIMEOUT_MS = 90_000
 PURCHASE_REQUISITION_READY_POLL_MS = 1_000
+PURCHASE_REQUISITION_DRAFT_GRACE_MS = 5_000
 
 
 class CreatePurchaseRequisitionInput(BaseModel):
@@ -120,7 +120,7 @@ class SapPurchaseRequisitionFlow:
         return material_field
 
     def _discard_existing_draft_if_present(self, page) -> bool:
-        if not self._wait_for_draft_or_requisition_form(page):
+        if not self._wait_for_draft_dialog(page):
             return False
         page.get_by_role("button", name="Verwerfen").click()
         page.get_by_role("button", name="Position anlegen", exact=True).wait_for(
@@ -129,28 +129,19 @@ class SapPurchaseRequisitionFlow:
         )
         return True
 
-    def _wait_for_draft_or_requisition_form(self, page) -> bool:
+    def _wait_for_draft_dialog(self, page, *, timeout_ms: int = PURCHASE_REQUISITION_DRAFT_GRACE_MS) -> bool:
         draft_message = page.get_by_text("Entwurf der Bestellanforderung").first
-        position_button = page.get_by_role("button", name="Position anlegen", exact=True)
-        deadline = monotonic() + (PURCHASE_REQUISITION_READY_TIMEOUT_MS / 1000)
+        deadline = monotonic() + (timeout_ms / 1000)
 
         while True:
             remaining_ms = int((deadline - monotonic()) * 1000)
             if remaining_ms <= 0:
-                raise ToolExecutionError(
-                    "Purchase requisition app did not show the draft dialog or requisition form before timeout"
-                )
+                return False
             poll_timeout = min(PURCHASE_REQUISITION_READY_POLL_MS, remaining_ms)
 
             try:
                 draft_message.wait_for(state="visible", timeout=poll_timeout)
                 return True
-            except PlaywrightTimeoutError:
-                pass
-
-            try:
-                position_button.wait_for(state="visible", timeout=poll_timeout)
-                return False
             except PlaywrightTimeoutError:
                 pass
 
