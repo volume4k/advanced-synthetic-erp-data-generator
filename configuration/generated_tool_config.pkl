@@ -4,24 +4,38 @@
 import "objects.pkl"
 
 toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
-  ["fiori.create_order"] = new objects.ToolRequirement {
-    toolName = "fiori.create_order"
-    title = "Create Order"
-    inputModel = "CreateOrderInput"
+  ["fiori.create_goods_receipt"] = new objects.ToolRequirement {
+    toolName = "fiori.create_goods_receipt"
+    title = "Create Goods Receipt"
+    inputModel = "CreateGoodsReceiptInput"
     requiredInputFields {
-      "item_name"
-      "quantity"
+      "purchase_order"
+      "document_date"
+      "posting_date"
+      "storage_location"
     }
     inputProperties {
       new objects.ToolInputProperty {
-        name = "item_name"
+        name = "purchase_order"
         schemaType = "string"
         required = true
         defaultValue = null
       }
       new objects.ToolInputProperty {
-        name = "quantity"
-        schemaType = "integer"
+        name = "document_date"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "posting_date"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "storage_location"
+        schemaType = "string"
         required = true
         defaultValue = null
       }
@@ -149,6 +163,49 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
       }
     }
   }
+  ["fiori.create_supplier_invoice"] = new objects.ToolRequirement {
+    toolName = "fiori.create_supplier_invoice"
+    title = "Create Supplier Invoice"
+    inputModel = "CreateSupplierInvoiceInput"
+    requiredInputFields {
+      "invoice_date"
+      "invoicing_party"
+      "gross_amount"
+      "purchase_order"
+    }
+    inputProperties {
+      new objects.ToolInputProperty {
+        name = "invoice_date"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "invoicing_party"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "gross_amount"
+        schemaType = "number"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "purchase_order"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "tax_code"
+        schemaType = "string"
+        required = false
+        defaultValue = "XI"
+      }
+    }
+  }
   ["fiori.login"] = new objects.ToolRequirement {
     toolName = "fiori.login"
     title = "Login"
@@ -202,6 +259,69 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
       }
       new objects.ToolInputProperty {
         name = "success_selector"
+        schemaType = "string | null"
+        required = false
+        defaultValue = null
+      }
+    }
+  }
+  ["fiori.send_payment"] = new objects.ToolRequirement {
+    toolName = "fiori.send_payment"
+    title = "Send Payment"
+    inputModel = "SendPaymentInput"
+    requiredInputFields {
+      "company_code"
+      "posting_document_date"
+      "supplier"
+      "accounting_document"
+      "general_ledger_account"
+      "amount"
+    }
+    inputProperties {
+      new objects.ToolInputProperty {
+        name = "company_code"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "posting_document_date"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "supplier"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "accounting_document"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "general_ledger_account"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "amount"
+        schemaType = "number"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "currency"
+        schemaType = "string"
+        required = false
+        defaultValue = "USD"
+      }
+      new objects.ToolInputProperty {
+        name = "posting_date"
         schemaType = "string | null"
         required = false
         defaultValue = null

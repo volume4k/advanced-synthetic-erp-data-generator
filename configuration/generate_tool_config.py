@@ -23,6 +23,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(render_pkl(), encoding="utf-8")
     return 0
 
