@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import re
+from time import monotonic
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel, Field
 
 from erp_trace_executor.context import ExecutionContext
+from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.fiori_types import FioriDate
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
 from erp_trace_executor.tools.fiori.pages import FixtureFioriPage
+
+PURCHASE_REQUISITION_READY_TIMEOUT_MS = 90_000
+PURCHASE_REQUISITION_READY_POLL_MS = 1_000
 
 
 class CreatePurchaseRequisitionInput(BaseModel):
@@ -38,6 +44,7 @@ class SapPurchaseRequisitionFlow:
         page.get_by_role("button", name="Suche öffnen").click()
         page.get_by_role("searchbox", name="Suchen").fill("Bestellanforderung anle")
         page.get_by_text("Bestellanforderung anlegen").click()
+        self._discard_existing_draft_if_present(page)
 
         page.get_by_role("button", name="Position anlegen", exact=True).click(retry_on_next_wait=True)
         material_field = self._textbox("Material")
@@ -96,6 +103,40 @@ class SapPurchaseRequisitionFlow:
 
     def _textbox(self, name: str):
         return self._page.get_by_role("textbox", name=re.compile(re.escape(name)))
+
+    def _discard_existing_draft_if_present(self, page) -> None:
+        if not self._wait_for_draft_or_requisition_form(page):
+            return
+        page.get_by_role("button", name="Verwerfen").click()
+        page.get_by_role("button", name="Position anlegen", exact=True).wait_for(
+            state="visible",
+            timeout=PURCHASE_REQUISITION_READY_TIMEOUT_MS,
+        )
+
+    def _wait_for_draft_or_requisition_form(self, page) -> bool:
+        draft_message = page.get_by_text("Entwurf der Bestellanforderung").first
+        position_button = page.get_by_role("button", name="Position anlegen", exact=True)
+        deadline = monotonic() + (PURCHASE_REQUISITION_READY_TIMEOUT_MS / 1000)
+
+        while True:
+            remaining_ms = int((deadline - monotonic()) * 1000)
+            if remaining_ms <= 0:
+                raise ToolExecutionError(
+                    "Purchase requisition app did not show the draft dialog or requisition form before timeout"
+                )
+            poll_timeout = min(PURCHASE_REQUISITION_READY_POLL_MS, remaining_ms)
+
+            try:
+                draft_message.wait_for(state="visible", timeout=poll_timeout)
+                return True
+            except PlaywrightTimeoutError:
+                pass
+
+            try:
+                position_button.wait_for(state="visible", timeout=poll_timeout)
+                return False
+            except PlaywrightTimeoutError:
+                pass
 
 
 def run_create_purchase_requisition(

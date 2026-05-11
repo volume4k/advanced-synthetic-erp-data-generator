@@ -4,10 +4,13 @@ from re import Pattern
 from typing import Any
 
 import pytest
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pydantic import ValidationError
 
 from erp_trace_executor.tools.fiori.create_purchase_requisition import (
     CreatePurchaseRequisitionInput,
+    PURCHASE_REQUISITION_READY_POLL_MS,
+    PURCHASE_REQUISITION_READY_TIMEOUT_MS,
     SapPurchaseRequisitionFlow,
 )
 from erp_trace_executor.fiori_page import FioriPage
@@ -72,9 +75,15 @@ class FakeLocator:
 
     def wait_for(self, *, state: str, timeout: int | None = None) -> None:
         self._page.actions.append(("wait_for", self._name, state, timeout))
+        if self._name == "text:Entwurf der Bestellanforderung":
+            raise PlaywrightTimeoutError("not visible")
 
     def inner_text(self) -> str:
         return "10000001"
+
+    @property
+    def first(self):
+        return self
 
 
 class FakeRecordedPage:
@@ -129,3 +138,99 @@ def test_sap_purchase_requisition_flow_uses_recorded_steps_and_input_values():
     assert page.actions.count(("click", "role:button:Bestellen")) == 1
     assert ("wait_for", "locator:#idPRNoLinkId", "visible", None) in page.actions
     assert data["purchase_requisition"] == "10000001"
+
+
+class FakePurchaseRequisitionDraftPage:
+    def __init__(
+        self,
+        *,
+        draft_visible: bool,
+        form_visible: bool,
+        draft_visible_after_waits: int | None = None,
+    ) -> None:
+        self.draft_visible = draft_visible
+        self.form_visible = form_visible
+        self.draft_visible_after_waits = draft_visible_after_waits
+        self._draft_waits = 0
+        self.waits: list[tuple[str, str, int | None]] = []
+        self.clicks: list[str] = []
+
+    def get_by_text(self, text: str):
+        return FakePurchaseRequisitionDraftLocator(self, f"text:{text}")
+
+    def get_by_role(self, role: str, *, name: str, exact: bool | None = None):
+        exact_marker = " exact" if exact else ""
+        return FakePurchaseRequisitionDraftLocator(self, f"role:{role}:{name}{exact_marker}")
+
+    def is_visible(self, locator_name: str) -> bool:
+        if locator_name == "text:Entwurf der Bestellanforderung":
+            self._draft_waits += 1
+            if self.draft_visible_after_waits is not None:
+                return self._draft_waits >= self.draft_visible_after_waits
+            return self.draft_visible
+        if locator_name == "role:button:Position anlegen exact":
+            return self.form_visible
+        return True
+
+
+class FakePurchaseRequisitionDraftLocator:
+    def __init__(self, page: FakePurchaseRequisitionDraftPage, name: str) -> None:
+        self._page = page
+        self._name = name
+
+    @property
+    def first(self):
+        return self
+
+    def wait_for(self, *, state: str, timeout: int | None = None) -> None:
+        self._page.waits.append((self._name, state, timeout))
+        if not self._page.is_visible(self._name):
+            raise PlaywrightTimeoutError("not visible")
+
+    def click(self) -> None:
+        self._page.clicks.append(self._name)
+        if self._name == "role:button:Verwerfen":
+            self._page.form_visible = True
+
+
+def test_purchase_requisition_discards_existing_draft_dialog():
+    page = FakePurchaseRequisitionDraftPage(draft_visible=True, form_visible=False)
+
+    SapPurchaseRequisitionFlow(page)._discard_existing_draft_if_present(page)
+
+    assert ("text:Entwurf der Bestellanforderung", "visible", PURCHASE_REQUISITION_READY_POLL_MS) in page.waits
+    assert page.clicks == ["role:button:Verwerfen"]
+    assert (
+        "role:button:Position anlegen exact",
+        "visible",
+        PURCHASE_REQUISITION_READY_TIMEOUT_MS,
+    ) in page.waits
+
+
+def test_purchase_requisition_form_ready_keeps_existing_flow_without_draft_click():
+    page = FakePurchaseRequisitionDraftPage(draft_visible=False, form_visible=True)
+
+    SapPurchaseRequisitionFlow(page)._discard_existing_draft_if_present(page)
+
+    assert page.clicks == []
+    assert (
+        "role:button:Position anlegen exact",
+        "visible",
+        PURCHASE_REQUISITION_READY_POLL_MS,
+    ) in page.waits
+
+
+def test_purchase_requisition_waits_until_slow_draft_dialog_appears():
+    page = FakePurchaseRequisitionDraftPage(
+        draft_visible=False,
+        form_visible=False,
+        draft_visible_after_waits=3,
+    )
+
+    SapPurchaseRequisitionFlow(page)._discard_existing_draft_if_present(page)
+
+    draft_waits = [
+        wait for wait in page.waits if wait[0] == "text:Entwurf der Bestellanforderung"
+    ]
+    assert len(draft_waits) == 3
+    assert page.clicks == ["role:button:Verwerfen"]
