@@ -234,3 +234,72 @@ def test_purchase_requisition_waits_until_slow_draft_dialog_appears():
     ]
     assert len(draft_waits) == 3
     assert page.clicks == ["role:button:Verwerfen"]
+
+
+class FakePurchaseRequisitionPositionPage:
+    def __init__(self) -> None:
+        self.position_clicks = 0
+        self.material_waits = 0
+        self.discarded = False
+        self.clicks: list[str] = []
+        self.waits: list[tuple[str, str, int | None]] = []
+
+    def get_by_text(self, text: str):
+        return FakePurchaseRequisitionPositionLocator(self, f"text:{text}")
+
+    def get_by_role(self, role: str, *, name: str | Pattern[str], exact: bool | None = None):
+        exact_marker = " exact" if exact else ""
+        locator_name = name.pattern if isinstance(name, Pattern) else name
+        return FakePurchaseRequisitionPositionLocator(self, f"role:{role}:{locator_name}{exact_marker}")
+
+    def is_visible(self, locator_name: str) -> bool:
+        if locator_name == "text:Entwurf der Bestellanforderung":
+            return self.material_waits > 0 and not self.discarded
+        if locator_name == "role:button:Position anlegen exact":
+            return True
+        if locator_name == "role:textbox:Material":
+            self.material_waits += 1
+            return self.discarded
+        return True
+
+
+class FakePurchaseRequisitionPositionLocator:
+    def __init__(self, page: FakePurchaseRequisitionPositionPage, name: str) -> None:
+        self._page = page
+        self._name = name
+
+    @property
+    def first(self):
+        return self
+
+    def click(self, **_kwargs: object) -> None:
+        self._page.clicks.append(self._name)
+        if self._name == "role:button:Position anlegen exact":
+            self._page.position_clicks += 1
+        if self._name == "role:button:Verwerfen":
+            self._page.discarded = True
+
+    def wait_for(
+        self,
+        *,
+        state: str,
+        timeout: int | None = None,
+        recover_fiori_messages: bool | None = None,
+    ) -> None:
+        self._page.waits.append((self._name, state, timeout))
+        if not self._page.is_visible(self._name):
+            raise PlaywrightTimeoutError("not visible")
+
+
+def test_purchase_requisition_discards_draft_when_material_field_wait_fails():
+    page = FakePurchaseRequisitionPositionPage()
+
+    material_field = SapPurchaseRequisitionFlow(page)._open_new_position(page)
+
+    assert material_field._name == "role:textbox:Material"
+    assert page.clicks == [
+        "role:button:Position anlegen exact",
+        "role:button:Verwerfen",
+        "role:button:Position anlegen exact",
+    ]
+    assert page.material_waits == 2

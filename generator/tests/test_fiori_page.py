@@ -153,6 +153,27 @@ def test_fiori_page_re_raises_action_timeout_when_no_message_is_visible():
     assert raw_page.actions.count(("click", "role:button:Buchen")) == 1
 
 
+def test_fiori_page_can_disable_message_recovery_for_waits():
+    raw_page = FakePage()
+    raw_page.wait_failures_remaining = 1
+    raw_page.messages = [
+        {
+            "severity": "information",
+            "text": "Entwurf Ein Entwurf der Bestellanforderung ist für den Benutzer bereits vorhanden",
+            "source": "sap-message-dialog",
+        }
+    ]
+    page = FioriPage(raw_page)
+
+    with pytest.raises(PlaywrightTimeoutError, match="missing"):
+        page.get_by_role("textbox", name="Material").wait_for(
+            state="visible",
+            recover_fiori_messages=False,
+        )
+
+    assert ("evaluate_messages",) not in raw_page.actions
+
+
 def test_fiori_page_raises_fatal_message_after_action_timeout():
     raw_page = FakePage()
     raw_page.click_failures_by_name["role:button:Buchen"] = 1

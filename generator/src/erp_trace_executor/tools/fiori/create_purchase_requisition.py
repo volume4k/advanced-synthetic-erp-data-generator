@@ -46,9 +46,7 @@ class SapPurchaseRequisitionFlow:
         page.get_by_text("Bestellanforderung anlegen").click()
         self._discard_existing_draft_if_present(page)
 
-        page.get_by_role("button", name="Position anlegen", exact=True).click(retry_on_next_wait=True)
-        material_field = self._textbox("Material")
-        material_field.wait_for(state="visible")
+        material_field = self._open_new_position(page)
         material_field.click()
         material_field.fill(params.material)
         material_field.press("Enter")
@@ -104,14 +102,32 @@ class SapPurchaseRequisitionFlow:
     def _textbox(self, name: str):
         return self._page.get_by_role("textbox", name=re.compile(re.escape(name)))
 
-    def _discard_existing_draft_if_present(self, page) -> None:
+    def _open_new_position(self, page):
+        position_button = page.get_by_role("button", name="Position anlegen", exact=True)
+        material_field = self._textbox("Material")
+
+        for _attempt in range(2):
+            position_button.click(retry_on_next_wait=True)
+            try:
+                material_field.wait_for(state="visible", recover_fiori_messages=False)
+                return material_field
+            except PlaywrightTimeoutError:
+                if not self._discard_existing_draft_if_present(page):
+                    raise
+
+        position_button.click(retry_on_next_wait=True)
+        material_field.wait_for(state="visible", recover_fiori_messages=False)
+        return material_field
+
+    def _discard_existing_draft_if_present(self, page) -> bool:
         if not self._wait_for_draft_or_requisition_form(page):
-            return
+            return False
         page.get_by_role("button", name="Verwerfen").click()
         page.get_by_role("button", name="Position anlegen", exact=True).wait_for(
             state="visible",
             timeout=PURCHASE_REQUISITION_READY_TIMEOUT_MS,
         )
+        return True
 
     def _wait_for_draft_or_requisition_form(self, page) -> bool:
         draft_message = page.get_by_text("Entwurf der Bestellanforderung").first

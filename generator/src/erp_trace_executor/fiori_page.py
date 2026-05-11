@@ -179,9 +179,12 @@ class FioriLocator:
     def wait_for(self, *args: Any, **kwargs: Any) -> Any:
         """Wait for locator, optionally replaying one safe previous click first."""
 
+        recover_fiori_messages = bool(kwargs.pop("recover_fiori_messages", True))
         retry_click = self._page.consume_retryable_click()
         if retry_click is None:
-            return self._run_with_message_recovery(lambda: self._locator.wait_for(*args, **kwargs))
+            if recover_fiori_messages:
+                return self._run_with_message_recovery(lambda: self._locator.wait_for(*args, **kwargs))
+            return self._locator.wait_for(*args, **kwargs)
 
         probe_kwargs = dict(kwargs)
         probe_kwargs["timeout"] = min(
@@ -189,10 +192,14 @@ class FioriLocator:
             DEFAULT_NEXT_WAIT_RETRY_TIMEOUT_MS,
         )
         try:
-            return self._run_with_message_recovery(lambda: self._locator.wait_for(*args, **probe_kwargs))
+            if recover_fiori_messages:
+                return self._run_with_message_recovery(lambda: self._locator.wait_for(*args, **probe_kwargs))
+            return self._locator.wait_for(*args, **probe_kwargs)
         except PlaywrightTimeoutError:
             retry_click()
-            return self._run_with_message_recovery(lambda: self._locator.wait_for(*args, **kwargs))
+            if recover_fiori_messages:
+                return self._run_with_message_recovery(lambda: self._locator.wait_for(*args, **kwargs))
+            return self._locator.wait_for(*args, **kwargs)
 
     def inner_text(self, *args: Any, **kwargs: Any) -> str:
         """Read text from wrapped locator."""
