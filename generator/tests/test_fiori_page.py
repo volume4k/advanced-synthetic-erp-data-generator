@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.fiori_page import FioriPage
 from erp_trace_executor.fiori_messages import FioriMessagePolicy
 
@@ -15,6 +17,10 @@ class FakeLocator:
 
     def click(self, **_kwargs: Any) -> None:
         self._page.actions.append(("click", self._name))
+        failures_remaining = self._page.click_failures_by_name.get(self._name, 0)
+        if failures_remaining > 0:
+            self._page.click_failures_by_name[self._name] = failures_remaining - 1
+            raise PlaywrightTimeoutError(f"cannot click {self._name}")
 
     def fill(self, value: str) -> None:
         self._page.actions.append(("fill", self._name, value))
@@ -38,6 +44,7 @@ class FakePage:
     def __init__(self) -> None:
         self.actions: list[tuple[Any, ...]] = []
         self.wait_failures_remaining = 0
+        self.click_failures_by_name: dict[str, int] = {}
         self.messages: list[dict[str, str]] = []
 
     def get_by_role(self, role: str, *, name: str) -> FakeLocator:
@@ -70,7 +77,7 @@ def test_fiori_locator_click_waits_for_page_to_settle():
     assert ("wait_for_load_state", "domcontentloaded", 1234) in raw_page.actions
     assert ("wait_for_function", False, 1234) in raw_page.actions
     assert ("wait_for_function", True, 1234) in raw_page.actions
-    assert ("evaluate_messages",) in raw_page.actions
+    assert ("evaluate_messages",) not in raw_page.actions
 
 
 def test_fiori_locator_press_settles_only_for_commit_keys():
@@ -85,6 +92,7 @@ def test_fiori_locator_press_settles_only_for_commit_keys():
     assert ("press", "role:textbox:Material", "A") in raw_page.actions
     assert raw_page.actions.count(("wait_for_function", False, 30_000)) == 1
     assert raw_page.actions.count(("wait_for_function", True, 30_000)) == 1
+    assert ("evaluate_messages",) not in raw_page.actions
 
 
 def test_fiori_locator_replays_retryable_click_when_next_wait_misses():
@@ -112,8 +120,9 @@ def test_fiori_locator_wraps_scoped_role_locators():
     ) in raw_page.actions
 
 
-def test_fiori_page_captures_and_dismisses_messages_before_blockable_actions():
+def test_fiori_page_captures_and_dismisses_messages_after_action_timeout_then_retries():
     raw_page = FakePage()
+    raw_page.click_failures_by_name["role:button:Buchen"] = 1
     raw_page.messages = [
         {
             "severity": "error",
@@ -124,7 +133,53 @@ def test_fiori_page_captures_and_dismisses_messages_before_blockable_actions():
     captured: list[dict[str, str]] = []
     page = FioriPage(raw_page, message_sink=captured, message_policy=FioriMessagePolicy())
 
-    page.get_by_role("textbox", name="Bruttobetrag").fill("200.00")
+    page.get_by_role("button", name="Buchen").click()
 
     assert captured[0]["text"] == "Geben Sie ein Rechnungsdatum ein."
     assert ("click", "role:button:Schließen") in raw_page.actions
+    assert raw_page.actions.count(("click", "role:button:Buchen")) == 2
+
+
+def test_fiori_page_re_raises_action_timeout_when_no_message_is_visible():
+    raw_page = FakePage()
+    raw_page.click_failures_by_name["role:button:Buchen"] = 1
+    page = FioriPage(raw_page)
+
+    with pytest.raises(PlaywrightTimeoutError, match="Buchen"):
+        page.get_by_role("button", name="Buchen").click()
+
+    assert ("evaluate_messages",) in raw_page.actions
+    assert ("click", "role:button:Schließen") not in raw_page.actions
+    assert raw_page.actions.count(("click", "role:button:Buchen")) == 1
+
+
+def test_fiori_page_raises_fatal_message_after_action_timeout():
+    raw_page = FakePage()
+    raw_page.click_failures_by_name["role:button:Buchen"] = 1
+    raw_page.messages = [
+        {
+            "severity": "error",
+            "text": "App konnte wegen technischem Fehler nicht geöffnet werden.",
+            "source": "sap-message-popover",
+        }
+    ]
+    policy = FioriMessagePolicy(fatal_patterns=(r"technischem Fehler",))
+    page = FioriPage(raw_page, message_policy=policy)
+
+    with pytest.raises(ToolExecutionError, match="technischem Fehler"):
+        page.get_by_role("button", name="Buchen").click()
+
+    assert raw_page.actions.count(("click", "role:button:Buchen")) == 1
+
+
+def test_fiori_page_does_not_dismiss_anything_for_hidden_navigation_timeout_without_messages():
+    raw_page = FakePage()
+    raw_page.click_failures_by_name["title:Navigation"] = 1
+    page = FioriPage(raw_page)
+
+    with pytest.raises(PlaywrightTimeoutError, match="Navigation"):
+        page.get_by_title("Navigation").click()
+
+    assert ("evaluate_messages",) in raw_page.actions
+    assert ("click", "role:button:Schließen") not in raw_page.actions
+    assert ("click", "title:Entfernen") not in raw_page.actions

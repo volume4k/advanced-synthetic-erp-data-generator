@@ -89,12 +89,12 @@ class FioriMessageHandler:
         if messages:
             self.dismiss_blocking_messages()
 
-        fatal_messages = [message for message in new_messages if self._policy.is_fatal(message)]
+        fatal_messages = [message for message in messages if self._policy.is_fatal(message)]
         if fatal_messages:
             fatal_text = "; ".join(message.text for message in fatal_messages)
             raise ToolExecutionError(f"Fatal SAP Fiori message at {self._url()}: {fatal_text}")
 
-        return new_messages
+        return messages
 
     def dismiss_blocking_messages(self) -> None:
         """Best-effort close for popovers/dialogs that can cover later clicks."""

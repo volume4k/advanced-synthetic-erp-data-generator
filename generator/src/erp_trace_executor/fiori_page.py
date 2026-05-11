@@ -101,12 +101,11 @@ class FioriPage:
             timeout_ms=self._timeout_ms,
             quiet_ms=self._quiet_ms,
         )
-        self.handle_messages()
 
-    def handle_messages(self) -> None:
+    def handle_messages(self) -> list[Any]:
         """Capture and dismiss global SAP messages visible on the page."""
 
-        self._message_handler.handle()
+        return self._message_handler.handle()
 
     def register_retryable_click(self, retry_click: Callable[[], None]) -> None:
         """Store one click that may be replayed if the next explicit wait misses.
@@ -149,8 +148,7 @@ class FioriLocator:
         """
 
         retry_on_next_wait = bool(kwargs.pop("retry_on_next_wait", False))
-        self._page.handle_messages()
-        result = self._locator.click(*args, **kwargs)
+        result = self._run_with_message_recovery(lambda: self._locator.click(*args, **kwargs))
         self._page.wait_until_ready()
         if retry_on_next_wait:
             self._page.register_retryable_click(lambda: self._retry_click(*args, **kwargs))
@@ -161,16 +159,14 @@ class FioriLocator:
     def dblclick(self, *args: Any, **kwargs: Any) -> Any:
         """Double-click locator, then wait for SAPUI5 rendering to settle."""
 
-        self._page.handle_messages()
-        result = self._locator.dblclick(*args, **kwargs)
+        result = self._run_with_message_recovery(lambda: self._locator.dblclick(*args, **kwargs))
         self._page.wait_until_ready()
         return result
 
     def press(self, key: str, *args: Any, **kwargs: Any) -> Any:
         """Press key and settle after Enter/Tab, which often trigger Fiori updates."""
 
-        self._page.handle_messages()
-        result = self._locator.press(key, *args, **kwargs)
+        result = self._run_with_message_recovery(lambda: self._locator.press(key, *args, **kwargs))
         if key in SETTLING_KEYS:
             self._page.wait_until_ready()
         return result
@@ -178,16 +174,14 @@ class FioriLocator:
     def fill(self, *args: Any, **kwargs: Any) -> Any:
         """Fill locator without settling; commit keys like Enter/Tab settle later."""
 
-        self._page.handle_messages()
-        return self._locator.fill(*args, **kwargs)
+        return self._run_with_message_recovery(lambda: self._locator.fill(*args, **kwargs))
 
     def wait_for(self, *args: Any, **kwargs: Any) -> Any:
         """Wait for locator, optionally replaying one safe previous click first."""
 
-        self._page.handle_messages()
         retry_click = self._page.consume_retryable_click()
         if retry_click is None:
-            return self._locator.wait_for(*args, **kwargs)
+            return self._run_with_message_recovery(lambda: self._locator.wait_for(*args, **kwargs))
 
         probe_kwargs = dict(kwargs)
         probe_kwargs["timeout"] = min(
@@ -195,10 +189,10 @@ class FioriLocator:
             DEFAULT_NEXT_WAIT_RETRY_TIMEOUT_MS,
         )
         try:
-            return self._locator.wait_for(*args, **probe_kwargs)
+            return self._run_with_message_recovery(lambda: self._locator.wait_for(*args, **probe_kwargs))
         except PlaywrightTimeoutError:
             retry_click()
-            return self._locator.wait_for(*args, **kwargs)
+            return self._run_with_message_recovery(lambda: self._locator.wait_for(*args, **kwargs))
 
     def inner_text(self, *args: Any, **kwargs: Any) -> str:
         """Read text from wrapped locator."""
@@ -237,8 +231,17 @@ class FioriLocator:
 
         return getattr(self._locator, name)
 
+    def _run_with_message_recovery(self, operation: Callable[[], Any]) -> Any:
+        try:
+            return operation()
+        except PlaywrightTimeoutError:
+            messages = self._page.handle_messages()
+            if not messages:
+                raise
+            return operation()
+
     def _retry_click(self, *args: Any, **kwargs: Any) -> None:
-        self._locator.click(*args, **kwargs)
+        self._run_with_message_recovery(lambda: self._locator.click(*args, **kwargs))
         self._page.wait_until_ready()
 
 
