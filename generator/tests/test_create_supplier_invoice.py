@@ -101,3 +101,24 @@ def test_supplier_invoice_form_ready_keeps_existing_flow_without_waiting_for_dra
 
     assert page.clicks == []
     assert ("role:textbox:Rechnungsdatum", "visible", SUPPLIER_INVOICE_READY_POLL_MS) in page.waits
+
+
+def test_supplier_invoice_readiness_does_not_replay_stale_app_launch_click():
+    replayed = False
+
+    def retry_click():
+        nonlocal replayed
+        replayed = True
+
+    page = FakeSupplierInvoicePage(
+        draft_visible=False,
+        form_visible=False,
+        draft_visible_after_waits=3,
+        retry_click=retry_click,
+    )
+
+    SapSupplierInvoiceFlow(page)._discard_existing_draft_if_present(page)
+
+    assert replayed is False
+    assert page._retry_click is retry_click
+    assert page.clicks == ["role:button:Nein"]
