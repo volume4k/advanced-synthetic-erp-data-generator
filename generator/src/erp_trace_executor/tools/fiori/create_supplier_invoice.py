@@ -13,6 +13,7 @@ from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.fiori_types import FioriDate
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
+from erp_trace_executor.tools.fiori.helpers import format_number
 
 
 INVOICE_LINK_PATTERN = re.compile(r"(\d+)/(\d{4})")
@@ -51,7 +52,7 @@ class SapSupplierInvoiceFlow:
         gross_amount = page.get_by_role("textbox", name="Bruttobetrag", exact=True)
         gross_amount.click()
         gross_amount.press("ControlOrMeta+a")
-        gross_amount.fill(_format_number(params.gross_amount))
+        gross_amount.fill(format_number(params.gross_amount))
         gross_amount.press("Enter")
 
         self._fill_textbox(page, "Rechnungssteller", params.invoicing_party)
@@ -172,9 +173,3 @@ def _extract_invoice(message: str) -> tuple[str, str]:
     if match is None:
         raise ValueError(f"Could not extract supplier invoice number from success link: {message}")
     return match.group(1), match.group(2)
-
-
-def _format_number(value: float) -> str:
-    if value.is_integer():
-        return str(int(value))
-    return str(value)

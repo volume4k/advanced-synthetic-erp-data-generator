@@ -12,6 +12,7 @@ from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.fiori_types import FioriDate
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
+from erp_trace_executor.tools.fiori.helpers import format_number
 from erp_trace_executor.tools.fiori.pages import FixtureFioriPage
 
 PURCHASE_REQUISITION_READY_TIMEOUT_MS = 90_000
@@ -53,7 +54,7 @@ class SapPurchaseRequisitionFlow:
 
         page.get_by_role("textbox", name="Bewertungspreis", exact=True).click()
         page.get_by_role("textbox", name="Bewertungspreis", exact=True).press("ControlOrMeta+a")
-        page.get_by_role("textbox", name="Bewertungspreis", exact=True).fill(_format_number(params.valuation_price))
+        page.get_by_role("textbox", name="Bewertungspreis", exact=True).fill(format_number(params.valuation_price))
         page.get_by_role("textbox", name="Bewertungspreis", exact=True).press("Tab")
         page.get_by_role("textbox", name="Währung Bewertungspreis").fill(params.currency)
         page.get_by_role("textbox", name="Währung Bewertungspreis").press("Tab")
@@ -84,7 +85,7 @@ class SapPurchaseRequisitionFlow:
 
         page.get_by_role("textbox", name="Bewertungspreis", exact=True).click()
         page.get_by_role("textbox", name="Bewertungspreis", exact=True).dblclick()
-        page.get_by_role("textbox", name="Bewertungspreis", exact=True).fill(_format_number(params.valuation_price))
+        page.get_by_role("textbox", name="Bewertungspreis", exact=True).fill(format_number(params.valuation_price))
         page.locator("#application-PurchaseRequisition-create-component---ItemDetails--smartForm1--Form--Grid").click()
         page.get_by_role("button", name="Sichern", exact=True).click()
         page.get_by_role("button", name="Zurück").click()
@@ -105,19 +106,24 @@ class SapPurchaseRequisitionFlow:
     def _open_new_position(self, page):
         position_button = page.get_by_role("button", name="Position anlegen", exact=True)
         material_field = self._textbox("Material")
+        max_attempts = 3
 
-        for _attempt in range(2):
+        for _attempt in range(max_attempts):
             position_button.click(retry_on_next_wait=True)
             try:
                 material_field.wait_for(state="visible", recover_fiori_messages=False)
                 return material_field
-            except PlaywrightTimeoutError:
-                if not self._discard_existing_draft_if_present(page):
-                    raise
+            except PlaywrightTimeoutError as exc:
+                if self._discard_existing_draft_if_present(page):
+                    continue
+                raise PlaywrightTimeoutError(
+                    "position_button click did not make material_field visible, "
+                    "and _discard_existing_draft_if_present found no draft dialog"
+                ) from exc
 
-        position_button.click(retry_on_next_wait=True)
-        material_field.wait_for(state="visible", recover_fiori_messages=False)
-        return material_field
+        raise PlaywrightTimeoutError(
+            f"position_button failed to open material_field after {max_attempts} attempts"
+        )
 
     def _discard_existing_draft_if_present(self, page) -> bool:
         if not self._wait_for_draft_dialog(page):
@@ -178,9 +184,3 @@ CREATE_PURCHASE_REQUISITION_TOOL = ToolSpec(
     input_model=CreatePurchaseRequisitionInput,
     run=run_create_purchase_requisition,
 )
-
-
-def _format_number(value: float) -> str:
-    if value.is_integer():
-        return str(int(value))
-    return str(value)
