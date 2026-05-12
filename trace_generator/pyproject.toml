@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "erp-trace-generator"
+version = "0.1.0"
+description = "Trace planner that turns compiled ERP generation config into execution artifacts."
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "pydantic>=2.11,<3",
+  "pyyaml>=6.0,<7",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4,<9",
+]
+
+[project.scripts]
+erp-trace-generate = "erp_trace_generator.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/erp_trace_generator"]
+
+[tool.uv]
+package = true

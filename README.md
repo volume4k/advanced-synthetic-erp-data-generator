@@ -11,6 +11,7 @@ The broader generator vision and planned architecture are documented in `generat
 ```text
 .
 ├── generator/       # Independent uv project for trace execution
+├── trace_generator/ # Independent uv project for trace planning
 ├── configuration/   # Scenario/configuration artifacts
 ├── generator_vision_architecture_specification.md
 └── README.md        # Project overview
@@ -29,6 +30,13 @@ Run a trace:
 
 ```bash
 uv run --project generator erp-trace-exec path/to/trace.jsonl
+```
+
+Generate trace artifacts from compiled configuration:
+
+```bash
+configuration/create-config.sh
+uv run --project trace_generator erp-trace-generate configuration/build/main.yaml --env-file configuration/.env --out-dir trace_generator/build
 ```
 
 Run with a visible browser:

@@ -7,10 +7,12 @@
 # Python
 .venv
 .venv/*
+__pycache__/
+*.pyc
 
 # Secrets
 .env
 
 # Generated configuration output
 configuration/build/
-
+trace_generator/build/
