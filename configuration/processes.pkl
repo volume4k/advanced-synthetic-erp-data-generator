@@ -21,26 +21,20 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
     }
     new objects.ProcessStep {
       stepId = "A3"
-      stepType = "release_purchase_order"
-      tool = null
-      requiredRole = "procurement_manager"
-    }
-    new objects.ProcessStep {
-      stepId = "A4"
       stepType = "post_goods_receipt"
-      tool = null
+      tool = toolRequirements["fiori.create_goods_receipt"]
       requiredRole = "warehouse"
     }
     new objects.ProcessStep {
-      stepId = "A5"
+      stepId = "A4"
       stepType = "enter_incoming_invoice"
-      tool = null
+      tool = toolRequirements["fiori.create_supplier_invoice"]
       requiredRole = "accounts_payable"
     }
     new objects.ProcessStep {
-      stepId = "A6"
+      stepId = "A5"
       stepType = "post_outgoing_payment"
-      tool = null
+      tool = toolRequirements["fiori.send_payment"]
       requiredRole = "accounts_payable"
     }
   }
@@ -57,15 +51,9 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
     }
     new objects.ProcessDependency {
       fromStepType = "create_purchase_order"
-      toStepType = "release_purchase_order"
-      description =
-        "Release purchase order after creation because A3 needs the purchase order created by A2."
-    }
-    new objects.ProcessDependency {
-      fromStepType = "release_purchase_order"
       toStepType = "post_goods_receipt"
       description =
-        "Post goods receipt after release because A4 requires a released purchase order."
+        "Post goods receipt after purchase order creation because A3 requires the purchase order created by A2."
     }
     new objects.ProcessDependency {
       fromStepType = "post_goods_receipt"

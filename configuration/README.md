@@ -20,7 +20,7 @@ This folder owns trace-planning configuration. The generator stays execution-onl
 - `master_data.pkl`: material/vendor/plant/storage-location matrix and sampling ranges.
 - `processes.pkl`: process steps, tool assignments, and process dependencies.
 - `fraud_scenarios.pkl`: enabled fraud scenario placeholders and target shares.
-- `run_settings.pkl`: case count, concurrency, timezone, active process types.
+- `run_settings.pkl`: case count, concurrency, timezone, active process types, scheduler seed, working hours, pause ranges, inter-step delay ranges, and trace-generator bindings.
 - `main.pkl`: final public entrypoint for compiled config.
 - `create-config.sh`: regenerates tool facts, validates Pkl, writes YAML.
 
@@ -60,7 +60,7 @@ Connect both in `identity_mapping.pkl`.
 
 ## Processes
 
-Edit `processes.pkl` to assign tools to process steps:
+Edit `processes.pkl` to assign tools to process steps. Version-one procure-to-pay has no approval/release step in the current SAP environment:
 
 ```pkl
 new objects.ProcessStep {
@@ -84,6 +84,10 @@ new objects.ProcessDependency {
 ```
 
 This means `create_purchase_requisition` must happen before `create_purchase_order`.
+
+## Trace Generator Settings
+
+Keep trace-planning settings in Pkl. `run_settings.pkl` defines FIFO scheduling, core working hours, pause ranges, deterministic step-duration ranges, and inter-step waiting-time ranges. Those ranges are sampled by the trace generator today; an LLM can generate or refine the ranges later, but the compiled YAML remains the structured source of truth.
 
 ## Build YAML
 

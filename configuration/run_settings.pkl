@@ -7,4 +7,102 @@ runSettings: objects.RunSettings = new objects.RunSettings {
   activeProcessTypes {
     "procure_to_pay"
   }
+  schedulerSeed = 42
+  runStartDate = "2026-05-18"
+  runHorizonDays = 30
+  queuePolicy = "fifo"
+  workingHours {
+    coreStart = "08:00"
+    coreEnd = "17:00"
+    dailyDeviationHoursMin = -1.0
+    dailyDeviationHoursMax = 1.0
+    pauseWindowStart = "12:00"
+    pauseWindowEnd = "13:30"
+    pauseDurationMinutesMin = 30
+    pauseDurationMinutesMax = 75
+  }
+  stepDurationMinutes {
+    ["create_purchase_requisition"] = new objects.MinuteRange {
+      min = 8
+      max = 14
+    }
+    ["create_purchase_order"] = new objects.MinuteRange {
+      min = 7
+      max = 12
+    }
+    ["post_goods_receipt"] = new objects.MinuteRange {
+      min = 5
+      max = 10
+    }
+    ["enter_incoming_invoice"] = new objects.MinuteRange {
+      min = 8
+      max = 15
+    }
+    ["post_outgoing_payment"] = new objects.MinuteRange {
+      min = 5
+      max = 10
+    }
+  }
+  interStepDelayMinutes {
+    new objects.InterStepDelayRange {
+      fromStepType = "create_purchase_requisition"
+      toStepType = "create_purchase_order"
+      min = 30
+      max = 180
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "create_purchase_order"
+      toStepType = "post_goods_receipt"
+      min = 240
+      max = 2880
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "post_goods_receipt"
+      toStepType = "enter_incoming_invoice"
+      min = 120
+      max = 1440
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "enter_incoming_invoice"
+      toStepType = "post_outgoing_payment"
+      min = 240
+      max = 2880
+    }
+  }
+  storageLocationLabels {
+    ["0001"] = "Finished Goods"
+    ["0002"] = "Trading Goods"
+  }
+  toolInputBindings {
+    new objects.ToolInputBinding {
+      stepType = "create_purchase_requisition"
+      field = "material"
+      source = "master_data"
+      value = "materialId"
+    }
+    new objects.ToolInputBinding {
+      stepType = "create_purchase_order"
+      field = "purchase_requisition"
+      source = "prior_output"
+      value = "purchase_requisition.pr_number"
+    }
+    new objects.ToolInputBinding {
+      stepType = "post_goods_receipt"
+      field = "purchase_order"
+      source = "prior_output"
+      value = "purchase_order.po_number"
+    }
+    new objects.ToolInputBinding {
+      stepType = "enter_incoming_invoice"
+      field = "purchase_order"
+      source = "prior_output"
+      value = "purchase_order.po_number"
+    }
+    new objects.ToolInputBinding {
+      stepType = "post_outgoing_payment"
+      field = "accounting_document"
+      source = "prior_output"
+      value = "supplier_invoice.invoice_number"
+    }
+  }
 }

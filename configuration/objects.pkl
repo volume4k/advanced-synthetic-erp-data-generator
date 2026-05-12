@@ -24,6 +24,40 @@ class RealismProfile {
   pauseCharacteristicsIndex: Int
 }
 
+/// Inclusive minute range sampled by the trace generator.
+class MinuteRange {
+  min: Int(this >= 0)
+  max: Int(this >= min)
+}
+
+/// Core workday and pause settings used for synthetic timestamp planning.
+class WorkingHoursConfig {
+  coreStart: String(this.length > 0) = "08:00"
+  coreEnd: String(this.length > 0) = "17:00"
+  dailyDeviationHoursMin: Float = -1.0
+  dailyDeviationHoursMax: Float(this >= dailyDeviationHoursMin) = 1.0
+  pauseWindowStart: String(this.length > 0) = "12:00"
+  pauseWindowEnd: String(this.length > 0) = "13:30"
+  pauseDurationMinutesMin: Int(this >= 0) = 30
+  pauseDurationMinutesMax: Int(this >= pauseDurationMinutesMin) = 75
+}
+
+/// Waiting-time range between two process steps.
+class InterStepDelayRange {
+  fromStepType: String(this.length > 0)
+  toStepType: String(this.length > 0)
+  min: Int(this >= 0)
+  max: Int(this >= min)
+}
+
+/// Declarative note for how one tool input is bound by the trace generator.
+class ToolInputBinding {
+  stepType: String(this.length > 0)
+  field: String(this.length > 0)
+  source: String(this.length > 0)
+  value: String(this.length > 0)
+}
+
 /// Synthetic business actor used by the trace generator.
 class VirtualActor {
   id: String(this.length > 0)
@@ -107,4 +141,13 @@ class RunSettings {
   maxParallelSessions: Int(this >= 1)
   targetTimezone: String(this.length > 0)
   activeProcessTypes: Listing<String>
+  schedulerSeed: Int = 1
+  runStartDate: String(this.length > 0) = "2026-05-18"
+  runHorizonDays: Int(this >= 1) = 30
+  queuePolicy: String(this == "fifo") = "fifo"
+  workingHours: WorkingHoursConfig = new WorkingHoursConfig {}
+  stepDurationMinutes: Mapping<String, MinuteRange> = new Mapping {}
+  interStepDelayMinutes: Listing<InterStepDelayRange> = new Listing {}
+  storageLocationLabels: Mapping<String, String> = new Mapping {}
+  toolInputBindings: Listing<ToolInputBinding> = new Listing {}
 }
