@@ -160,13 +160,7 @@ def _post_processing_manifest(
         "object_lineage": [
             {
                 "case_id": case.case_id,
-                "chain": [
-                    "purchase_requisition",
-                    "purchase_order",
-                    "material_document",
-                    "supplier_invoice",
-                    "payment_document",
-                ],
+                "chain": _object_lineage_chain(config, case.process_type),
             }
             for case in cases
         ],
@@ -307,4 +301,23 @@ def _node_record(node: PlannedNode) -> dict[str, Any]:
 
 
 def _step_id(process, step_type: str) -> str:
-    return next(step.step_id for step in process.steps if step.step_type == step_type)
+    step_id = next((step.step_id for step in process.steps if step.step_type == step_type), None)
+    if step_id is None:
+        raise TraceGenerationError(f"Process '{process.process_type}' has no step type '{step_type}'")
+    return step_id
+
+
+def _object_lineage_chain(config: GenerationConfig, process_type: str) -> list[str]:
+    process = next((item for item in config.processes if item.process_type == process_type), None)
+    if process is None:
+        raise TraceGenerationError(f"Cannot build object lineage for unknown process type '{process_type}'")
+
+    chain: list[str] = []
+    for step in process.steps:
+        for output in step.expected_outputs:
+            object_type = output.split(".", maxsplit=1)[0]
+            if object_type and object_type not in chain:
+                chain.append(object_type)
+    if not chain:
+        raise TraceGenerationError(f"Process '{process_type}' has no expected outputs for object lineage")
+    return chain
