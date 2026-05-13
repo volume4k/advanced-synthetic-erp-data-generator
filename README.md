@@ -17,6 +17,13 @@ The broader generator vision and planned architecture are documented in `generat
 └── README.md        # Project overview
 ```
 
+## Component Responsibilities
+
+- `configuration/` owns experiment parameters in Pkl: process steps, tools, actors, technical users, working hours, pause ranges, and delay ranges.
+- `trace_generator/` owns planning: case generation, input binding, actor assignment, synthetic timestamps, FIFO wave scheduling, validation, and artifact writing.
+- `generator/` owns execution mechanics only: browser sessions, SAP tool calls, runtime placeholder resolution, and SAP object capture.
+- The post processor should use the execution trace and manifest as planned truth when shifting SAP export timestamps and projecting synthetic actors.
+
 ## Quick Start
 
 Bootstrap the trace executor:
