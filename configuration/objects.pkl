@@ -52,10 +52,28 @@ class InterStepDelayRange {
 
 /// Declarative note for how one tool input is bound by the trace generator.
 class ToolInputBinding {
-  stepType: String(this.length > 0)
   field: String(this.length > 0)
-  source: String(this.length > 0)
+  source: String(
+    this == "literal"
+      || this == "master_data"
+      || this == "case"
+      || this == "business_date"
+      || this == "prior_output"
+      || this == "derived",
+  )
   value: String(this.length > 0)
+  valueType: String(
+    this == "string"
+      || this == "int"
+      || this == "float"
+      || this == "bool",
+  ) = "string"
+}
+
+/// Logical SAP export group the post processor should expect for reconciliation.
+class PostProcessingExportGroup {
+  id: String(this.length > 0)
+  description: String(this.length > 0)
 }
 
 /// Synthetic business actor used by the trace generator.
@@ -91,6 +109,8 @@ class ProcessStep {
   stepType: String(this.length > 0)
   tool: ToolRequirement?
   requiredRole: String(this.length > 0)
+  inputBindings: Listing<ToolInputBinding> = new Listing {}
+  expectedOutputs: Listing<String> = new Listing {}
 }
 
 /// Directed dependency between two configured process step types.
@@ -149,5 +169,5 @@ class RunSettings {
   stepDurationMinutes: Mapping<String, MinuteRange> = new Mapping {}
   interStepDelayMinutes: Listing<InterStepDelayRange> = new Listing {}
   storageLocationLabels: Mapping<String, String> = new Mapping {}
-  toolInputBindings: Listing<ToolInputBinding> = new Listing {}
+  postProcessingExportGroups: Listing<PostProcessingExportGroup> = new Listing {}
 }

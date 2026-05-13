@@ -18,9 +18,9 @@ This folder owns trace-planning configuration. The generator stays execution-onl
 - `technical_users.pkl`: SAP technical user references. Contains env var names only, no secrets.
 - `identity_mapping.pkl`: mapping from virtual actors to technical SAP users.
 - `master_data.pkl`: material/vendor/plant/storage-location matrix and sampling ranges.
-- `processes.pkl`: process steps, tool assignments, and process dependencies.
+- `processes.pkl`: process steps, tool assignments, step-local input bindings, expected outputs, and process dependencies.
 - `fraud_scenarios.pkl`: enabled fraud scenario placeholders and target shares.
-- `run_settings.pkl`: case count, concurrency, timezone, active process types, scheduler seed, working hours, pause ranges, inter-step delay ranges, and trace-generator bindings.
+- `run_settings.pkl`: case count, concurrency, timezone, active process types, scheduler seed, working hours, pause ranges, inter-step delay ranges, storage-location labels, and post-processing export groups.
 - `main.pkl`: final public entrypoint for compiled config.
 - `create-config.sh`: regenerates tool facts, validates Pkl, writes YAML.
 
@@ -68,10 +68,27 @@ new objects.ProcessStep {
   stepType = "create_purchase_requisition"
   tool = toolRequirements["fiori.create_purchase_requisition"]
   requiredRole = "procurement"
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "material"
+      source = "master_data"
+      value = "materialId"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+  }
+  expectedOutputs {
+    "purchase_requisition.pr_number"
+  }
 }
 ```
 
-Use `tool = null` while a step has no implemented generator tool.
+Active steps must have a tool, bindings for every required tool input, and at least one expected output key. Bindings are owned by each `ProcessStep`; `run_settings.pkl` must not contain fallback tool-input maps.
+
+Supported binding sources are `literal`, `master_data`, `case`, `business_date`, `prior_output`, and `derived`. Supported derived values in v1 are `gross_amount`, `fiori_delivery_date`, `fiori_payment_posting_date`, and `storage_location_label`.
 
 Dependencies define directed graph edges:
 
@@ -87,7 +104,7 @@ This means `create_purchase_requisition` must happen before `create_purchase_ord
 
 ## Trace Generator Settings
 
-Keep trace-planning settings in Pkl. `run_settings.pkl` defines FIFO scheduling, core working hours, pause ranges, deterministic step-duration ranges, and inter-step waiting-time ranges. Those ranges are sampled by the trace generator today; an LLM can generate or refine the ranges later, but the compiled YAML remains the structured source of truth.
+Keep trace-planning settings in Pkl. `run_settings.pkl` defines FIFO scheduling, core working hours, pause ranges, deterministic step-duration ranges, inter-step waiting-time ranges, storage-location labels, and logical post-processing export groups. Those ranges are sampled by the trace generator today; an LLM can generate or refine the ranges later, but the compiled YAML remains the structured source of truth.
 
 ## Build YAML
 

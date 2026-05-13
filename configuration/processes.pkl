@@ -12,30 +12,212 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
       stepType = "create_purchase_requisition"
       tool = toolRequirements["fiori.create_purchase_requisition"]
       requiredRole = "procurement"
+      inputBindings {
+        new objects.ToolInputBinding {
+          field = "material"
+          source = "master_data"
+          value = "materialId"
+        }
+        new objects.ToolInputBinding {
+          field = "quantity"
+          source = "case"
+          value = "quantity"
+        }
+        new objects.ToolInputBinding {
+          field = "valuation_price"
+          source = "case"
+          value = "target_price"
+        }
+        new objects.ToolInputBinding {
+          field = "currency"
+          source = "master_data"
+          value = "currency"
+        }
+        new objects.ToolInputBinding {
+          field = "price_unit"
+          source = "literal"
+          value = "1"
+          valueType = "int"
+        }
+        new objects.ToolInputBinding {
+          field = "delivery_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+        new objects.ToolInputBinding {
+          field = "plant"
+          source = "master_data"
+          value = "plant"
+        }
+        new objects.ToolInputBinding {
+          field = "purchasing_group"
+          source = "literal"
+          value = "N00"
+        }
+        new objects.ToolInputBinding {
+          field = "purchasing_organization"
+          source = "master_data"
+          value = "purchasing_org"
+        }
+        new objects.ToolInputBinding {
+          field = "company_code"
+          source = "master_data"
+          value = "purchasing_org"
+        }
+      }
+      expectedOutputs {
+        "purchase_requisition.pr_number"
+      }
     }
     new objects.ProcessStep {
       stepId = "A2"
       stepType = "create_purchase_order"
       tool = toolRequirements["fiori.create_purchase_order"]
       requiredRole = "procurement"
+      inputBindings {
+        new objects.ToolInputBinding {
+          field = "purchase_requisition"
+          source = "prior_output"
+          value = "purchase_requisition.pr_number"
+        }
+        new objects.ToolInputBinding {
+          field = "storage_location"
+          source = "case"
+          value = "storage_location"
+        }
+        new objects.ToolInputBinding {
+          field = "supplier"
+          source = "master_data"
+          value = "vendor_id"
+        }
+        new objects.ToolInputBinding {
+          field = "quantity"
+          source = "case"
+          value = "quantity"
+        }
+      }
+      expectedOutputs {
+        "purchase_order.po_number"
+      }
     }
     new objects.ProcessStep {
       stepId = "A3"
       stepType = "post_goods_receipt"
       tool = toolRequirements["fiori.create_goods_receipt"]
       requiredRole = "warehouse"
+      inputBindings {
+        new objects.ToolInputBinding {
+          field = "purchase_order"
+          source = "prior_output"
+          value = "purchase_order.po_number"
+        }
+        new objects.ToolInputBinding {
+          field = "document_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+        new objects.ToolInputBinding {
+          field = "posting_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+        new objects.ToolInputBinding {
+          field = "storage_location"
+          source = "derived"
+          value = "storage_location_label"
+        }
+      }
+      expectedOutputs {
+        "material_document.material_document_number"
+      }
     }
     new objects.ProcessStep {
       stepId = "A4"
       stepType = "enter_incoming_invoice"
       tool = toolRequirements["fiori.create_supplier_invoice"]
       requiredRole = "accounts_payable"
+      inputBindings {
+        new objects.ToolInputBinding {
+          field = "invoice_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+        new objects.ToolInputBinding {
+          field = "invoicing_party"
+          source = "master_data"
+          value = "vendor_id"
+        }
+        new objects.ToolInputBinding {
+          field = "gross_amount"
+          source = "derived"
+          value = "gross_amount"
+        }
+        new objects.ToolInputBinding {
+          field = "purchase_order"
+          source = "prior_output"
+          value = "purchase_order.po_number"
+        }
+        new objects.ToolInputBinding {
+          field = "tax_code"
+          source = "literal"
+          value = "XI"
+        }
+      }
+      expectedOutputs {
+        "supplier_invoice.invoice_number"
+        "supplier_invoice.fiscal_year"
+      }
     }
     new objects.ProcessStep {
       stepId = "A5"
       stepType = "post_outgoing_payment"
       tool = toolRequirements["fiori.send_payment"]
       requiredRole = "accounts_payable"
+      inputBindings {
+        new objects.ToolInputBinding {
+          field = "company_code"
+          source = "master_data"
+          value = "purchasing_org"
+        }
+        new objects.ToolInputBinding {
+          field = "posting_document_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+        new objects.ToolInputBinding {
+          field = "posting_date"
+          source = "derived"
+          value = "fiori_payment_posting_date"
+        }
+        new objects.ToolInputBinding {
+          field = "supplier"
+          source = "master_data"
+          value = "vendor_id"
+        }
+        new objects.ToolInputBinding {
+          field = "accounting_document"
+          source = "prior_output"
+          value = "supplier_invoice.invoice_number"
+        }
+        new objects.ToolInputBinding {
+          field = "general_ledger_account"
+          source = "literal"
+          value = "1800000"
+        }
+        new objects.ToolInputBinding {
+          field = "amount"
+          source = "derived"
+          value = "gross_amount"
+        }
+        new objects.ToolInputBinding {
+          field = "currency"
+          source = "master_data"
+          value = "currency"
+        }
+      }
+      expectedOutputs {
+        "payment_document.payment_document_number"
+      }
     }
   }
 

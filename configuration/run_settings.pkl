@@ -73,36 +73,27 @@ runSettings: objects.RunSettings = new objects.RunSettings {
     ["0001"] = "Finished Goods"
     ["0002"] = "Trading Goods"
   }
-  toolInputBindings {
-    new objects.ToolInputBinding {
-      stepType = "create_purchase_requisition"
-      field = "material"
-      source = "master_data"
-      value = "materialId"
+  postProcessingExportGroups {
+    new objects.PostProcessingExportGroup {
+      id = "change_documents"
+      description =
+        "SAP change document exports used for timestamp and object-change reconciliation."
     }
-    new objects.ToolInputBinding {
-      stepType = "create_purchase_order"
-      field = "purchase_requisition"
-      source = "prior_output"
-      value = "purchase_requisition.pr_number"
+    new objects.PostProcessingExportGroup {
+      id = "purchase_orders"
+      description = "Purchase order exports used to correlate purchase order headers and items."
     }
-    new objects.ToolInputBinding {
-      stepType = "post_goods_receipt"
-      field = "purchase_order"
-      source = "prior_output"
-      value = "purchase_order.po_number"
+    new objects.PostProcessingExportGroup {
+      id = "material_documents"
+      description = "Material document exports used to correlate goods receipts."
     }
-    new objects.ToolInputBinding {
-      stepType = "enter_incoming_invoice"
-      field = "purchase_order"
-      source = "prior_output"
-      value = "purchase_order.po_number"
+    new objects.PostProcessingExportGroup {
+      id = "supplier_invoices"
+      description = "Supplier invoice exports used to correlate incoming invoices."
     }
-    new objects.ToolInputBinding {
-      stepType = "post_outgoing_payment"
-      field = "accounting_document"
-      source = "prior_output"
-      value = "supplier_invoice.invoice_number"
+    new objects.PostProcessingExportGroup {
+      id = "accounting_documents"
+      description = "Accounting document exports used to correlate outgoing payments."
     }
   }
 }
