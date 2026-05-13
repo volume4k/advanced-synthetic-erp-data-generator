@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 from playwright.sync_api import Error as PlaywrightError
@@ -12,6 +13,7 @@ from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.credentials import EnvCredentialStore
 from erp_trace_executor.evidence import ExecutionEvidenceWriter
 from erp_trace_executor.errors import ToolExecutionError, ToolInputValidationError
+from erp_trace_executor.fiori_page import FioriPage
 from erp_trace_executor.models import ExecutionTaskRecord, SessionInitRecord, SessionInitUser, ToolResult
 from erp_trace_executor.registry import ToolRegistry, build_default_registry
 from erp_trace_executor.state import RuntimeStateStore
@@ -100,13 +102,41 @@ class TraceExecutor:
 
                     evidence_writer.log_event("node_started", **event_meta)
                     record = _canonical_node_to_record(node, event_meta)
+                    context = None
                     try:
-                        result, parent_references, context = self._execute_canonical_node(record, context_factory)
+                        spec, params, parent_references, context = self._prepare_canonical_node(record, context_factory)
+                        result = spec.run(context, params)
+                        self._attach_fiori_messages(context, result)
                         _validate_expected_outputs(node, result)
                     except Exception as exc:
                         failed_cases.add(node.case_id)
-                        evidence_writer.log_event("node_failed", error=str(exc), **event_meta)
-                        evidence_writer.log_event("case_failed", error=str(exc), **event_meta)
+                        sap_messages = self._capture_fiori_messages(context)
+                        _print_node_failure(event_meta, exc, sap_messages)
+                        evidence_writer.log_event(
+                            "node_failed",
+                            error=_safe_error_text(exc),
+                            sap_messages=sap_messages,
+                            **event_meta,
+                        )
+                        evidence_writer.log_event(
+                            "case_failed",
+                            error=_safe_error_text(exc),
+                            sap_messages=sap_messages,
+                            **event_meta,
+                        )
+                        if self._can_reset_home_after_failure(record, context):
+                            try:
+                                self._return_home(record, context)
+                            except Exception as reset_exc:
+                                _print_home_reset_failure(event_meta, reset_exc)
+                                evidence_writer.log_event(
+                                    "home_reset_failed",
+                                    error=_safe_error_text(reset_exc),
+                                    failed_error=_safe_error_text(exc),
+                                    **event_meta,
+                                )
+                                evidence_writer.log_event("run_failed", error=_safe_error_text(reset_exc), **event_meta)
+                                raise
                         continue
 
                     results.append(result)
@@ -212,6 +242,38 @@ class TraceExecutor:
             result.data.setdefault("sap_messages", []).extend(unique_messages)
         messages.clear()
 
+    def _capture_fiori_messages(self, context: Any) -> list[dict[str, str]]:
+        if context is None or not hasattr(context, "get_browser_session"):
+            return []
+        try:
+            session = context.get_browser_session()
+        except Exception:
+            return []
+
+        messages = getattr(session, "fiori_messages", None)
+        if messages is None:
+            messages = []
+
+        try:
+            FioriPage(session.page, message_sink=messages).handle_messages()
+        except Exception:
+            pass
+
+        seen: set[tuple[str, str, str]] = set()
+        unique_messages: list[dict[str, str]] = []
+        for message in messages:
+            key = (
+                str(message.get("severity", "")),
+                str(message.get("text", "")),
+                str(message.get("source", "")),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_messages.append(dict(message))
+        messages.clear()
+        return unique_messages
+
     def _case_id(self, record: ExecutionTaskRecord) -> str | None:
         case_id = record.meta.get("case_id")
         return case_id if isinstance(case_id, str) and case_id else None
@@ -229,6 +291,12 @@ class TraceExecutor:
             return
         if result.data.get("success") is False:
             return
+        self._return_home(record, context)
+
+    def _can_reset_home_after_failure(self, record: ExecutionTaskRecord, context: Any) -> bool:
+        return record.tool != "fiori.login" and record.tool.startswith("fiori.") and context is not None
+
+    def _return_home(self, record: ExecutionTaskRecord, context: Any) -> None:
         if not hasattr(context, "get_browser_session"):
             return
 
@@ -266,7 +334,7 @@ class TraceExecutor:
         except (PlaywrightError, AttributeError):
             return
 
-    def _execute_canonical_node(self, record: ExecutionTaskRecord, context_factory) -> tuple[ToolResult, list[dict[str, Any]], Any]:
+    def _prepare_canonical_node(self, record: ExecutionTaskRecord, context_factory) -> tuple[Any, Any, list[dict[str, Any]], Any]:
         spec = self._registry.get(record.tool)
         resolved_input = self._resolve_input(record)
         parent_references = _parent_references(record.input, resolved_input)
@@ -279,9 +347,7 @@ class TraceExecutor:
             ) from exc
 
         context = context_factory(record)
-        result = spec.run(context, params)
-        self._attach_fiori_messages(context, result)
-        return result, parent_references, context
+        return spec, params, parent_references, context
 
 
 def _canonical_node_to_record(node: CanonicalNode, meta: dict[str, Any]) -> ExecutionTaskRecord:
@@ -337,6 +403,54 @@ def _validate_expected_outputs(node: CanonicalNode, result: ToolResult) -> None:
             raise ToolExecutionError(f"Invalid expected output '{expected_output}' for node '{node.node_id}'")
         if (parts[0], parts[1]) not in returned:
             raise ToolExecutionError(f"Missing expected output '{expected_output}' for node '{node.node_id}'")
+
+
+def _print_node_failure(event_meta: dict[str, Any], exc: Exception, sap_messages: list[dict[str, str]]) -> None:
+    print(
+        _json_like_summary(
+            "node_failed",
+            {
+                "run_id": event_meta.get("run_id"),
+                "wave_id": event_meta.get("wave_id"),
+                "case_id": event_meta.get("case_id"),
+                "node_id": event_meta.get("node_id"),
+                "tool": event_meta.get("tool"),
+                "error": _safe_error_text(exc),
+                "sap_messages": sap_messages,
+            },
+        ),
+        file=sys.stderr,
+    )
+
+
+def _print_home_reset_failure(event_meta: dict[str, Any], exc: Exception) -> None:
+    print(
+        _json_like_summary(
+            "home_reset_failed",
+            {
+                "run_id": event_meta.get("run_id"),
+                "wave_id": event_meta.get("wave_id"),
+                "case_id": event_meta.get("case_id"),
+                "node_id": event_meta.get("node_id"),
+                "tool": event_meta.get("tool"),
+                "error": _safe_error_text(exc),
+            },
+        ),
+        file=sys.stderr,
+    )
+
+
+def _json_like_summary(event_type: str, payload: dict[str, Any]) -> str:
+    parts = [f"event={event_type}"]
+    for key, value in payload.items():
+        if value in (None, "", []):
+            continue
+        parts.append(f"{key}={value!r}")
+    return " ".join(parts)
+
+
+def _safe_error_text(exc: Exception) -> str:
+    return " ".join(str(exc).split())[:2_000]
 
 
 def _write_object_registry_entries(

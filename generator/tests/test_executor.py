@@ -274,6 +274,33 @@ def _home_reset_registry() -> ToolRegistry:
     return registry
 
 
+def _home_reset_failure_registry() -> ToolRegistry:
+    registry = ToolRegistry()
+
+    def run_tool(context, _params: NoInput) -> ToolResult:
+        context.get_browser_session().fiori_messages.append(
+            {
+                "severity": "error",
+                "text": "SAP says no",
+                "source": "sap-message-popover",
+                "url": "https://sap.example.test/current",
+            }
+        )
+        raise RuntimeError("planned tool failure")
+
+    def run_ok(context, _params: NoInput) -> ToolResult:
+        return ToolResult(
+            task_id=context.record.task_id,
+            session_id=context.record.session_id,
+            tool=context.record.tool,
+            data={"success": True, "status": "done"},
+        )
+
+    registry.register(ToolSpec(name="fiori.fail_tool", input_model=NoInput, run=run_tool))
+    registry.register(ToolSpec(name="fiori.fake_tool", input_model=NoInput, run=run_ok))
+    return registry
+
+
 def test_executor_logs_unknown_tools_as_node_failure(tmp_path, monkeypatch):
     contexts: list[ExecutionTaskRecord] = []
     record = _record("task-1", tool="missing.tool")
@@ -445,6 +472,57 @@ def test_executor_falls_back_to_current_login_url_when_home_logo_clicks_fail(tmp
     assert page.goto_urls == ["https://sap.example.test/home"]
 
 
+def test_executor_logs_failed_fiori_node_resets_home_and_continues_other_cases(
+    tmp_path, monkeypatch, capsys
+):
+    page = FakeHomeResetPage(logo_click_succeeds=True)
+    records = [
+        _record("C001_A1", tool="fiori.fail_tool", case_id="P2P_C001"),
+        _record("C002_A1", tool="fiori.fake_tool", case_id="P2P_C002"),
+    ]
+
+    results = _run_canonical_records(
+        executor=TraceExecutor(registry=_home_reset_failure_registry()),
+        records=records,
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        context_factory=lambda item: FakeHomeResetContext(item, page),
+    )
+
+    assert [result.task_id for result in results] == ["init-login-buyer-session", "C002_A1"]
+    assert page.logo_click_count == 4
+    stderr = capsys.readouterr().err
+    assert "event=node_failed" in stderr
+    assert "C001_A1" in stderr
+    assert "planned tool failure" in stderr
+    assert "SAP says no" in stderr
+    events = _read_events(tmp_path)
+    failed = next(event for event in events if event["event_type"] == "node_failed")
+    assert failed["node_id"] == "C001_A1"
+    assert failed["sap_messages"][0]["text"] == "SAP says no"
+    assert any(event["event_type"] == "node_succeeded" and event["node_id"] == "C002_A1" for event in events)
+
+
+def test_executor_fails_run_when_home_reset_after_node_failure_fails(tmp_path, monkeypatch, capsys):
+    page = FakeHomeResetPage(logo_click_succeeds=False, goto_raises=True)
+    record = _record("C001_A1", tool="fiori.fail_tool", case_id="P2P_C001")
+
+    with pytest.raises(PlaywrightError, match="cannot goto home"):
+        _run_canonical_records(
+            executor=TraceExecutor(registry=_home_reset_failure_registry()),
+            records=[record],
+            tmp_path=tmp_path,
+            monkeypatch=monkeypatch,
+            context_factory=lambda item: FakeHomeResetContext(item, page),
+        )
+
+    stderr = capsys.readouterr().err
+    assert "event=home_reset_failed" in stderr
+    events = _read_events(tmp_path)
+    assert any(event["event_type"] == "home_reset_failed" for event in events)
+    assert any(event["event_type"] == "run_failed" for event in events)
+
+
 class FakeHomeResetContext:
     def __init__(self, record: ExecutionTaskRecord, page: "FakeHomeResetPage") -> None:
         self.record = record
@@ -475,12 +553,15 @@ class FakeMessageContext:
 class FakeHomeResetPage:
     url = "https://sap.example.test/current"
 
-    def __init__(self, *, logo_click_succeeds: bool) -> None:
+    def __init__(self, *, logo_click_succeeds: bool, goto_raises: bool = False) -> None:
         self.logo_click_succeeds = logo_click_succeeds
+        self.goto_raises = goto_raises
         self.logo_click_count = 0
         self.goto_urls: list[str] = []
 
     def goto(self, url: str) -> None:
+        if self.goto_raises:
+            raise PlaywrightError("cannot goto home")
         self.goto_urls.append(url)
 
     def locator(self, selector: str):
