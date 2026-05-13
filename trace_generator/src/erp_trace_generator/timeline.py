@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from random import Random
 from zoneinfo import ZoneInfo
 
+from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.models import MinuteRange, RunSettings
 
 
@@ -19,11 +21,14 @@ class TimelinePlanner:
         self._work_start = _parse_time(settings.working_hours.core_start)
         self._work_end = _parse_time(settings.working_hours.core_end)
         self._pause_start = _parse_time(settings.working_hours.pause_window_start)
+        self._day_boundaries: dict[date, _DayBoundaries] = {}
 
     def first_start(self) -> datetime:
         return datetime.combine(self._settings.run_start_date, self._work_start, self._tz)
 
     def add_step_duration(self, start: datetime, step_type: str, speed_factor: float) -> datetime:
+        if speed_factor <= 0:
+            raise TraceGenerationError(f"speed_factor must be greater than 0 for step '{step_type}'")
         duration_range = self._settings.step_duration_minutes[step_type]
         sampled_minutes = _sample_int(self._rng, duration_range)
         duration_minutes = max(1, round(sampled_minutes / speed_factor))
@@ -43,16 +48,14 @@ class TimelinePlanner:
         if current.tzinfo is None:
             current = current.replace(tzinfo=self._tz)
         while True:
-            day_start = datetime.combine(current.date(), self._work_start, self._tz)
-            day_end = self._work_end_for(current.date())
-            pause_end = self._pause_end_for(current.date())
-            if current < day_start:
-                return day_start
-            if current >= day_end:
+            boundaries = self._boundaries_for(current.date())
+            if current < boundaries.work_start:
+                return boundaries.work_start
+            if current >= boundaries.work_end:
                 current = datetime.combine(current.date() + timedelta(days=1), self._work_start, self._tz)
                 continue
-            if self._pause_start_for(current.date()) <= current < pause_end:
-                current = pause_end
+            if boundaries.pause_start <= current < boundaries.pause_end:
+                current = boundaries.pause_end
                 continue
             return current
 
@@ -60,14 +63,23 @@ class TimelinePlanner:
         current_start = self.align_start(start)
         while True:
             end = current_start + timedelta(minutes=duration_minutes)
-            pause_start = self._pause_start_for(current_start.date())
-            pause_end = self._pause_end_for(current_start.date())
-            if current_start < pause_start < end:
-                current_start = pause_end
+            boundaries = self._boundaries_for(current_start.date())
+            if current_start < boundaries.pause_start < end:
+                current_start = boundaries.pause_end
                 continue
-            if end <= self._work_end_for(current_start.date()):
+            if end <= boundaries.work_end:
                 return end
             current_start = datetime.combine(current_start.date() + timedelta(days=1), self._work_start, self._tz)
+
+    def _boundaries_for(self, day: date) -> _DayBoundaries:
+        if day not in self._day_boundaries:
+            self._day_boundaries[day] = _DayBoundaries(
+                work_start=datetime.combine(day, self._work_start, self._tz),
+                work_end=self._work_end_for(day),
+                pause_start=self._pause_start_for(day),
+                pause_end=self._pause_end_for(day),
+            )
+        return self._day_boundaries[day]
 
     def _pause_start_for(self, day: date) -> datetime:
         return datetime.combine(day, self._pause_start, self._tz)
@@ -88,6 +100,14 @@ class TimelinePlanner:
             self._settings.working_hours.daily_deviation_hours_max,
         )
         return datetime.combine(day, self._work_end, self._tz) + timedelta(hours=deviation)
+
+
+@dataclass(frozen=True)
+class _DayBoundaries:
+    work_start: datetime
+    work_end: datetime
+    pause_start: datetime
+    pause_end: datetime
 
 
 def _parse_time(value: str) -> time:

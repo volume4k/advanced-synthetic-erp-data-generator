@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 from pathlib import Path
+from random import Random
 
 import pytest
 import yaml
@@ -16,6 +17,7 @@ from erp_trace_generator.fraud import FRAUD_TRANSFORMERS, register_fraud_transfo
 from erp_trace_generator.generator import generate_trace_artifacts
 from erp_trace_generator.models import CasePlan, InputBinding, ProcessStep
 from erp_trace_generator.schema_export import schema_output_paths
+from erp_trace_generator.timeline import TimelinePlanner
 
 
 def _write_yaml(path: Path, payload: dict) -> None:
@@ -453,6 +455,33 @@ def test_generated_inputs_fail_for_unknown_executor_tool(tmp_path: Path) -> None
             run_id="RUN_UNKNOWN_TOOL",
             seed=17,
         )
+
+
+def test_timeline_reuses_sampled_boundaries_per_day(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["workingHours"]["dailyDeviationHoursMin"] = -1.0
+    payload["runSettings"]["workingHours"]["dailyDeviationHoursMax"] = 1.0
+    payload["runSettings"]["workingHours"]["pauseDurationMinutesMin"] = 30
+    payload["runSettings"]["workingHours"]["pauseDurationMinutesMax"] = 75
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    planner = TimelinePlanner(config.run_settings, Random(17))
+
+    first = planner._boundaries_for(config.run_settings.run_start_date)
+    second = planner._boundaries_for(config.run_settings.run_start_date)
+
+    assert first == second
+
+
+def test_timeline_rejects_non_positive_speed_factor(tmp_path: Path) -> None:
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, _base_config())
+    config = load_generation_config(config_path)
+    planner = TimelinePlanner(config.run_settings, Random(17))
+
+    with pytest.raises(TraceGenerationError, match="speed_factor must be greater than 0"):
+        planner.add_step_duration(planner.first_start(), "create_purchase_requisition", 0)
 
 
 def test_generated_inputs_validate_against_current_tool_schemas(tmp_path: Path) -> None:
