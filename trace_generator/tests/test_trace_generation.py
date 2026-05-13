@@ -12,6 +12,7 @@ from erp_trace_generator.bindings import resolve_step_inputs
 from erp_trace_generator.cli import main
 from erp_trace_generator.config import load_generation_config
 from erp_trace_generator.errors import TraceGenerationError
+from erp_trace_generator.fraud import FRAUD_TRANSFORMERS, register_fraud_transformer
 from erp_trace_generator.generator import generate_trace_artifacts
 from erp_trace_generator.models import CasePlan, InputBinding, ProcessStep
 from erp_trace_generator.schema_export import schema_output_paths
@@ -330,6 +331,21 @@ def test_enabled_unimplemented_fraud_scenario_fails(tmp_path: Path) -> None:
         load_generation_config(config_path)
 
 
+def test_fraud_transformer_registration_rejects_duplicates() -> None:
+    def transformer(graph: object) -> object:
+        return graph
+
+    try:
+        decorated = register_fraud_transformer("TEST_SCENARIO")(transformer)
+
+        assert decorated is transformer
+        assert FRAUD_TRANSFORMERS["TEST_SCENARIO"] is transformer
+        with pytest.raises(TraceGenerationError, match="already registered"):
+            register_fraud_transformer("TEST_SCENARIO")(transformer)
+    finally:
+        FRAUD_TRANSFORMERS.pop("TEST_SCENARIO", None)
+
+
 def test_binding_resolver_handles_supported_sources_and_named_derived_values() -> None:
     case = CasePlan(
         case_id="C001",
@@ -374,6 +390,69 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
         "document_date": "05/18/2026",
         "storage_location": "Trading Goods",
     }
+
+
+def test_binding_resolver_reports_invalid_literal_casts() -> None:
+    case = CasePlan(
+        case_id="C001",
+        process_type="procure_to_pay",
+        material_id="MA025",
+        vendor_id="V17121",
+        plant="MI00",
+        purchasing_org="US00",
+        storage_location="0002",
+        storage_location_label="Trading Goods",
+        quantity=10,
+        target_price=20.0,
+        currency="USD",
+        delivery_date=date(2026, 5, 18),
+        gross_amount=200.0,
+    )
+    step = ProcessStep(
+        step_id="A1",
+        step_type="sample_step",
+        tool_name="fiori.sample",
+        required_role="procurement",
+        input_bindings=(InputBinding("sample_step", "enabled", "literal", "maybe", "bool"),),
+    )
+
+    with pytest.raises(TraceGenerationError, match="Cannot cast literal 'maybe' to bool"):
+        resolve_step_inputs(step, case)
+
+
+def test_generated_inputs_fail_for_unknown_executor_tool(tmp_path: Path) -> None:
+    payload = _base_config()
+    unknown_tool = _tool(
+        "fiori.unknown_tool",
+        [
+            "material",
+            "quantity",
+            "valuation_price",
+            "currency",
+            "price_unit",
+            "delivery_date",
+            "plant",
+            "purchasing_group",
+            "purchasing_organization",
+            "company_code",
+        ],
+    )
+    payload["toolRequirements"]["fiori.unknown_tool"] = unknown_tool
+    payload["processes"][0]["steps"][0]["tool"] = unknown_tool
+    config_path = tmp_path / "main.yaml"
+    env_path = tmp_path / ".env"
+    out_dir = tmp_path / "build"
+    _write_yaml(config_path, payload)
+    _write_env(env_path)
+
+    with pytest.raises(TraceGenerationError, match="Tool 'fiori.unknown_tool' is not registered"):
+        generate_trace_artifacts(
+            config_path=config_path,
+            env_path=env_path,
+            out_dir=out_dir,
+            run_id="RUN_UNKNOWN_TOOL",
+            seed=17,
+        )
 
 
 def test_generated_inputs_validate_against_current_tool_schemas(tmp_path: Path) -> None:

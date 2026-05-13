@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from erp_trace_generator.errors import TraceGenerationError
@@ -72,15 +72,28 @@ def _cast_literal(value: str, value_type: str) -> str | int | float | bool:
     if value_type == "string":
         return value
     if value_type == "int":
-        return int(value)
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise TraceGenerationError(f"Cannot cast literal '{value}' to int") from exc
     if value_type == "float":
-        return float(value)
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise TraceGenerationError(f"Cannot cast literal '{value}' to float") from exc
     if value_type == "bool":
-        return value.lower() == "true"
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes"}:
+            return True
+        if normalized in {"false", "0", "no"}:
+            return False
+        raise TraceGenerationError(f"Cannot cast literal '{value}' to bool")
     raise TraceGenerationError(f"unsupported binding valueType '{value_type}'")
 
 
-def _fiori_date(value) -> str:
+def _fiori_date(value: date | datetime) -> str:
+    if not isinstance(value, date):
+        raise TraceGenerationError(f"Cannot format non-date value '{value}' as Fiori date")
     return value.strftime("%m/%d/%Y")
 
 

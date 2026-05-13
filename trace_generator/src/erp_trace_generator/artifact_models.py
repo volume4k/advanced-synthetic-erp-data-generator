@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class ArtifactModel(BaseModel):
@@ -18,8 +19,12 @@ class TraceLineItem(ArtifactModel):
     plant: str
     purchasing_org: str
     storage_location: str
-    quantity: int
-    target_price: float
+    quantity: int = Field(ge=1)
+    target_price: Decimal = Field(ge=Decimal("0"))
+
+    @field_serializer("target_price", when_used="json")
+    def serialize_target_price(self, value: Decimal) -> float:
+        return float(value)
 
 
 class TraceCase(ArtifactModel):
@@ -64,18 +69,18 @@ class DependencyGraph(ArtifactModel):
 
 class ScheduledNode(ArtifactModel):
     node_id: str
-    startup_order: int
+    startup_order: int = Field(ge=1)
 
 
 class ExecutionWave(ArtifactModel):
     wave_id: str
-    sequence_no: int
+    sequence_no: int = Field(ge=1)
     nodes: list[ScheduledNode]
 
 
 class ExecutionSchedule(ArtifactModel):
     mode: Literal["waves"]
-    max_parallel_sessions: int
+    max_parallel_sessions: int = Field(ge=1)
     waves: list[ExecutionWave]
 
 

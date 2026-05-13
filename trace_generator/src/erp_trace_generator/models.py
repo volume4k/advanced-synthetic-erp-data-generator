@@ -73,8 +73,8 @@ class ProcessStep:
     step_type: str
     tool_name: str
     required_role: str
-    input_bindings: tuple[InputBinding, ...]
-    expected_outputs: tuple[str, ...]
+    input_bindings: tuple[InputBinding, ...] = ()
+    expected_outputs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -156,10 +156,10 @@ class GenerationConfig:
     identity_mappings: tuple[IdentityMapping, ...]
     master_data: tuple[MasterDataEntry, ...]
     processes: tuple[ProcessDefinition, ...]
-    fraud_scenarios: tuple[FraudScenario, ...]
     tool_requirements: dict[str, ToolRequirement]
     run_settings: RunSettings
     raw: dict
+    fraud_scenarios: tuple[FraudScenario, ...] = ()
 
     def active_process(self) -> ProcessDefinition:
         active = self.run_settings.active_process_types

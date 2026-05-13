@@ -53,8 +53,9 @@ def _validated_execution_trace(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validated_manifest(payload: dict[str, Any]) -> dict[str, Any]:
-    _validate_manifest_links(payload)
-    return PostProcessingManifestArtifact.model_validate(payload).model_dump(mode="json")
+    validated = PostProcessingManifestArtifact.model_validate(payload).model_dump(mode="json", by_alias=True)
+    _validate_manifest_links(validated)
+    return validated
 
 
 def _validate_manifest_links(payload: dict[str, Any]) -> None:

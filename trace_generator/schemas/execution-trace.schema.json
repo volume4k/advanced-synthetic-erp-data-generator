@@ -29,6 +29,7 @@
       "additionalProperties": false,
       "properties": {
         "max_parallel_sessions": {
+          "minimum": 1,
           "title": "Max Parallel Sessions",
           "type": "integer"
         },
@@ -64,6 +65,7 @@
           "type": "array"
         },
         "sequence_no": {
+          "minimum": 1,
           "title": "Sequence No",
           "type": "integer"
         },
@@ -88,6 +90,7 @@
           "type": "string"
         },
         "startup_order": {
+          "minimum": 1,
           "title": "Startup Order",
           "type": "integer"
         }
@@ -204,6 +207,7 @@
           "type": "string"
         },
         "quantity": {
+          "minimum": 1,
           "title": "Quantity",
           "type": "integer"
         },
@@ -212,8 +216,17 @@
           "type": "string"
         },
         "target_price": {
-          "title": "Target Price",
-          "type": "number"
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Target Price"
         },
         "vendor_id": {
           "title": "Vendor Id",

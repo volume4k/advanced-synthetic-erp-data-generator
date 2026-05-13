@@ -13,9 +13,13 @@ from erp_trace_generator.models import PlannedNode
 
 def validate_node_tool_inputs(nodes: list[PlannedNode]) -> None:
     registry = _build_executor_registry()
+    registered_tools = set(registry.names())
     for node in nodes:
+        if node.tool_name not in registered_tools:
+            raise TraceGenerationError(f"Tool '{node.tool_name}' is not registered for node '{node.node_id}'")
+        tool = registry.get(node.tool_name)
         try:
-            registry.get(node.tool_name).input_model.model_validate(node.inputs)
+            tool.input_model.model_validate(node.inputs)
         except ValidationError as exc:
             raise TraceGenerationError(f"Invalid input for tool '{node.tool_name}' on node '{node.node_id}': {exc}") from exc
 
