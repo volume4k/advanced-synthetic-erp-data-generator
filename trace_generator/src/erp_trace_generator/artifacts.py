@@ -86,6 +86,7 @@ def _execution_trace(
         "tool_catalog_hash": tool_catalog_hash,
         "trace_generator_version": "0.1.0",
         "llm_metadata": {"used": False, "seed": seed},
+        "sessions": _session_records(config, nodes),
         "cases": [_case_record(case) for case in cases],
         "dependency_graph": {
             "nodes": [_node_record(node) for node in nodes],
@@ -255,6 +256,34 @@ def _case_record(case: CasePlan) -> dict[str, Any]:
             }
         ],
     }
+
+
+def _session_records(config: GenerationConfig, nodes: list[PlannedNode]) -> list[dict[str, Any]]:
+    actor_ids_by_session: dict[str, str] = {}
+    source_nodes_by_session: dict[str, str] = {}
+    for node in sorted(nodes, key=lambda item: item.node_id):
+        actor_id = actor_ids_by_session.get(node.session_id)
+        if actor_id is not None and actor_id != node.virtual_actor_id:
+            raise TraceGenerationError(
+                f"Session '{node.session_id}' is used by actors '{actor_id}' and "
+                f"'{node.virtual_actor_id}' on nodes '{source_nodes_by_session[node.session_id]}' and '{node.node_id}'"
+            )
+        actor_ids_by_session[node.session_id] = node.virtual_actor_id
+        source_nodes_by_session.setdefault(node.session_id, node.node_id)
+    records: list[dict[str, Any]] = []
+    for session_id, actor_id in actor_ids_by_session.items():
+        technical_user = config.technical_user_for_actor(actor_id)
+        records.append(
+            {
+                "session_id": session_id,
+                "virtual_actor_id": actor_id,
+                "technical_user_id": technical_user.id,
+                "username_env_var": technical_user.username_env_var,
+                "password_env_var": technical_user.password_env_var,
+                "login_url_env_var": technical_user.login_url_env_var,
+            }
+        )
+    return records
 
 
 def _node_record(node: PlannedNode) -> dict[str, Any]:

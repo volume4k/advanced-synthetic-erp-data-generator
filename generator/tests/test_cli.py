@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from erp_trace_executor import cli
 from erp_trace_executor.models import ToolResult
 
@@ -18,6 +20,7 @@ class FakeSessionManager:
 
 class FakeExecutor:
     should_fail = False
+    canonical_calls: list[dict] = []
 
     def __init__(self, *, credential_store) -> None:
         self.credential_store = credential_store
@@ -34,10 +37,28 @@ class FakeExecutor:
             )
         ]
 
+    def execute_canonical(self, trace, *, init, context_factory, evidence_writer):
+        self.canonical_calls.append(
+            {
+                "trace": trace,
+                "init": init,
+                "evidence_writer": evidence_writer,
+            }
+        )
+        return [
+            ToolResult(
+                task_id="canonical-task",
+                session_id="session-1",
+                tool="fiori.fake",
+                data={"status": "canonical-ok"},
+            )
+        ]
+
 
 def _patch_cli(monkeypatch) -> None:
     FakeSessionManager.instances = []
     FakeExecutor.should_fail = False
+    FakeExecutor.canonical_calls = []
     monkeypatch.setattr(cli, "BrowserSessionManager", FakeSessionManager)
     monkeypatch.setattr(cli, "TraceExecutor", FakeExecutor)
     monkeypatch.setattr(cli, "load_trace_records", lambda _path: ["record"])
@@ -52,6 +73,29 @@ def test_cli_success_closes_browser(capsys, monkeypatch):
     assert exit_code == 0
     assert FakeSessionManager.instances[0].closed is True
     assert '"status": "ok"' in capsys.readouterr().out
+
+
+def test_cli_yaml_path_writes_canonical_artifacts(capsys, tmp_path, monkeypatch):
+    _patch_cli(monkeypatch)
+    trace_path = tmp_path / "RUN_TEST.execution-trace.yaml"
+    artifact_dir = tmp_path / "artifacts"
+    trace = SimpleNamespace(trace_path=trace_path, run_id="RUN_TEST")
+    monkeypatch.setattr(cli, "load_canonical_trace", lambda path: trace)
+    monkeypatch.setattr(cli, "read_env_values", lambda _path: {"SAP_USER_1_UN": "BUYER1"})
+    monkeypatch.setattr(cli, "build_init_from_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
+
+    exit_code = cli.main([str(trace_path), "--artifact-dir", str(artifact_dir)])
+
+    assert exit_code == 0
+    assert FakeExecutor.canonical_calls == [
+        {
+            "trace": trace,
+            "init": {"trace": trace, "env": {"SAP_USER_1_UN": "BUYER1"}},
+            "evidence_writer": FakeExecutor.canonical_calls[0]["evidence_writer"],
+        }
+    ]
+    assert FakeExecutor.canonical_calls[0]["evidence_writer"].artifact_dir == artifact_dir
+    assert '"status": "canonical-ok"' in capsys.readouterr().out
 
 
 def test_cli_headless_failure_closes_browser_without_waiting(capsys, monkeypatch):

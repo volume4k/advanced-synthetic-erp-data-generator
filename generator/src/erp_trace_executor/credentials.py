@@ -25,7 +25,7 @@ class EnvCredentialStore:
 
 
 def load_env_credentials(path: str | Path) -> EnvCredentialStore:
-    values = _read_env_values(Path(path))
+    values = read_env_values(path)
     credentials: dict[str, str] = {}
 
     for key, username in values.items():
@@ -39,7 +39,8 @@ def load_env_credentials(path: str | Path) -> EnvCredentialStore:
     return EnvCredentialStore(credentials)
 
 
-def _read_env_values(path: Path) -> dict[str, str]:
+def read_env_values(path: str | Path) -> dict[str, str]:
+    path = Path(path)
     values: dict[str, str] = {}
     if not path.exists():
         return values

@@ -35,6 +35,15 @@ class TraceCase(ArtifactModel):
     line_items: list[TraceLineItem]
 
 
+class TraceSession(ArtifactModel):
+    session_id: str
+    virtual_actor_id: str
+    technical_user_id: str
+    username_env_var: str
+    password_env_var: str
+    login_url_env_var: str
+
+
 class TargetSyntheticTime(ArtifactModel):
     start: str
     end: str
@@ -96,6 +105,7 @@ class ExecutionTraceArtifact(ArtifactModel):
     tool_catalog_hash: str
     trace_generator_version: str
     llm_metadata: dict[str, Any]
+    sessions: list[TraceSession]
     cases: list[TraceCase]
     dependency_graph: DependencyGraph
     execution_schedule: ExecutionSchedule

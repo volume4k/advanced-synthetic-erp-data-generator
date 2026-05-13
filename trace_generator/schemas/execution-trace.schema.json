@@ -324,6 +324,45 @@
       "title": "TraceNode",
       "type": "object"
     },
+    "TraceSession": {
+      "additionalProperties": false,
+      "properties": {
+        "login_url_env_var": {
+          "title": "Login Url Env Var",
+          "type": "string"
+        },
+        "password_env_var": {
+          "title": "Password Env Var",
+          "type": "string"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "technical_user_id": {
+          "title": "Technical User Id",
+          "type": "string"
+        },
+        "username_env_var": {
+          "title": "Username Env Var",
+          "type": "string"
+        },
+        "virtual_actor_id": {
+          "title": "Virtual Actor Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "virtual_actor_id",
+        "technical_user_id",
+        "username_env_var",
+        "password_env_var",
+        "login_url_env_var"
+      ],
+      "title": "TraceSession",
+      "type": "object"
+    },
     "ValidationReport": {
       "additionalProperties": false,
       "properties": {
@@ -378,6 +417,13 @@
       "title": "Run Id",
       "type": "string"
     },
+    "sessions": {
+      "items": {
+        "$ref": "#/$defs/TraceSession"
+      },
+      "title": "Sessions",
+      "type": "array"
+    },
     "tool_catalog_hash": {
       "title": "Tool Catalog Hash",
       "type": "string"
@@ -401,6 +447,7 @@
     "tool_catalog_hash",
     "trace_generator_version",
     "llm_metadata",
+    "sessions",
     "cases",
     "dependency_graph",
     "execution_schedule",

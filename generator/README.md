@@ -17,6 +17,17 @@ uv run --project generator erp-trace-exec path/to/trace.jsonl
 
 The CLI prints one JSON object per executed task result as a JSON array.
 
+Canonical trace-generator YAML is also supported:
+
+```bash
+uv run --project generator erp-trace-exec trace_generator/build/RUN.execution-trace.yaml --artifact-dir generator/build
+```
+
+YAML mode executes waves sequentially in planned `startup_order` and writes:
+
+- `<run_id>.execution-log.jsonl`
+- `<run_id>.object-registry.jsonl`
+
 Credentials can be loaded from `configuration/.env` by default, or from another file with `--env-file`:
 
 ```bash

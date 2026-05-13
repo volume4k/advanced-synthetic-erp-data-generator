@@ -9,13 +9,14 @@ import pytest
 import yaml
 
 from erp_trace_generator.artifact_models import ExecutionTraceArtifact, PostProcessingManifestArtifact
+from erp_trace_generator.artifacts import _session_records
 from erp_trace_generator.bindings import resolve_step_inputs
 from erp_trace_generator.cli import main
 from erp_trace_generator.config import load_generation_config
 from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.fraud import FRAUD_TRANSFORMERS, register_fraud_transformer
 from erp_trace_generator.generator import generate_trace_artifacts
-from erp_trace_generator.models import CasePlan, InputBinding, ProcessStep
+from erp_trace_generator.models import CasePlan, InputBinding, PlannedNode, ProcessStep
 from erp_trace_generator.schema_export import schema_output_paths
 from erp_trace_generator.timeline import TimelinePlanner
 
@@ -422,6 +423,34 @@ def test_binding_resolver_reports_invalid_literal_casts() -> None:
         resolve_step_inputs(step, case)
 
 
+def test_session_records_reject_same_session_for_multiple_actors(tmp_path: Path) -> None:
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, _base_config())
+    config = load_generation_config(config_path)
+    node_kwargs = {
+        "case_id": "C001",
+        "step_id": "A1",
+        "step_type": "create_purchase_requisition",
+        "tool_name": "fiori.create_purchase_requisition",
+        "technical_user_id": "GBGEN_P01",
+        "session_id": "shared-session",
+        "inputs": {},
+        "expected_outputs": [],
+        "business_dates": {},
+        "target_start": datetime(2026, 5, 18, 8, 0),
+        "target_end": datetime(2026, 5, 18, 8, 1),
+    }
+
+    with pytest.raises(TraceGenerationError, match="shared-session"):
+        _session_records(
+            config,
+            [
+                PlannedNode(node_id="C001_A1", virtual_actor_id="procurement_01", **node_kwargs),
+                PlannedNode(node_id="C001_A3", virtual_actor_id="warehouse_01", **node_kwargs),
+            ],
+        )
+
+
 def test_generated_inputs_fail_for_unknown_executor_tool(tmp_path: Path) -> None:
     payload = _base_config()
     unknown_tool = _tool(
@@ -530,6 +559,33 @@ def test_generation_emits_canonical_trace_jsonl_and_post_processing_manifest(tmp
     execution_trace = yaml.safe_load(artifacts.execution_trace_path.read_text(encoding="utf-8"))
     assert execution_trace["trace_version"] == "0.1"
     assert execution_trace["run_id"] == "RUN_TEST_001"
+    assert execution_trace["sessions"] == [
+        {
+            "session_id": "procurement_01-session",
+            "virtual_actor_id": "procurement_01",
+            "technical_user_id": "GBGEN_P01",
+            "username_env_var": "SAP_USER_1_UN",
+            "password_env_var": "SAP_USER_1_PW",
+            "login_url_env_var": "SAP_URL",
+        },
+        {
+            "session_id": "warehouse_01-session",
+            "virtual_actor_id": "warehouse_01",
+            "technical_user_id": "GBGEN_P02",
+            "username_env_var": "SAP_USER_2_UN",
+            "password_env_var": "SAP_USER_2_PW",
+            "login_url_env_var": "SAP_URL",
+        },
+        {
+            "session_id": "accounts_payable_01-session",
+            "virtual_actor_id": "accounts_payable_01",
+            "technical_user_id": "GBGEN_P03",
+            "username_env_var": "SAP_USER_3_UN",
+            "password_env_var": "SAP_USER_3_PW",
+            "login_url_env_var": "SAP_URL",
+        },
+    ]
+    assert "secret" not in json.dumps(execution_trace)
     assert [step["step_type"] for step in execution_trace["dependency_graph"]["nodes"][:5]] == [
         "create_purchase_requisition",
         "create_purchase_order",

@@ -7,10 +7,12 @@ from typing import Any
 from playwright.sync_api import Error as PlaywrightError
 from pydantic import ValidationError
 
+from erp_trace_executor.canonical import CanonicalNode, CanonicalTrace
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.credentials import EnvCredentialStore
+from erp_trace_executor.evidence import ExecutionEvidenceWriter
 from erp_trace_executor.errors import SessionUserMismatchError, ToolExecutionError, ToolInputValidationError
-from erp_trace_executor.models import ToolResult, TraceDefinition, TraceInitUser, TraceRecord
+from erp_trace_executor.models import ToolResult, TraceDefinition, TraceInitRecord, TraceInitUser, TraceRecord
 from erp_trace_executor.registry import ToolRegistry, build_default_registry
 from erp_trace_executor.state import RuntimeStateStore
 from erp_trace_executor.tools.fiori.login import LoginInput, run_login
@@ -75,6 +77,101 @@ class TraceExecutor:
             self._return_home_after_tool(record, context, result)
 
         return results
+
+    def execute_canonical(
+        self,
+        trace: CanonicalTrace,
+        *,
+        init: TraceInitRecord | None,
+        context_factory,
+        evidence_writer: ExecutionEvidenceWriter,
+    ) -> list[ToolResult]:
+        results: list[ToolResult] = []
+        failed_cases: set[str] = set()
+        nodes_by_id = {node.node_id: node for node in trace.dependency_graph.nodes}
+        cases_by_id = {case.case_id: case for case in trace.cases}
+
+        evidence_writer.log_event("run_started")
+        try:
+            if init is not None:
+                for init_user in init.users:
+                    login_record = self._build_init_login_record(init_user, line_number=init.line_number)
+                    evidence_writer.log_event(
+                        "login_started",
+                        session_id=login_record.session_id,
+                        virtual_actor_id=login_record.user_id,
+                    )
+                    try:
+                        login_context = context_factory(login_record)
+                        login_result = run_login(login_context, self._build_init_login_input(init_user))
+                    except Exception as exc:
+                        evidence_writer.log_event(
+                            "login_failed",
+                            session_id=login_record.session_id,
+                            virtual_actor_id=login_record.user_id,
+                            error=str(exc),
+                        )
+                        evidence_writer.log_event("run_failed", error=str(exc))
+                        raise
+                    results.append(login_result)
+                    self._remember_home_url(login_record, login_result)
+                    evidence_writer.log_event(
+                        "login_succeeded",
+                        session_id=login_record.session_id,
+                        virtual_actor_id=login_record.user_id,
+                    )
+
+            for wave in trace.execution_schedule.waves:
+                evidence_writer.log_event("wave_started", wave_id=wave.wave_id, wave_sequence_no=wave.sequence_no)
+                for scheduled_node in sorted(wave.nodes, key=lambda item: item.startup_order):
+                    node = nodes_by_id[scheduled_node.node_id]
+                    case = cases_by_id[node.case_id]
+                    event_meta = _canonical_event_meta(
+                        trace=trace,
+                        node=node,
+                        scenario_id=case.scenario_id,
+                        wave_id=wave.wave_id,
+                        wave_sequence_no=wave.sequence_no,
+                        startup_order=scheduled_node.startup_order,
+                    )
+                    if node.case_id in failed_cases:
+                        evidence_writer.log_event("node_skipped", reason="case_failed", **event_meta)
+                        continue
+
+                    evidence_writer.log_event("node_started", **event_meta)
+                    record = _canonical_node_to_record(node, event_meta)
+                    try:
+                        result, parent_references, context = self._execute_canonical_node(record, context_factory)
+                        _validate_expected_outputs(node, result)
+                    except Exception as exc:
+                        failed_cases.add(node.case_id)
+                        evidence_writer.log_event("node_failed", error=str(exc), **event_meta)
+                        evidence_writer.log_event("case_failed", error=str(exc), **event_meta)
+                        continue
+
+                    results.append(result)
+                    self._record_state_if_needed(record, result)
+                    evidence_writer.log_event(
+                        "state_updated",
+                        object_count=len(result.data.get("returned_objects", [])),
+                        **event_meta,
+                    )
+                    _write_object_registry_entries(
+                        evidence_writer=evidence_writer,
+                        node=node,
+                        scenario_id=case.scenario_id,
+                        result=result,
+                        parent_references=parent_references,
+                    )
+                    self._remember_home_url(record, result)
+                    self._return_home_after_tool(record, context, result)
+                    evidence_writer.log_event("node_succeeded", **event_meta)
+                evidence_writer.log_event("wave_completed", wave_id=wave.wave_id, wave_sequence_no=wave.sequence_no)
+
+            evidence_writer.log_event("run_completed", failed_case_count=len(failed_cases))
+            return results
+        except Exception:
+            raise
 
     @property
     def registry(self) -> ToolRegistry:
@@ -220,3 +317,120 @@ class TraceExecutor:
             page.wait_for_load_state("load", timeout=SAP_HOME_NAVIGATION_TIMEOUT_MS)
         except (PlaywrightError, AttributeError):
             return
+
+    def _execute_canonical_node(self, record: TraceRecord, context_factory) -> tuple[ToolResult, list[dict[str, Any]], Any]:
+        spec = self._registry.get(record.tool)
+        resolved_input = self._resolve_input(record)
+        parent_references = _parent_references(record.input, resolved_input)
+        try:
+            params = spec.input_model.model_validate(resolved_input)
+        except ValidationError as exc:
+            raise ToolInputValidationError(
+                f"Invalid input for tool '{record.tool}' on line {record.line_number}: {exc}"
+            ) from exc
+
+        context = context_factory(record)
+        result = spec.run(context, params)
+        self._attach_fiori_messages(context, result)
+        return result, parent_references, context
+
+
+def _canonical_node_to_record(node: CanonicalNode, meta: dict[str, Any]) -> TraceRecord:
+    return TraceRecord(
+        task_id=node.node_id,
+        session_id=node.session_id,
+        user_id=node.virtual_actor_id,
+        tool=node.tool_name,
+        input=node.inputs,
+        meta=meta,
+        line_number=0,
+    )
+
+
+def _canonical_event_meta(
+    *,
+    trace: CanonicalTrace,
+    node: CanonicalNode,
+    scenario_id: str,
+    wave_id: str,
+    wave_sequence_no: int,
+    startup_order: int,
+) -> dict[str, Any]:
+    return {
+        "run_id": trace.run_id,
+        "wave_id": wave_id,
+        "wave_sequence_no": wave_sequence_no,
+        "startup_order": startup_order,
+        "case_id": node.case_id,
+        "node_id": node.node_id,
+        "step_type": node.step_type,
+        "scenario_id": scenario_id,
+        "virtual_actor_id": node.virtual_actor_id,
+        "technical_user_id": node.technical_sap_user,
+        "session_id": node.session_id,
+        "tool": node.tool_name,
+        "target_synthetic_start": node.target_synthetic_time.start,
+        "target_synthetic_end": node.target_synthetic_time.end,
+        "expected_outputs": node.expected_outputs,
+    }
+
+
+def _validate_expected_outputs(node: CanonicalNode, result: ToolResult) -> None:
+    returned = {
+        (item.get("object_type"), key)
+        for item in result.data.get("returned_objects", [])
+        if isinstance(item, dict)
+        for key in (item.get("keys") or {}).keys()
+    }
+    for expected_output in node.expected_outputs:
+        parts = expected_output.split(".")
+        if len(parts) != 2 or not all(parts):
+            raise ToolExecutionError(f"Invalid expected output '{expected_output}' for node '{node.node_id}'")
+        if (parts[0], parts[1]) not in returned:
+            raise ToolExecutionError(f"Missing expected output '{expected_output}' for node '{node.node_id}'")
+
+
+def _write_object_registry_entries(
+    *,
+    evidence_writer: ExecutionEvidenceWriter,
+    node: CanonicalNode,
+    scenario_id: str,
+    result: ToolResult,
+    parent_references: list[dict[str, Any]],
+) -> None:
+    for returned_object in result.data.get("returned_objects", []):
+        if not isinstance(returned_object, dict):
+            continue
+        evidence_writer.record_object(
+            case_id=node.case_id,
+            node_id=node.node_id,
+            scenario_id=scenario_id,
+            virtual_actor_id=node.virtual_actor_id,
+            technical_user_id=node.technical_sap_user,
+            tool=node.tool_name,
+            object_type=returned_object.get("object_type"),
+            keys=returned_object.get("keys", {}),
+            parent_references=parent_references,
+            status="created",
+        )
+
+
+def _parent_references(raw_value: Any, resolved_value: Any) -> list[dict[str, Any]]:
+    references: list[dict[str, Any]] = []
+    _collect_parent_references(raw_value, resolved_value, references)
+    return references
+
+
+def _collect_parent_references(raw_value: Any, resolved_value: Any, references: list[dict[str, Any]]) -> None:
+    if isinstance(raw_value, str) and raw_value.startswith("$"):
+        path = raw_value[1:].split(".")
+        if len(path) == 2 and all(path):
+            references.append({"object_type": path[0], "key": path[1], "value": resolved_value})
+        return
+    if isinstance(raw_value, dict) and isinstance(resolved_value, dict):
+        for key, item in raw_value.items():
+            _collect_parent_references(item, resolved_value.get(key), references)
+        return
+    if isinstance(raw_value, list) and isinstance(resolved_value, list):
+        for raw_item, resolved_item in zip(raw_value, resolved_value, strict=False):
+            _collect_parent_references(raw_item, resolved_item, references)
