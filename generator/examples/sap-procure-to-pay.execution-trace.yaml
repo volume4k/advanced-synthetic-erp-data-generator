@@ -1,0 +1,197 @@
+trace_version: '0.1'
+run_id: RUN_EXAMPLE_P2P
+config_hash: example
+tool_catalog_hash: example
+trace_generator_version: 0.1.0
+llm_metadata:
+  used: false
+  seed: 17
+sessions:
+- session_id: p2p-example-session
+  virtual_actor_id: p2p-example-user
+  technical_user_id: TU_EXAMPLE
+  username_env_var: SAP_USER_1_UN
+  password_env_var: SAP_USER_1_PW
+  login_url_env_var: SAP_URL
+cases:
+- case_id: C001
+  process_type: procure_to_pay
+  scenario_id: NORMAL
+  case_label: normal
+  line_items:
+  - line_id: C001_L1
+    material_id: PUMP1902
+    vendor_id: '107902'
+    plant: MI00
+    purchasing_org: US00
+    storage_location: FG00
+    quantity: 10
+    target_price: 20
+dependency_graph:
+  nodes:
+  - node_id: C001_A1
+    case_id: C001
+    step_type: create_purchase_requisition
+    tool_name: fiori.create_purchase_requisition
+    virtual_actor_id: p2p-example-user
+    technical_sap_user: TU_EXAMPLE
+    session_id: p2p-example-session
+    inputs:
+      material: PUMP1902
+      quantity: 10
+      valuation_price: 20
+      currency: USD
+      price_unit: 1
+      delivery_date: 06/20/2026
+      plant: MI00
+      purchasing_group: N00
+      purchasing_organization: US00
+      company_code: US00
+    expected_outputs:
+    - purchase_requisition.pr_number
+    business_dates:
+      delivery_date: '2026-06-20'
+    target_synthetic_time:
+      start: '2026-05-18T08:00:00+02:00'
+      end: '2026-05-18T08:09:00+02:00'
+    labels:
+      step_label: normal
+  - node_id: C001_A2
+    case_id: C001
+    step_type: create_purchase_order
+    tool_name: fiori.create_purchase_order
+    virtual_actor_id: p2p-example-user
+    technical_sap_user: TU_EXAMPLE
+    session_id: p2p-example-session
+    inputs:
+      purchase_requisition: $purchase_requisition.pr_number
+      storage_location: FG00
+      supplier: '107902'
+      quantity: 10
+    expected_outputs:
+    - purchase_order.po_number
+    business_dates: {}
+    target_synthetic_time:
+      start: '2026-05-18T09:00:00+02:00'
+      end: '2026-05-18T09:08:00+02:00'
+    labels:
+      step_label: normal
+  - node_id: C001_A3
+    case_id: C001
+    step_type: post_goods_receipt
+    tool_name: fiori.create_goods_receipt
+    virtual_actor_id: p2p-example-user
+    technical_sap_user: TU_EXAMPLE
+    session_id: p2p-example-session
+    inputs:
+      purchase_order: $purchase_order.po_number
+      document_date: 06/20/2026
+      posting_date: 06/20/2026
+      storage_location: Trading Goods
+    expected_outputs:
+    - material_document.material_document_number
+    business_dates:
+      document_date: '2026-06-20'
+      posting_date: '2026-06-20'
+    target_synthetic_time:
+      start: '2026-05-19T08:00:00+02:00'
+      end: '2026-05-19T08:07:00+02:00'
+    labels:
+      step_label: normal
+  - node_id: C001_A4
+    case_id: C001
+    step_type: enter_incoming_invoice
+    tool_name: fiori.create_supplier_invoice
+    virtual_actor_id: p2p-example-user
+    technical_sap_user: TU_EXAMPLE
+    session_id: p2p-example-session
+    inputs:
+      invoice_date: 06/20/2026
+      invoicing_party: '107902'
+      gross_amount: 200
+      purchase_order: $purchase_order.po_number
+      tax_code: XI
+    expected_outputs:
+    - supplier_invoice.invoice_number
+    business_dates:
+      invoice_date: '2026-06-20'
+    target_synthetic_time:
+      start: '2026-05-19T09:00:00+02:00'
+      end: '2026-05-19T09:06:00+02:00'
+    labels:
+      step_label: normal
+  - node_id: C001_A5
+    case_id: C001
+    step_type: post_outgoing_payment
+    tool_name: fiori.send_payment
+    virtual_actor_id: p2p-example-user
+    technical_sap_user: TU_EXAMPLE
+    session_id: p2p-example-session
+    inputs:
+      company_code: US00
+      posting_document_date: 06/20/2026
+      posting_date: 06/21/2026
+      supplier: '107902'
+      accounting_document: $supplier_invoice.invoice_number
+      general_ledger_account: '1800000'
+      amount: 200
+      currency: USD
+    expected_outputs:
+    - payment_document.accounting_document_number
+    business_dates:
+      posting_document_date: '2026-06-20'
+      posting_date: '2026-06-21'
+    target_synthetic_time:
+      start: '2026-05-20T08:00:00+02:00'
+      end: '2026-05-20T08:05:00+02:00'
+    labels:
+      step_label: normal
+  edges:
+  - from: C001_A1
+    to: C001_A2
+    type: data_dependency
+    reason: purchase requisition number feeds purchase order creation
+  - from: C001_A2
+    to: C001_A3
+    type: data_dependency
+    reason: purchase order number feeds goods receipt posting
+  - from: C001_A3
+    to: C001_A4
+    type: process_dependency
+    reason: goods receipt happens before supplier invoice
+  - from: C001_A4
+    to: C001_A5
+    type: data_dependency
+    reason: supplier invoice number feeds payment posting
+execution_schedule:
+  mode: waves
+  max_parallel_sessions: 1
+  waves:
+  - wave_id: W001
+    sequence_no: 1
+    nodes:
+    - node_id: C001_A1
+      startup_order: 1
+  - wave_id: W002
+    sequence_no: 2
+    nodes:
+    - node_id: C001_A2
+      startup_order: 1
+  - wave_id: W003
+    sequence_no: 3
+    nodes:
+    - node_id: C001_A3
+      startup_order: 1
+  - wave_id: W004
+    sequence_no: 4
+    nodes:
+    - node_id: C001_A4
+      startup_order: 1
+  - wave_id: W005
+    sequence_no: 5
+    nodes:
+    - node_id: C001_A5
+      startup_order: 1
+validation_report:
+  errors: []
+  warnings: []

@@ -1,4 +1,4 @@
-"""Sequential trace execution."""
+"""Canonical wave trace execution."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from erp_trace_executor.canonical import CanonicalNode, CanonicalTrace
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.credentials import EnvCredentialStore
 from erp_trace_executor.evidence import ExecutionEvidenceWriter
-from erp_trace_executor.errors import SessionUserMismatchError, ToolExecutionError, ToolInputValidationError
-from erp_trace_executor.models import ToolResult, TraceDefinition, TraceInitRecord, TraceInitUser, TraceRecord
+from erp_trace_executor.errors import ToolExecutionError, ToolInputValidationError
+from erp_trace_executor.models import ExecutionTaskRecord, SessionInitRecord, SessionInitUser, ToolResult
 from erp_trace_executor.registry import ToolRegistry, build_default_registry
 from erp_trace_executor.state import RuntimeStateStore
 from erp_trace_executor.tools.fiori.login import LoginInput, run_login
@@ -25,7 +25,7 @@ SAP_HOME_NAVIGATION_TIMEOUT_MS = 1_000
 
 
 class TraceExecutor:
-    """Executes validated trace records in file order."""
+    """Executes canonical trace nodes in scheduled wave order."""
 
     def __init__(
         self,
@@ -39,50 +39,11 @@ class TraceExecutor:
         self._state_store = state_store or RuntimeStateStore()
         self._home_urls: dict[str, str] = {}
 
-    def execute(self, trace: TraceDefinition | list[TraceRecord], context_factory) -> list[ToolResult]:
-        results: list[ToolResult] = []
-        records = trace.tasks if isinstance(trace, TraceDefinition) else trace
-        init_sessions: dict[str, str] = {}
-
-        if isinstance(trace, TraceDefinition) and trace.init is not None:
-            for init_user in trace.init.users:
-                init_sessions[init_user.session_id] = init_user.user_id
-            for record in records:
-                if record.tool != "fiori.login":
-                    self._ensure_task_uses_initialized_session(record, init_sessions)
-
-            for init_user in trace.init.users:
-                login_record = self._build_init_login_record(init_user, line_number=trace.init.line_number)
-                login_context = context_factory(login_record)
-                login_result = run_login(login_context, self._build_init_login_input(init_user))
-                results.append(login_result)
-                self._remember_home_url(login_record, login_result)
-
-        for record in records:
-            spec = self._registry.get(record.tool)
-            resolved_input = self._resolve_input(record)
-            try:
-                params = spec.input_model.model_validate(resolved_input)
-            except ValidationError as exc:
-                raise ToolInputValidationError(
-                    f"Invalid input for tool '{record.tool}' on line {record.line_number}: {exc}"
-                ) from exc
-
-            context = context_factory(record)
-            result = spec.run(context, params)
-            self._attach_fiori_messages(context, result)
-            results.append(result)
-            self._record_state_if_needed(record, result)
-            self._remember_home_url(record, result)
-            self._return_home_after_tool(record, context, result)
-
-        return results
-
     def execute_canonical(
         self,
         trace: CanonicalTrace,
         *,
-        init: TraceInitRecord | None,
+        init: SessionInitRecord,
         context_factory,
         evidence_writer: ExecutionEvidenceWriter,
     ) -> list[ToolResult]:
@@ -93,33 +54,32 @@ class TraceExecutor:
 
         evidence_writer.log_event("run_started")
         try:
-            if init is not None:
-                for init_user in init.users:
-                    login_record = self._build_init_login_record(init_user, line_number=init.line_number)
+            for init_user in init.users:
+                login_record = self._build_init_login_record(init_user, line_number=init.line_number)
+                evidence_writer.log_event(
+                    "login_started",
+                    session_id=login_record.session_id,
+                    virtual_actor_id=login_record.user_id,
+                )
+                try:
+                    login_context = context_factory(login_record)
+                    login_result = run_login(login_context, self._build_init_login_input(init_user))
+                except Exception as exc:
                     evidence_writer.log_event(
-                        "login_started",
+                        "login_failed",
                         session_id=login_record.session_id,
                         virtual_actor_id=login_record.user_id,
+                        error=str(exc),
                     )
-                    try:
-                        login_context = context_factory(login_record)
-                        login_result = run_login(login_context, self._build_init_login_input(init_user))
-                    except Exception as exc:
-                        evidence_writer.log_event(
-                            "login_failed",
-                            session_id=login_record.session_id,
-                            virtual_actor_id=login_record.user_id,
-                            error=str(exc),
-                        )
-                        evidence_writer.log_event("run_failed", error=str(exc))
-                        raise
-                    results.append(login_result)
-                    self._remember_home_url(login_record, login_result)
-                    evidence_writer.log_event(
-                        "login_succeeded",
-                        session_id=login_record.session_id,
-                        virtual_actor_id=login_record.user_id,
-                    )
+                    evidence_writer.log_event("run_failed", error=str(exc))
+                    raise
+                results.append(login_result)
+                self._remember_home_url(login_record, login_result)
+                evidence_writer.log_event(
+                    "login_succeeded",
+                    session_id=login_record.session_id,
+                    virtual_actor_id=login_record.user_id,
+                )
 
             for wave in trace.execution_schedule.waves:
                 evidence_writer.log_event("wave_started", wave_id=wave.wave_id, wave_sequence_no=wave.sequence_no)
@@ -177,8 +137,8 @@ class TraceExecutor:
     def registry(self) -> ToolRegistry:
         return self._registry
 
-    def _build_init_login_record(self, init_user: TraceInitUser, *, line_number: int) -> TraceRecord:
-        return TraceRecord(
+    def _build_init_login_record(self, init_user: SessionInitUser, *, line_number: int) -> ExecutionTaskRecord:
+        return ExecutionTaskRecord(
             task_id=f"init-login-{init_user.session_id}",
             session_id=init_user.session_id,
             user_id=init_user.user_id,
@@ -188,7 +148,7 @@ class TraceExecutor:
             line_number=line_number,
         )
 
-    def _build_init_login_input(self, init_user: TraceInitUser) -> LoginInput:
+    def _build_init_login_input(self, init_user: SessionInitUser) -> LoginInput:
         password = init_user.password or self._credential_store.password_for_username(init_user.username)
         payload = {
             "url": init_user.login_url,
@@ -201,19 +161,7 @@ class TraceExecutor:
         }
         return LoginInput.model_validate({key: value for key, value in payload.items() if value is not None})
 
-    def _ensure_task_uses_initialized_session(self, record: TraceRecord, init_sessions: dict[str, str]) -> None:
-        expected_user = init_sessions.get(record.session_id)
-        if expected_user is None:
-            raise SessionUserMismatchError(
-                f"Task '{record.task_id}' uses session '{record.session_id}' that was not initialized"
-            )
-        if expected_user != record.user_id:
-            raise SessionUserMismatchError(
-                f"Task '{record.task_id}' uses session '{record.session_id}' for user '{record.user_id}', "
-                f"but init bound it to user '{expected_user}'"
-            )
-
-    def _resolve_input(self, record: TraceRecord) -> dict[str, Any]:
+    def _resolve_input(self, record: ExecutionTaskRecord) -> dict[str, Any]:
         case_id = self._case_id(record)
         return self._resolve_value(record.input, case_id=case_id, task_id=record.task_id)
 
@@ -226,7 +174,7 @@ class TraceExecutor:
             return [self._resolve_value(item, case_id=case_id, task_id=task_id) for item in value]
         return value
 
-    def _record_state_if_needed(self, record: TraceRecord, result: ToolResult) -> None:
+    def _record_state_if_needed(self, record: ExecutionTaskRecord, result: ToolResult) -> None:
         if not result.data.get("returned_objects"):
             return
         if result.data.get("success") is False:
@@ -264,11 +212,11 @@ class TraceExecutor:
             result.data.setdefault("sap_messages", []).extend(unique_messages)
         messages.clear()
 
-    def _case_id(self, record: TraceRecord) -> str | None:
+    def _case_id(self, record: ExecutionTaskRecord) -> str | None:
         case_id = record.meta.get("case_id")
         return case_id if isinstance(case_id, str) and case_id else None
 
-    def _remember_home_url(self, record: TraceRecord, result: ToolResult) -> None:
+    def _remember_home_url(self, record: ExecutionTaskRecord, result: ToolResult) -> None:
         if record.tool != "fiori.login":
             return
 
@@ -276,7 +224,7 @@ class TraceExecutor:
         if isinstance(home_url, str) and home_url:
             self._home_urls[record.session_id] = home_url
 
-    def _return_home_after_tool(self, record: TraceRecord, context: Any, result: ToolResult) -> None:
+    def _return_home_after_tool(self, record: ExecutionTaskRecord, context: Any, result: ToolResult) -> None:
         if record.tool == "fiori.login" or not record.tool.startswith("fiori."):
             return
         if result.data.get("success") is False:
@@ -318,7 +266,7 @@ class TraceExecutor:
         except (PlaywrightError, AttributeError):
             return
 
-    def _execute_canonical_node(self, record: TraceRecord, context_factory) -> tuple[ToolResult, list[dict[str, Any]], Any]:
+    def _execute_canonical_node(self, record: ExecutionTaskRecord, context_factory) -> tuple[ToolResult, list[dict[str, Any]], Any]:
         spec = self._registry.get(record.tool)
         resolved_input = self._resolve_input(record)
         parent_references = _parent_references(record.input, resolved_input)
@@ -335,8 +283,8 @@ class TraceExecutor:
         return result, parent_references, context
 
 
-def _canonical_node_to_record(node: CanonicalNode, meta: dict[str, Any]) -> TraceRecord:
-    return TraceRecord(
+def _canonical_node_to_record(node: CanonicalNode, meta: dict[str, Any]) -> ExecutionTaskRecord:
+    return ExecutionTaskRecord(
         task_id=node.node_id,
         session_id=node.session_id,
         user_id=node.virtual_actor_id,

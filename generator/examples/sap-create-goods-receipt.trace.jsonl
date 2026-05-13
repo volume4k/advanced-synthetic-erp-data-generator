@@ -1,2 +1,0 @@
-{"kind":"init","users":[{"session_id":"tour-user-1-session","user_id":"tour-user-1","username":"LEARN-902","login_url":"https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE","success_selector":"#userActionsMenuHeaderButton"}]}
-{"task_id":"task-create-gr-001","session_id":"tour-user-1-session","user_id":"tour-user-1","tool":"fiori.create_goods_receipt","input":{"purchase_order":"4500000006","document_date":"05/14/2026","posting_date":"05/12/2026","storage_location":"Trading Goods"}}

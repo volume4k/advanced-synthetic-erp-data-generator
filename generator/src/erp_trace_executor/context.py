@@ -6,14 +6,14 @@ from dataclasses import dataclass
 
 from erp_trace_executor.browser.session import BrowserSession, BrowserSessionManager
 from erp_trace_executor.fiori_page import FioriPage
-from erp_trace_executor.models import TraceRecord
+from erp_trace_executor.models import ExecutionTaskRecord
 
 
 @dataclass(frozen=True)
 class ExecutionContext:
     """Task-scoped context with access to the shared session manager."""
 
-    record: TraceRecord
+    record: ExecutionTaskRecord
     session_manager: BrowserSessionManager
 
     def get_browser_session(self) -> BrowserSession:

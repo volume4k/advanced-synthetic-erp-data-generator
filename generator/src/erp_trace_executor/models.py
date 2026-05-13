@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
@@ -22,8 +22,8 @@ def returned_object(object_type: str, **keys: Any) -> dict[str, Any]:
     }
 
 
-class TraceTaskRecord(BaseModel):
-    """One JSONL task record."""
+class ExecutionTaskRecord(BaseModel):
+    """One planned node execution record."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -36,10 +36,7 @@ class TraceTaskRecord(BaseModel):
     line_number: int
 
 
-TraceRecord = TraceTaskRecord
-
-
-class TraceInitUser(BaseModel):
+class SessionInitUser(BaseModel):
     """One browser user to log in before task execution."""
 
     model_config = ConfigDict(extra="forbid")
@@ -55,23 +52,13 @@ class TraceInitUser(BaseModel):
     success_selector: str | None = None
 
 
-class TraceInitRecord(BaseModel):
-    """Optional first JSONL record for pre-task browser logins."""
+class SessionInitRecord(BaseModel):
+    """Browser session logins required before node execution."""
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["init"] = "init"
-    users: list[TraceInitUser] = Field(min_length=1)
+    users: list[SessionInitUser] = Field(min_length=1)
     line_number: int
-
-
-class TraceDefinition(BaseModel):
-    """Parsed trace with optional init and ordered task records."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    init: TraceInitRecord | None = None
-    tasks: list[TraceTaskRecord] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)

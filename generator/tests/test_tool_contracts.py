@@ -5,9 +5,9 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from erp_trace_executor.canonical import load_canonical_trace
 from erp_trace_executor.registry import build_default_registry
 from erp_trace_executor.tooling import ToolSpec
-from erp_trace_executor.trace_loader import load_trace_records
 
 EXAMPLES_DIR = Path(__file__).parents[1] / "examples"
 INFRASTRUCTURE_TOOLS = {"fiori.login"}
@@ -35,19 +35,16 @@ def test_registered_business_tools_have_valid_example_trace_inputs():
     registry = build_default_registry()
     seen_tools: set[str] = set()
 
-    for trace_path in sorted(EXAMPLES_DIR.glob("*.trace.jsonl")):
-        trace = load_trace_records(trace_path)
-        if trace.init is not None:
-            assert all(
-                user.password is None and "password" not in user.model_fields_set
-                for user in trace.init.users
-            ), f"{trace_path} must not embed passwords in init users"
+    for trace_path in sorted(EXAMPLES_DIR.glob("*.execution-trace.yaml")):
+        trace = load_canonical_trace(trace_path)
+        for session in trace.sessions:
+            assert session.password_env_var, f"{trace_path} must reference a password env var"
 
-        for record in trace.tasks:
-            assert "password" not in record.input, f"{trace_path} must not embed passwords in task input"
-            spec = registry.get(record.tool)
-            spec.input_model.model_validate(record.input)
-            seen_tools.add(record.tool)
+        for node in trace.dependency_graph.nodes:
+            assert "password" not in node.inputs, f"{trace_path} must not embed passwords in node inputs"
+            spec = registry.get(node.tool_name)
+            spec.input_model.model_validate(node.inputs)
+            seen_tools.add(node.tool_name)
 
     business_tools = set(registry.names()) - INFRASTRUCTURE_TOOLS
     missing_examples = business_tools - seen_tools

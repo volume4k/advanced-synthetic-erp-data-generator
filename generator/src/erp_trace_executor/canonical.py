@@ -9,7 +9,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from erp_trace_executor.errors import TraceParseError
-from erp_trace_executor.models import TraceInitRecord, TraceInitUser
+from erp_trace_executor.models import SessionInitRecord, SessionInitUser
 
 
 class CanonicalModel(BaseModel):
@@ -120,8 +120,8 @@ def load_canonical_trace(path: str | Path) -> CanonicalTrace:
     return trace
 
 
-def build_init_from_sessions(trace: CanonicalTrace, env_values: dict[str, str]) -> TraceInitRecord:
-    users: list[TraceInitUser] = []
+def build_init_from_sessions(trace: CanonicalTrace, env_values: dict[str, str]) -> SessionInitRecord:
+    users: list[SessionInitUser] = []
     for session in trace.sessions:
         username = env_values.get(session.username_env_var)
         if username is None:
@@ -131,7 +131,7 @@ def build_init_from_sessions(trace: CanonicalTrace, env_values: dict[str, str]) 
         password = env_values.get(session.password_env_var)
         login_url = env_values.get(session.login_url_env_var)
         users.append(
-            TraceInitUser(
+            SessionInitUser(
                 session_id=session.session_id,
                 user_id=session.virtual_actor_id,
                 username=username,
@@ -139,7 +139,7 @@ def build_init_from_sessions(trace: CanonicalTrace, env_values: dict[str, str]) 
                 login_url=login_url,
             )
         )
-    return TraceInitRecord(line_number=1, users=users)
+    return SessionInitRecord(line_number=1, users=users)
 
 
 def _validate_canonical_refs(trace: CanonicalTrace) -> None:

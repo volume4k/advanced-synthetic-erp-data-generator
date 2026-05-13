@@ -11,11 +11,11 @@ from pydantic import BaseModel
 from erp_trace_executor import executor as executor_module
 from erp_trace_executor.canonical import build_init_from_sessions, load_canonical_trace
 from erp_trace_executor.evidence import ExecutionEvidenceWriter
+from erp_trace_executor.errors import TraceParseError
 from erp_trace_executor.executor import TraceExecutor
 from erp_trace_executor.models import ToolResult
 from erp_trace_executor.registry import ToolRegistry
 from erp_trace_executor.tooling import ToolSpec
-from erp_trace_executor.trace_loader import TraceParseError
 
 
 class ProduceInput(BaseModel):
@@ -258,7 +258,7 @@ def test_canonical_executor_logs_registry_and_skips_failed_case(tmp_path: Path, 
     ]
 
 
-def test_canonical_executor_marks_missing_expected_output_failed(tmp_path: Path) -> None:
+def test_canonical_executor_marks_missing_expected_output_failed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     trace_path = tmp_path / "trace.execution-trace.yaml"
     payload = _canonical_payload()
     payload["execution_schedule"]["waves"] = [payload["execution_schedule"]["waves"][0]]
@@ -267,11 +267,25 @@ def test_canonical_executor_marks_missing_expected_output_failed(tmp_path: Path)
     payload["cases"] = payload["cases"][:1]
     _write_yaml(trace_path, payload)
     trace = load_canonical_trace(trace_path)
+    init = build_init_from_sessions(
+        trace,
+        {"SAP_USER_1_UN": "BUYER1", "SAP_USER_1_PW": "secret", "SAP_URL": "https://sap.example.test"},
+    )
     writer = ExecutionEvidenceWriter(tmp_path, run_id=trace.run_id)
+    monkeypatch.setattr(
+        executor_module,
+        "run_login",
+        lambda context, params: ToolResult(
+            task_id=context.task_id,
+            session_id=context.session_id,
+            tool=context.tool,
+            data={"success": True, "username": params.username},
+        ),
+    )
 
     TraceExecutor(registry=_registry(missing_expected_output=True)).execute_canonical(
         trace,
-        init=None,
+        init=init,
         context_factory=_context,
         evidence_writer=writer,
     )
