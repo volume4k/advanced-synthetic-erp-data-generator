@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -53,12 +54,27 @@ class ToolRequirement:
     required_input_fields: tuple[str, ...]
 
 
+BindingSource = Literal["literal", "master_data", "case", "business_date", "prior_output", "derived"]
+BindingValueType = Literal["string", "int", "float", "bool"]
+
+
+@dataclass(frozen=True)
+class InputBinding:
+    step_type: str
+    field: str
+    source: BindingSource
+    value: str
+    value_type: BindingValueType = "string"
+
+
 @dataclass(frozen=True)
 class ProcessStep:
     step_id: str
     step_type: str
     tool_name: str
     required_role: str
+    input_bindings: tuple[InputBinding, ...]
+    expected_outputs: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -114,6 +130,20 @@ class RunSettings:
     step_duration_minutes: dict[str, MinuteRange]
     inter_step_delay_minutes: dict[tuple[str, str], MinuteRange]
     storage_location_labels: dict[str, str]
+    post_processing_export_groups: tuple["PostProcessingExportGroup", ...]
+
+
+@dataclass(frozen=True)
+class PostProcessingExportGroup:
+    id: str
+    description: str
+
+
+@dataclass(frozen=True)
+class FraudScenario:
+    id: str
+    enabled: bool
+    target_share: float
 
 
 @dataclass(frozen=True)
@@ -126,6 +156,7 @@ class GenerationConfig:
     identity_mappings: tuple[IdentityMapping, ...]
     master_data: tuple[MasterDataEntry, ...]
     processes: tuple[ProcessDefinition, ...]
+    fraud_scenarios: tuple[FraudScenario, ...]
     tool_requirements: dict[str, ToolRequirement]
     run_settings: RunSettings
     raw: dict

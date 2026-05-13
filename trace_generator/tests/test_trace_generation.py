@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
 import yaml
 
+from erp_trace_generator.artifact_models import ExecutionTraceArtifact, PostProcessingManifestArtifact
+from erp_trace_generator.bindings import resolve_step_inputs
 from erp_trace_generator.cli import main
 from erp_trace_generator.config import load_generation_config
 from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.generator import generate_trace_artifacts
+from erp_trace_generator.models import CasePlan, InputBinding, ProcessStep
+from erp_trace_generator.schema_export import schema_output_paths
 
 
 def _write_yaml(path: Path, payload: dict) -> None:
@@ -124,6 +128,13 @@ def _base_config() -> dict:
                 {"fromStepType": "enter_incoming_invoice", "toStepType": "post_outgoing_payment", "min": 120, "max": 120},
             ],
             "storageLocationLabels": {"0002": "Trading Goods"},
+            "postProcessingExportGroups": [
+                {"id": "change_documents", "description": "SAP change document exports"},
+                {"id": "purchase_orders", "description": "Purchase order header and item exports"},
+                {"id": "material_documents", "description": "Goods receipt material document exports"},
+                {"id": "supplier_invoices", "description": "Supplier invoice exports"},
+                {"id": "accounting_documents", "description": "Payment accounting document exports"},
+            ],
         },
         "toolRequirements": {
             "fiori.create_purchase_requisition": _tool(
@@ -204,6 +215,8 @@ def _step(step_id: str, step_type: str, tool_name: str, role: str) -> dict:
         "stepType": step_type,
         "tool": {"toolName": tool_name, "title": tool_name, "inputModel": "Input", "requiredInputFields": [], "inputProperties": []},
         "requiredRole": role,
+        "inputBindings": _input_bindings(step_type),
+        "expectedOutputs": _expected_outputs(step_type),
     }
 
 
@@ -215,6 +228,66 @@ def _dependency(from_step_type: str, to_step_type: str) -> dict:
     }
 
 
+def _input_bindings(step_type: str) -> list[dict]:
+    return {
+        "create_purchase_requisition": [
+            _binding("material", "master_data", "materialId"),
+            _binding("quantity", "case", "quantity"),
+            _binding("valuation_price", "case", "target_price"),
+            _binding("currency", "master_data", "currency"),
+            _binding("price_unit", "literal", "1", "int"),
+            _binding("delivery_date", "derived", "fiori_delivery_date"),
+            _binding("plant", "master_data", "plant"),
+            _binding("purchasing_group", "literal", "N00"),
+            _binding("purchasing_organization", "master_data", "purchasing_org"),
+            _binding("company_code", "master_data", "purchasing_org"),
+        ],
+        "create_purchase_order": [
+            _binding("purchase_requisition", "prior_output", "purchase_requisition.pr_number"),
+            _binding("storage_location", "case", "storage_location"),
+            _binding("supplier", "master_data", "vendor_id"),
+            _binding("quantity", "case", "quantity"),
+        ],
+        "post_goods_receipt": [
+            _binding("purchase_order", "prior_output", "purchase_order.po_number"),
+            _binding("document_date", "derived", "fiori_delivery_date"),
+            _binding("posting_date", "derived", "fiori_delivery_date"),
+            _binding("storage_location", "derived", "storage_location_label"),
+        ],
+        "enter_incoming_invoice": [
+            _binding("invoice_date", "derived", "fiori_delivery_date"),
+            _binding("invoicing_party", "master_data", "vendor_id"),
+            _binding("gross_amount", "derived", "gross_amount"),
+            _binding("purchase_order", "prior_output", "purchase_order.po_number"),
+            _binding("tax_code", "literal", "XI"),
+        ],
+        "post_outgoing_payment": [
+            _binding("company_code", "master_data", "purchasing_org"),
+            _binding("posting_document_date", "derived", "fiori_delivery_date"),
+            _binding("posting_date", "derived", "fiori_payment_posting_date"),
+            _binding("supplier", "master_data", "vendor_id"),
+            _binding("accounting_document", "prior_output", "supplier_invoice.invoice_number"),
+            _binding("general_ledger_account", "literal", "1800000"),
+            _binding("amount", "derived", "gross_amount"),
+            _binding("currency", "master_data", "currency"),
+        ],
+    }[step_type]
+
+
+def _binding(field: str, source: str, value: str, value_type: str = "string") -> dict:
+    return {"field": field, "source": source, "value": value, "valueType": value_type}
+
+
+def _expected_outputs(step_type: str) -> list[str]:
+    return {
+        "create_purchase_requisition": ["purchase_requisition.pr_number"],
+        "create_purchase_order": ["purchase_order.po_number"],
+        "post_goods_receipt": ["material_document.material_document_number"],
+        "enter_incoming_invoice": ["supplier_invoice.invoice_number", "supplier_invoice.fiscal_year"],
+        "post_outgoing_payment": ["payment_document.payment_document_number"],
+    }[step_type]
+
+
 def test_config_loader_rejects_active_null_tool(tmp_path: Path) -> None:
     payload = _base_config()
     payload["processes"][0]["steps"][2]["tool"] = None
@@ -223,6 +296,108 @@ def test_config_loader_rejects_active_null_tool(tmp_path: Path) -> None:
 
     with pytest.raises(TraceGenerationError, match="has no tool"):
         load_generation_config(config_path)
+
+
+def test_config_loader_rejects_missing_required_input_binding(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["processes"][0]["steps"][0]["inputBindings"] = [
+        binding for binding in payload["processes"][0]["steps"][0]["inputBindings"] if binding["field"] != "material"
+    ]
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="missing bindings.*material"):
+        load_generation_config(config_path)
+
+
+def test_config_loader_rejects_unknown_binding_source(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["processes"][0]["steps"][0]["inputBindings"][0]["source"] = "magic"
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="unsupported binding source 'magic'"):
+        load_generation_config(config_path)
+
+
+def test_enabled_unimplemented_fraud_scenario_fails(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["fraudScenarios"][0]["enabled"] = True
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="No graph transformer registered"):
+        load_generation_config(config_path)
+
+
+def test_binding_resolver_handles_supported_sources_and_named_derived_values() -> None:
+    case = CasePlan(
+        case_id="C001",
+        process_type="procure_to_pay",
+        material_id="MA025",
+        vendor_id="V17121",
+        plant="MI00",
+        purchasing_org="US00",
+        storage_location="0002",
+        storage_location_label="Trading Goods",
+        quantity=10,
+        target_price=20.0,
+        currency="USD",
+        delivery_date=date(2026, 5, 18),
+        gross_amount=200.0,
+    )
+    step = ProcessStep(
+        step_id="A1",
+        step_type="sample_step",
+        tool_name="fiori.sample",
+        required_role="procurement",
+        input_bindings=(
+            InputBinding("sample_step", "material", "master_data", "materialId"),
+            InputBinding("sample_step", "quantity", "case", "quantity"),
+            InputBinding("sample_step", "posting_date", "business_date", "delivery_date"),
+            InputBinding("sample_step", "purchase_order", "prior_output", "purchase_order.po_number"),
+            InputBinding("sample_step", "price_unit", "literal", "1", "int"),
+            InputBinding("sample_step", "amount", "derived", "gross_amount"),
+            InputBinding("sample_step", "document_date", "derived", "fiori_delivery_date"),
+            InputBinding("sample_step", "storage_location", "derived", "storage_location_label"),
+        ),
+        expected_outputs=("sample.output",),
+    )
+
+    assert resolve_step_inputs(step, case) == {
+        "material": "MA025",
+        "quantity": 10,
+        "posting_date": "2026-05-18",
+        "purchase_order": "$purchase_order.po_number",
+        "price_unit": 1,
+        "amount": 200.0,
+        "document_date": "05/18/2026",
+        "storage_location": "Trading Goods",
+    }
+
+
+def test_generated_inputs_validate_against_current_tool_schemas(tmp_path: Path) -> None:
+    payload = _base_config()
+    price_unit = next(
+        binding
+        for binding in payload["processes"][0]["steps"][0]["inputBindings"]
+        if binding["field"] == "price_unit"
+    )
+    price_unit["value"] = "0"
+    config_path = tmp_path / "main.yaml"
+    env_path = tmp_path / ".env"
+    out_dir = tmp_path / "build"
+    _write_yaml(config_path, payload)
+    _write_env(env_path)
+
+    with pytest.raises(TraceGenerationError, match="Invalid input for tool 'fiori.create_purchase_requisition'"):
+        generate_trace_artifacts(
+            config_path=config_path,
+            env_path=env_path,
+            out_dir=out_dir,
+            run_id="RUN_BAD_INPUT",
+            seed=17,
+        )
 
 
 def test_generation_emits_canonical_trace_jsonl_and_post_processing_manifest(tmp_path: Path) -> None:
@@ -290,8 +465,17 @@ def test_generation_emits_canonical_trace_jsonl_and_post_processing_manifest(tmp
     assert task_starts == sorted(task_starts)
 
     manifest = yaml.safe_load(artifacts.post_processing_manifest_path.read_text(encoding="utf-8"))
+    ExecutionTraceArtifact.model_validate(execution_trace)
+    PostProcessingManifestArtifact.model_validate(manifest)
     assert manifest["run_id"] == "RUN_TEST_001"
     assert manifest["timestamp_policy"]["source"] == "planned_target_synthetic_time"
+    assert [item["id"] for item in manifest["post_processing_exports"]] == [
+        "change_documents",
+        "purchase_orders",
+        "material_documents",
+        "supplier_invoices",
+        "accounting_documents",
+    ]
     assert manifest["actor_projection"][0] == {
         "virtual_actor_id": "procurement_01",
         "technical_user_id": "GBGEN_P01",
@@ -309,6 +493,15 @@ def test_generation_emits_canonical_trace_jsonl_and_post_processing_manifest(tmp
     first_start = datetime.fromisoformat(execution_trace["dependency_graph"]["nodes"][0]["target_synthetic_time"]["start"])
     second_start = datetime.fromisoformat(execution_trace["dependency_graph"]["nodes"][1]["target_synthetic_time"]["start"])
     assert (second_start - first_start).total_seconds() >= 30 * 60
+
+
+def test_committed_artifact_json_schemas_are_current() -> None:
+    execution_schema_path, manifest_schema_path = schema_output_paths()
+
+    assert execution_schema_path.exists()
+    assert manifest_schema_path.exists()
+    assert json.loads(execution_schema_path.read_text(encoding="utf-8")) == ExecutionTraceArtifact.model_json_schema()
+    assert json.loads(manifest_schema_path.read_text(encoding="utf-8")) == PostProcessingManifestArtifact.model_json_schema()
 
 
 def test_cli_writes_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

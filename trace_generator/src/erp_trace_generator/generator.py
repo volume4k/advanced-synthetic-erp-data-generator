@@ -11,6 +11,7 @@ from erp_trace_generator.artifacts import write_artifacts
 from erp_trace_generator.config import load_generation_config
 from erp_trace_generator.models import GeneratedArtifacts
 from erp_trace_generator.planning import align_node_times_to_waves, plan_cases, plan_nodes, plan_waves
+from erp_trace_generator.tool_validation import validate_node_tool_inputs
 
 
 def generate_trace_artifacts(
@@ -26,6 +27,7 @@ def generate_trace_artifacts(
     rng = Random(effective_seed)
     cases = plan_cases(config, rng)
     nodes = plan_nodes(config, cases, rng)
+    validate_node_tool_inputs(nodes)
     waves = plan_waves(config, nodes)
     align_node_times_to_waves(nodes, waves)
     return write_artifacts(

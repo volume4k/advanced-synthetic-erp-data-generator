@@ -1,0 +1,398 @@
+{
+  "$defs": {
+    "DependencyGraph": {
+      "additionalProperties": false,
+      "properties": {
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/TraceEdge"
+          },
+          "title": "Edges",
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/TraceNode"
+          },
+          "title": "Nodes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "title": "DependencyGraph",
+      "type": "object"
+    },
+    "ExecutionSchedule": {
+      "additionalProperties": false,
+      "properties": {
+        "max_parallel_sessions": {
+          "title": "Max Parallel Sessions",
+          "type": "integer"
+        },
+        "mode": {
+          "const": "waves",
+          "title": "Mode",
+          "type": "string"
+        },
+        "waves": {
+          "items": {
+            "$ref": "#/$defs/ExecutionWave"
+          },
+          "title": "Waves",
+          "type": "array"
+        }
+      },
+      "required": [
+        "mode",
+        "max_parallel_sessions",
+        "waves"
+      ],
+      "title": "ExecutionSchedule",
+      "type": "object"
+    },
+    "ExecutionWave": {
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/ScheduledNode"
+          },
+          "title": "Nodes",
+          "type": "array"
+        },
+        "sequence_no": {
+          "title": "Sequence No",
+          "type": "integer"
+        },
+        "wave_id": {
+          "title": "Wave Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "wave_id",
+        "sequence_no",
+        "nodes"
+      ],
+      "title": "ExecutionWave",
+      "type": "object"
+    },
+    "ScheduledNode": {
+      "additionalProperties": false,
+      "properties": {
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "startup_order": {
+          "title": "Startup Order",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "node_id",
+        "startup_order"
+      ],
+      "title": "ScheduledNode",
+      "type": "object"
+    },
+    "TargetSyntheticTime": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "title": "End",
+          "type": "string"
+        },
+        "start": {
+          "title": "Start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "TargetSyntheticTime",
+      "type": "object"
+    },
+    "TraceCase": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_label": {
+          "title": "Case Label",
+          "type": "string"
+        },
+        "line_items": {
+          "items": {
+            "$ref": "#/$defs/TraceLineItem"
+          },
+          "title": "Line Items",
+          "type": "array"
+        },
+        "process_type": {
+          "title": "Process Type",
+          "type": "string"
+        },
+        "scenario_id": {
+          "title": "Scenario Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "process_type",
+        "scenario_id",
+        "case_label",
+        "line_items"
+      ],
+      "title": "TraceCase",
+      "type": "object"
+    },
+    "TraceEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "type",
+        "reason"
+      ],
+      "title": "TraceEdge",
+      "type": "object"
+    },
+    "TraceLineItem": {
+      "additionalProperties": false,
+      "properties": {
+        "line_id": {
+          "title": "Line Id",
+          "type": "string"
+        },
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "plant": {
+          "title": "Plant",
+          "type": "string"
+        },
+        "purchasing_org": {
+          "title": "Purchasing Org",
+          "type": "string"
+        },
+        "quantity": {
+          "title": "Quantity",
+          "type": "integer"
+        },
+        "storage_location": {
+          "title": "Storage Location",
+          "type": "string"
+        },
+        "target_price": {
+          "title": "Target Price",
+          "type": "number"
+        },
+        "vendor_id": {
+          "title": "Vendor Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "line_id",
+        "material_id",
+        "vendor_id",
+        "plant",
+        "purchasing_org",
+        "storage_location",
+        "quantity",
+        "target_price"
+      ],
+      "title": "TraceLineItem",
+      "type": "object"
+    },
+    "TraceNode": {
+      "additionalProperties": false,
+      "properties": {
+        "business_dates": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Business Dates",
+          "type": "object"
+        },
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "expected_outputs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Outputs",
+          "type": "array"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "title": "Inputs",
+          "type": "object"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Labels",
+          "type": "object"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "step_type": {
+          "title": "Step Type",
+          "type": "string"
+        },
+        "target_synthetic_time": {
+          "$ref": "#/$defs/TargetSyntheticTime"
+        },
+        "technical_sap_user": {
+          "title": "Technical Sap User",
+          "type": "string"
+        },
+        "tool_name": {
+          "title": "Tool Name",
+          "type": "string"
+        },
+        "virtual_actor_id": {
+          "title": "Virtual Actor Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "case_id",
+        "step_type",
+        "tool_name",
+        "virtual_actor_id",
+        "technical_sap_user",
+        "session_id",
+        "inputs",
+        "expected_outputs",
+        "business_dates",
+        "target_synthetic_time",
+        "labels"
+      ],
+      "title": "TraceNode",
+      "type": "object"
+    },
+    "ValidationReport": {
+      "additionalProperties": false,
+      "properties": {
+        "errors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "errors",
+        "warnings"
+      ],
+      "title": "ValidationReport",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/TraceCase"
+      },
+      "title": "Cases",
+      "type": "array"
+    },
+    "config_hash": {
+      "title": "Config Hash",
+      "type": "string"
+    },
+    "dependency_graph": {
+      "$ref": "#/$defs/DependencyGraph"
+    },
+    "execution_schedule": {
+      "$ref": "#/$defs/ExecutionSchedule"
+    },
+    "llm_metadata": {
+      "additionalProperties": true,
+      "title": "Llm Metadata",
+      "type": "object"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "tool_catalog_hash": {
+      "title": "Tool Catalog Hash",
+      "type": "string"
+    },
+    "trace_generator_version": {
+      "title": "Trace Generator Version",
+      "type": "string"
+    },
+    "trace_version": {
+      "title": "Trace Version",
+      "type": "string"
+    },
+    "validation_report": {
+      "$ref": "#/$defs/ValidationReport"
+    }
+  },
+  "required": [
+    "trace_version",
+    "run_id",
+    "config_hash",
+    "tool_catalog_hash",
+    "trace_generator_version",
+    "llm_metadata",
+    "cases",
+    "dependency_graph",
+    "execution_schedule",
+    "validation_report"
+  ],
+  "title": "ExecutionTraceArtifact",
+  "type": "object"
+}

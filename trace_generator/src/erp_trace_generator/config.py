@@ -11,11 +11,15 @@ import yaml
 from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.models import (
     Actor,
+    BindingSource,
+    BindingValueType,
+    FraudScenario,
     GenerationConfig,
     IdentityMapping,
-    InterStepDelay,
+    InputBinding,
     MasterDataEntry,
     MinuteRange,
+    PostProcessingExportGroup,
     ProcessDefinition,
     ProcessDependency,
     ProcessStep,
@@ -24,6 +28,7 @@ from erp_trace_generator.models import (
     ToolRequirement,
     WorkingHours,
 )
+from erp_trace_generator.fraud import ensure_fraud_scenarios_supported
 
 
 DEFAULT_STEP_DURATION_MINUTES = {
@@ -50,6 +55,7 @@ def load_generation_config(path: str | Path) -> GenerationConfig:
         identity_mappings=tuple(_identity_mapping(item) for item in _list(payload, "identityMappings")),
         master_data=tuple(_master_data(item) for item in _list(payload, "masterData")),
         processes=tuple(_process(item, payload.get("toolRequirements", {})) for item in _list(payload, "processes")),
+        fraud_scenarios=tuple(_fraud_scenario(item) for item in payload.get("fraudScenarios", [])),
         tool_requirements=_tool_requirements(payload.get("toolRequirements", {})),
         run_settings=_run_settings(payload.get("runSettings", {})),
         raw=payload,
@@ -122,12 +128,15 @@ def _process(item: dict[str, Any], tool_requirements: dict[str, Any]) -> Process
             raise TraceGenerationError(
                 f"Process '{item.get('processType')}' step '{step.get('stepType')}' references unknown tool '{tool_name}'"
             )
+        step_type = str(step["stepType"])
         steps.append(
             ProcessStep(
                 step_id=str(step["stepId"]),
-                step_type=str(step["stepType"]),
+                step_type=step_type,
                 tool_name=tool_name,
                 required_role=str(step["requiredRole"]),
+                input_bindings=tuple(_input_binding(binding, step_type) for binding in step.get("inputBindings", [])),
+                expected_outputs=tuple(str(value) for value in step.get("expectedOutputs", [])),
             )
         )
 
@@ -155,6 +164,38 @@ def _tool_requirements(items: dict[str, Any]) -> dict[str, ToolRequirement]:
         )
         for name, value in items.items()
     }
+
+
+def _input_binding(item: dict[str, Any], step_type: str) -> InputBinding:
+    return InputBinding(
+        step_type=str(item.get("stepType", step_type)),
+        field=str(item["field"]),
+        source=_binding_source(item["source"]),
+        value=str(item["value"]),
+        value_type=_binding_value_type(item.get("valueType", "string")),
+    )
+
+
+def _binding_source(value: object) -> BindingSource:
+    source = str(value)
+    if source not in {"literal", "master_data", "case", "business_date", "prior_output", "derived"}:
+        raise TraceGenerationError(f"unsupported binding source '{source}'")
+    return source  # type: ignore[return-value]
+
+
+def _binding_value_type(value: object) -> BindingValueType:
+    value_type = str(value)
+    if value_type not in {"string", "int", "float", "bool"}:
+        raise TraceGenerationError(f"unsupported binding valueType '{value_type}'")
+    return value_type  # type: ignore[return-value]
+
+
+def _fraud_scenario(item: dict[str, Any]) -> FraudScenario:
+    return FraudScenario(
+        id=str(item["id"]),
+        enabled=bool(item["enabled"]),
+        target_share=float(item["targetShare"]),
+    )
 
 
 def _run_settings(item: dict[str, Any]) -> RunSettings:
@@ -189,6 +230,10 @@ def _run_settings(item: dict[str, Any]) -> RunSettings:
         },
         inter_step_delay_minutes=inter_step_delays,
         storage_location_labels={str(key): str(value) for key, value in item.get("storageLocationLabels", {}).items()},
+        post_processing_export_groups=tuple(
+            PostProcessingExportGroup(id=str(value["id"]), description=str(value["description"]))
+            for value in item.get("postProcessingExportGroups", [])
+        ),
     )
 
 
@@ -222,6 +267,17 @@ def _validate(config: GenerationConfig) -> None:
             raise TraceGenerationError(f"Actor '{actor.id}' for step '{step.step_type}' has no technical user mapping")
         if step.step_type not in config.run_settings.step_duration_minutes:
             raise TraceGenerationError(f"Step '{step.step_type}' has no step duration range")
+        if not step.expected_outputs:
+            raise TraceGenerationError(f"Step '{step.step_type}' has no expected outputs")
+        required_fields = set(config.tool_requirements[step.tool_name].required_input_fields)
+        bound_fields = {binding.field for binding in step.input_bindings}
+        missing_bindings = sorted(required_fields - bound_fields)
+        if missing_bindings:
+            missing = ", ".join(missing_bindings)
+            raise TraceGenerationError(f"Step '{step.step_type}' missing bindings for required fields: {missing}")
+        unknown_binding_steps = {binding.step_type for binding in step.input_bindings if binding.step_type != step.step_type}
+        if unknown_binding_steps:
+            raise TraceGenerationError(f"Step '{step.step_type}' has binding with mismatched stepType")
 
     step_types = {step.step_type for step in active_process.steps}
     for dep in active_process.dependencies:
@@ -230,6 +286,7 @@ def _validate(config: GenerationConfig) -> None:
                 f"Dependency '{dep.from_step_type}->{dep.to_step_type}' references unknown step"
             )
     _validate_acyclic(active_process)
+    ensure_fraud_scenarios_supported(config.fraud_scenarios)
 
 
 def _validate_acyclic(process: ProcessDefinition) -> None:

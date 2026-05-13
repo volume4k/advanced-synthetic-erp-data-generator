@@ -6,17 +6,9 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from random import Random
 
+from erp_trace_generator.bindings import business_dates_for_step, resolve_step_inputs
 from erp_trace_generator.models import CasePlan, GenerationConfig, PlannedNode
 from erp_trace_generator.timeline import TimelinePlanner
-
-
-EXPECTED_OUTPUTS = {
-    "create_purchase_requisition": ["purchase_requisition.pr_number"],
-    "create_purchase_order": ["purchase_order.po_number"],
-    "post_goods_receipt": ["material_document.material_document_number"],
-    "enter_incoming_invoice": ["supplier_invoice.invoice_number", "supplier_invoice.fiscal_year"],
-    "post_outgoing_payment": ["payment_document.payment_document_number"],
-}
 
 
 def plan_cases(config: GenerationConfig, rng: Random) -> list[CasePlan]:
@@ -78,9 +70,9 @@ def plan_nodes(config: GenerationConfig, cases: list[CasePlan], rng: Random) -> 
                 virtual_actor_id=actor.id,
                 technical_user_id=technical_user.id,
                 session_id=f"{actor.id}-session",
-                inputs=_inputs_for(step.step_type, case),
-                expected_outputs=EXPECTED_OUTPUTS[step.step_type],
-                business_dates=_business_dates_for(step.step_type, case),
+                inputs=resolve_step_inputs(step, case),
+                expected_outputs=list(step.expected_outputs),
+                business_dates=business_dates_for_step(step, case),
                 target_start=start,
                 target_end=end,
             )
@@ -164,70 +156,3 @@ def align_node_times_to_waves(nodes: list[PlannedNode], waves: list[dict]) -> No
 
 def _step_id_for(process, step_type: str) -> str:
     return next(step.step_id for step in process.steps if step.step_type == step_type)
-
-
-def _inputs_for(step_type: str, case: CasePlan) -> dict:
-    if step_type == "create_purchase_requisition":
-        return {
-            "material": case.material_id,
-            "quantity": case.quantity,
-            "valuation_price": case.target_price,
-            "currency": case.currency,
-            "price_unit": 1,
-            "delivery_date": _fiori_date(case.delivery_date),
-            "plant": case.plant,
-            "purchasing_group": "N00",
-            "purchasing_organization": case.purchasing_org,
-            "company_code": case.purchasing_org,
-        }
-    if step_type == "create_purchase_order":
-        return {
-            "purchase_requisition": "$purchase_requisition.pr_number",
-            "storage_location": case.storage_location,
-            "supplier": case.vendor_id,
-            "quantity": case.quantity,
-        }
-    if step_type == "post_goods_receipt":
-        return {
-            "purchase_order": "$purchase_order.po_number",
-            "document_date": _fiori_date(case.delivery_date),
-            "posting_date": _fiori_date(case.delivery_date),
-            "storage_location": case.storage_location_label,
-        }
-    if step_type == "enter_incoming_invoice":
-        return {
-            "invoice_date": _fiori_date(case.delivery_date),
-            "invoicing_party": case.vendor_id,
-            "gross_amount": case.gross_amount,
-            "purchase_order": "$purchase_order.po_number",
-            "tax_code": "XI",
-        }
-    if step_type == "post_outgoing_payment":
-        return {
-            "company_code": case.purchasing_org,
-            "posting_document_date": _fiori_date(case.delivery_date),
-            "posting_date": _fiori_date(case.delivery_date + timedelta(days=1)),
-            "supplier": case.vendor_id,
-            "accounting_document": "$supplier_invoice.invoice_number",
-            "general_ledger_account": "1800000",
-            "amount": case.gross_amount,
-            "currency": case.currency,
-        }
-    raise AssertionError(f"unsupported step type: {step_type}")
-
-
-def _business_dates_for(step_type: str, case: CasePlan) -> dict[str, str]:
-    if step_type == "create_purchase_requisition":
-        return {"delivery_date": case.delivery_date.isoformat()}
-    if step_type == "post_outgoing_payment":
-        return {
-            "posting_document_date": case.delivery_date.isoformat(),
-            "posting_date": (case.delivery_date + timedelta(days=1)).isoformat(),
-        }
-    if step_type in {"post_goods_receipt", "enter_incoming_invoice"}:
-        return {"posting_date": case.delivery_date.isoformat()}
-    return {}
-
-
-def _fiori_date(value) -> str:
-    return value.strftime("%m/%d/%Y")

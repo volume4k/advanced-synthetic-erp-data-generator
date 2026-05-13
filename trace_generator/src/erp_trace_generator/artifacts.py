@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from erp_trace_generator.artifact_models import ExecutionTraceArtifact, PostProcessingManifestArtifact
 from erp_trace_generator.env import read_env_values
 from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.models import CasePlan, GenerationConfig, GeneratedArtifacts, PlannedNode
@@ -32,8 +33,10 @@ def write_artifacts(
     executor_trace_path = output_dir / f"{run_id}.executor.trace.jsonl"
     post_processing_manifest_path = output_dir / f"{run_id}.post-processing-manifest.yaml"
 
-    execution_trace = _execution_trace(config, cases, nodes, waves, run_id, seed, config_hash, tool_catalog_hash)
-    manifest = _post_processing_manifest(config, cases, nodes, run_id, config_hash)
+    execution_trace = _validated_execution_trace(
+        _execution_trace(config, cases, nodes, waves, run_id, seed, config_hash, tool_catalog_hash)
+    )
+    manifest = _validated_manifest(_post_processing_manifest(config, cases, nodes, run_id, config_hash))
 
     execution_trace_path.write_text(yaml.safe_dump(execution_trace, sort_keys=False), encoding="utf-8")
     executor_trace_path.write_text(_executor_jsonl(config, nodes, waves, env_path), encoding="utf-8")
@@ -43,6 +46,25 @@ def write_artifacts(
         executor_trace_path=executor_trace_path,
         post_processing_manifest_path=post_processing_manifest_path,
     )
+
+
+def _validated_execution_trace(payload: dict[str, Any]) -> dict[str, Any]:
+    return ExecutionTraceArtifact.model_validate(payload).model_dump(mode="json", by_alias=True)
+
+
+def _validated_manifest(payload: dict[str, Any]) -> dict[str, Any]:
+    _validate_manifest_links(payload)
+    return PostProcessingManifestArtifact.model_validate(payload).model_dump(mode="json")
+
+
+def _validate_manifest_links(payload: dict[str, Any]) -> None:
+    node_ids = {item["node_id"] for item in payload["node_timestamps"]}
+    case_ids = {item["case_id"] for item in payload["case_labels"]}
+    for item in payload["expected_object_keys"]:
+        if item["node_id"] not in node_ids:
+            raise TraceGenerationError(f"Manifest expected object keys reference unknown node '{item['node_id']}'")
+        if item["case_id"] not in case_ids:
+            raise TraceGenerationError(f"Manifest expected object keys reference unknown case '{item['case_id']}'")
 
 
 def _execution_trace(
@@ -145,6 +167,10 @@ def _post_processing_manifest(
                 ],
             }
             for case in cases
+        ],
+        "post_processing_exports": [
+            {"id": export.id, "description": export.description}
+            for export in config.run_settings.post_processing_export_groups
         ],
         "failed_case_policy": {
             "exclude_failed_cases": True,

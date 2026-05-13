@@ -1,0 +1,291 @@
+{
+  "$defs": {
+    "ActorProjection": {
+      "additionalProperties": false,
+      "properties": {
+        "expose_as": {
+          "title": "Expose As",
+          "type": "string"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "technical_user_id": {
+          "title": "Technical User Id",
+          "type": "string"
+        },
+        "virtual_actor_id": {
+          "title": "Virtual Actor Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "virtual_actor_id",
+        "technical_user_id",
+        "session_id",
+        "expose_as"
+      ],
+      "title": "ActorProjection",
+      "type": "object"
+    },
+    "CaseLabel": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_label": {
+          "title": "Case Label",
+          "type": "string"
+        },
+        "scenario_id": {
+          "title": "Scenario Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "scenario_id",
+        "case_label"
+      ],
+      "title": "CaseLabel",
+      "type": "object"
+    },
+    "ExpectedObjectKeys": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "expected_outputs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Outputs",
+          "type": "array"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "case_id",
+        "expected_outputs"
+      ],
+      "title": "ExpectedObjectKeys",
+      "type": "object"
+    },
+    "FailedCasePolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "exclude_failed_cases": {
+          "title": "Exclude Failed Cases",
+          "type": "boolean"
+        },
+        "source_artifacts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Artifacts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "exclude_failed_cases",
+        "source_artifacts"
+      ],
+      "title": "FailedCasePolicy",
+      "type": "object"
+    },
+    "NodeTimestamp": {
+      "additionalProperties": false,
+      "properties": {
+        "business_dates": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Business Dates",
+          "type": "object"
+        },
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "step_type": {
+          "title": "Step Type",
+          "type": "string"
+        },
+        "target_synthetic_end": {
+          "title": "Target Synthetic End",
+          "type": "string"
+        },
+        "target_synthetic_start": {
+          "title": "Target Synthetic Start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "case_id",
+        "step_type",
+        "target_synthetic_start",
+        "target_synthetic_end",
+        "business_dates"
+      ],
+      "title": "NodeTimestamp",
+      "type": "object"
+    },
+    "ObjectLineage": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "chain": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Chain",
+          "type": "array"
+        }
+      },
+      "required": [
+        "case_id",
+        "chain"
+      ],
+      "title": "ObjectLineage",
+      "type": "object"
+    },
+    "PostProcessingExport": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "description"
+      ],
+      "title": "PostProcessingExport",
+      "type": "object"
+    },
+    "TimestampPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "generator_real_time_is_not_synthetic_time": {
+          "title": "Generator Real Time Is Not Synthetic Time",
+          "type": "boolean"
+        },
+        "preserve_process_order": {
+          "title": "Preserve Process Order",
+          "type": "boolean"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "preserve_process_order",
+        "generator_real_time_is_not_synthetic_time"
+      ],
+      "title": "TimestampPolicy",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "actor_projection": {
+      "items": {
+        "$ref": "#/$defs/ActorProjection"
+      },
+      "title": "Actor Projection",
+      "type": "array"
+    },
+    "case_labels": {
+      "items": {
+        "$ref": "#/$defs/CaseLabel"
+      },
+      "title": "Case Labels",
+      "type": "array"
+    },
+    "config_hash": {
+      "title": "Config Hash",
+      "type": "string"
+    },
+    "expected_object_keys": {
+      "items": {
+        "$ref": "#/$defs/ExpectedObjectKeys"
+      },
+      "title": "Expected Object Keys",
+      "type": "array"
+    },
+    "failed_case_policy": {
+      "$ref": "#/$defs/FailedCasePolicy"
+    },
+    "manifest_version": {
+      "title": "Manifest Version",
+      "type": "string"
+    },
+    "node_timestamps": {
+      "items": {
+        "$ref": "#/$defs/NodeTimestamp"
+      },
+      "title": "Node Timestamps",
+      "type": "array"
+    },
+    "object_lineage": {
+      "items": {
+        "$ref": "#/$defs/ObjectLineage"
+      },
+      "title": "Object Lineage",
+      "type": "array"
+    },
+    "post_processing_exports": {
+      "items": {
+        "$ref": "#/$defs/PostProcessingExport"
+      },
+      "title": "Post Processing Exports",
+      "type": "array"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "timestamp_policy": {
+      "$ref": "#/$defs/TimestampPolicy"
+    }
+  },
+  "required": [
+    "manifest_version",
+    "run_id",
+    "config_hash",
+    "timestamp_policy",
+    "actor_projection",
+    "case_labels",
+    "node_timestamps",
+    "expected_object_keys",
+    "object_lineage",
+    "post_processing_exports",
+    "failed_case_policy"
+  ],
+  "title": "PostProcessingManifestArtifact",
+  "type": "object"
+}
