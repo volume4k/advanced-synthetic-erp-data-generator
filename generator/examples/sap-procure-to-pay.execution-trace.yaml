@@ -24,7 +24,7 @@ cases:
     vendor_id: '107902'
     plant: MI00
     purchasing_org: US00
-    storage_location: FG00
+    storage_location: Trading Goods
     quantity: 10
     target_price: 20
 dependency_graph:
@@ -65,7 +65,7 @@ dependency_graph:
     session_id: p2p-example-session
     inputs:
       purchase_requisition: $purchase_requisition.pr_number
-      storage_location: FG00
+      storage_location: Trading Goods
       supplier: '107902'
       quantity: 10
     expected_outputs:

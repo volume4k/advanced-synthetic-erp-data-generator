@@ -273,8 +273,9 @@ class TraceExecutor:
         try:
             params = spec.input_model.model_validate(resolved_input)
         except ValidationError as exc:
+            line_info = f" on line {record.line_number}" if record.line_number >= 0 else ""
             raise ToolInputValidationError(
-                f"Invalid input for tool '{record.tool}' on line {record.line_number}: {exc}"
+                f"Invalid input for tool '{record.tool}'{line_info}: {exc}"
             ) from exc
 
         context = context_factory(record)
@@ -291,7 +292,7 @@ def _canonical_node_to_record(node: CanonicalNode, meta: dict[str, Any]) -> Exec
         tool=node.tool_name,
         input=node.inputs,
         meta=meta,
-        line_number=0,
+        line_number=-1,
     )
 
 
