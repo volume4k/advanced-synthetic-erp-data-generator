@@ -3,18 +3,18 @@ import "objects.pkl"
 identityMappings: Listing<objects.IdentityMapping> = new Listing {
   new objects.IdentityMapping {
     virtualActorId = "procurement_01"
-    technicalUserId = "GBGEN_P01"
+    technicalUserId = "TU_01"
   }
   new objects.IdentityMapping {
     virtualActorId = "procurement_manager_01"
-    technicalUserId = "GBGEN_P02"
+    technicalUserId = "TU_01"
   }
   new objects.IdentityMapping {
     virtualActorId = "warehouse_01"
-    technicalUserId = "GBGEN_P03"
+    technicalUserId = "TU_01"
   }
   new objects.IdentityMapping {
     virtualActorId = "accounts_payable_01"
-    technicalUserId = "GBGEN_P04"
+    technicalUserId = "TU_01"
   }
 }

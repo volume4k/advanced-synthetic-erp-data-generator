@@ -5,8 +5,8 @@ actors: Listing<objects.VirtualActor> = new Listing {
     id = "procurement_01"
     displayName = "Dieter Einkauf"
     role = "procurement"
-    timezone = "Europe/Berlin"
-    workLocation = "HD00"
+    timezone = "America/New_York"
+    workLocation = "MI00"
     speedFactor = 1.2
     realismProfile {
       workerType = "relaxed procurement clerk"
@@ -28,8 +28,8 @@ actors: Listing<objects.VirtualActor> = new Listing {
     id = "procurement_manager_01"
     displayName = "Marta Freigabe"
     role = "procurement_manager"
-    timezone = "Europe/Berlin"
-    workLocation = "HD00"
+    timezone = "America/New_York"
+    workLocation = "MI00"
     speedFactor = 0.9
     realismProfile {
       workerType = "busy procurement manager"
@@ -48,8 +48,8 @@ actors: Listing<objects.VirtualActor> = new Listing {
     id = "warehouse_01"
     displayName = "Werner Lager"
     role = "warehouse"
-    timezone = "Europe/Berlin"
-    workLocation = "HD00"
+    timezone = "America/New_York"
+    workLocation = "MI00"
     speedFactor = 1.1
     realismProfile {
       workerType = "routine warehouse clerk"
@@ -70,8 +70,8 @@ actors: Listing<objects.VirtualActor> = new Listing {
     id = "accounts_payable_01"
     displayName = "Anna Kreditoren"
     role = "accounts_payable"
-    timezone = "Europe/Berlin"
-    workLocation = "HD00"
+    timezone = "America/New_York"
+    workLocation = "MI00"
     speedFactor = 1.0
     realismProfile {
       workerType = "structured accounts payable clerk"

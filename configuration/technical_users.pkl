@@ -2,27 +2,27 @@ import "objects.pkl"
 
 technicalUsers: Listing<objects.TechnicalUser> = new Listing {
   new objects.TechnicalUser {
-    id = "GBGEN_P01"
+    id = "TU_01"
     usernameEnvVar = "SAP_USER_1_UN"
     passwordEnvVar = "SAP_USER_1_PW"
     loginUrlEnvVar = "SAP_URL"
   }
-  new objects.TechnicalUser {
-    id = "GBGEN_P02"
-    usernameEnvVar = "SAP_USER_2_UN"
-    passwordEnvVar = "SAP_USER_2_PW"
-    loginUrlEnvVar = "SAP_URL"
-  }
-  new objects.TechnicalUser {
-    id = "GBGEN_P03"
-    usernameEnvVar = "SAP_USER_3_UN"
-    passwordEnvVar = "SAP_USER_3_PW"
-    loginUrlEnvVar = "SAP_URL"
-  }
-  new objects.TechnicalUser {
-    id = "GBGEN_P04"
-    usernameEnvVar = "SAP_USER_4_UN"
-    passwordEnvVar = "SAP_USER_4_PW"
-    loginUrlEnvVar = "SAP_URL"
-  }
+  //   new objects.TechnicalUser {
+  //     id = "TU_02"
+  //     usernameEnvVar = "SAP_USER_2_UN"
+  //     passwordEnvVar = "SAP_USER_2_PW"
+  //     loginUrlEnvVar = "SAP_URL"
+  //   }
+  //   new objects.TechnicalUser {
+  //     id = "GBGEN_P03"
+  //     usernameEnvVar = "SAP_USER_3_UN"
+  //     passwordEnvVar = "SAP_USER_3_PW"
+  //     loginUrlEnvVar = "SAP_URL"
+  //   }
+  //   new objects.TechnicalUser {
+  //     id = "GBGEN_P04"
+  //     usernameEnvVar = "SAP_USER_4_UN"
+  //     passwordEnvVar = "SAP_USER_4_PW"
+  //     loginUrlEnvVar = "SAP_URL"
+  //   }
 }
