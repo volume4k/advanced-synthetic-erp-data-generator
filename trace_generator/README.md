@@ -3,7 +3,6 @@
 `trace_generator/` turns compiled Pkl configuration YAML into:
 
 - canonical planned execution trace YAML
-- current trace-executor JSONL
 - post-processing manifest YAML
 
 ## Architecture
@@ -20,9 +19,8 @@ flowchart LR
   scheduler --> writer["ArtifactWriter"]
   cli --> writer
   writer --> canonical["execution-trace.yaml\ncanonical graph and waves"]
-  writer --> jsonl["executor.trace.jsonl\ncurrent executor bridge"]
   writer --> manifest["post-processing-manifest.yaml\nlabels, timestamp plan, object lineage"]
-  jsonl --> executor["generator/\nSAP execution"]
+  canonical --> executor["generator/\nSAP execution"]
   canonical --> post["post processor\nplanned truth"]
   manifest --> post
 ```
@@ -30,7 +28,7 @@ flowchart LR
 Run:
 
 ```bash
-uv run --project trace_generator erp-trace-generate configuration/build/main.yaml --env-file configuration/.env --out-dir trace_generator/build
+uv run --project trace_generator erp-trace-generate configuration/build/main.yaml --out-dir trace_generator/build
 ```
 
-The generated JSONL never contains passwords. Usernames and login URLs are resolved from the env file so the current trace executor can initialize sessions.
+Generated traces do not contain passwords. Canonical session blocks reference env var names so the executor can resolve usernames, passwords, and login URLs at runtime.

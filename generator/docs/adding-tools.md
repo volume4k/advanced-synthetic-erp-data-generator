@@ -6,10 +6,17 @@ Start with `recording-tools.md` if you are converting a manually recorded SAP fl
 
 ## What A Tool Is
 
-A tool is one executable browser action referenced from a JSONL trace record:
+A tool is one executable browser action referenced from a canonical execution-trace node:
 
-```json
-{"task_id":"task-001","session_id":"session-001","user_id":"buyer-a","tool":"fiori.create_purchase_requisition","input":{"material":"PUMP1902","quantity":20}}
+```yaml
+node_id: C001_A1
+case_id: C001
+tool_name: fiori.create_purchase_requisition
+session_id: buyer-session
+virtual_actor_id: buyer-a
+inputs:
+  material: PUMP1902
+  quantity: 20
 ```
 
 The executor validates `input`, reuses the browser session identified by `session_id`, runs the tool, and prints a structured result.
@@ -76,7 +83,7 @@ Minimum contribution:
 - runner function
 - `ToolSpec`
 - registry entry
-- password-free example trace
+- password-free canonical example trace
 - manual smoke notes with the command used and observed success value
 
 Recommended contribution:
@@ -162,7 +169,7 @@ For real SAP UI flows:
 Example:
 
 ```bash
-uv run --project generator erp-trace-exec generator/examples/sap-create-purchase-requisition.trace.jsonl --headed
+uv run --project generator erp-trace-exec generator/examples/sap-procure-to-pay.execution-trace.yaml --headed
 ```
 
 Live SAP smoke runs are optional and non-gating unless a PR explicitly opts into them. They should stay separate from the default pytest suite because they require credentials, a healthy SAP tenant, and mutable business data. If an automated live smoke test is added later, mark it with `@pytest.mark.live_sap`; the default pytest config excludes that marker.
