@@ -35,7 +35,7 @@ dependency_graph:
       supplier: '107902'
       accounting_document: '5105600103'
       general_ledger_account: '1800000'
-      amount: 1976
+      amount: 1976.00
       currency: USD
     expected_outputs:
     - payment_document.payment_document_number

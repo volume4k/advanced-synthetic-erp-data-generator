@@ -54,6 +54,14 @@ class MasterDataEntry:
     delivery_lead_time_min_days: int
     delivery_lead_time_max_days: int
 
+    def __post_init__(self) -> None:
+        if self.quantity_min > self.quantity_max:
+            raise ValueError("quantity_min must be <= quantity_max")
+        if self.price_min > self.price_max:
+            raise ValueError("price_min must be <= price_max")
+        if self.delivery_lead_time_min_days > self.delivery_lead_time_max_days:
+            raise ValueError("delivery_lead_time_min_days must be <= delivery_lead_time_max_days")
+
 
 @dataclass(frozen=True)
 class ToolRequirement:
@@ -101,6 +109,10 @@ class ProcessDefinition:
 class MinuteRange:
     min: int
     max: int
+
+    def __post_init__(self) -> None:
+        if self.min > self.max:
+            raise ValueError("min must be <= max")
 
 
 @dataclass(frozen=True)
@@ -151,6 +163,10 @@ class FraudScenario:
     enabled: bool
     target_share: float
 
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.target_share <= 1.0:
+            raise ValueError("target_share must be between 0 and 1")
+
 
 @dataclass(frozen=True)
 class GenerationConfig:
@@ -169,6 +185,8 @@ class GenerationConfig:
 
     def active_process(self) -> ProcessDefinition:
         active = self.run_settings.active_process_types
+        if not active:
+            raise ValueError("active_process_types cannot be empty")
         for process in self.processes:
             if process.process_type == active[0]:
                 return process
@@ -183,8 +201,13 @@ class GenerationConfig:
         )
 
     def technical_user_for_actor(self, actor_id: str) -> TechnicalUser:
-        mapping = next(item for item in self.identity_mappings if item.virtual_actor_id == actor_id)
-        return next(item for item in self.technical_users if item.id == mapping.technical_user_id)
+        mapping = next((item for item in self.identity_mappings if item.virtual_actor_id == actor_id), None)
+        if mapping is None:
+            raise ValueError(f"No identity mapping found for actor_id: {actor_id}")
+        technical_user = next((item for item in self.technical_users if item.id == mapping.technical_user_id), None)
+        if technical_user is None:
+            raise ValueError(f"No technical user found for technical_user_id: {mapping.technical_user_id}")
+        return technical_user
 
 
 @dataclass(frozen=True)

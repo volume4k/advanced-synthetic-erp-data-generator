@@ -16,7 +16,7 @@ from erp_trace_generator.config import load_generation_config
 from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.fraud import FRAUD_TRANSFORMERS, register_fraud_transformer
 from erp_trace_generator.generator import generate_trace_artifacts
-from erp_trace_generator.models import CasePlan, InputBinding, PlannedNode, ProcessStep
+from erp_trace_generator.models import CasePlan, FraudScenario, InputBinding, MasterDataEntry, MinuteRange, PlannedNode, ProcessStep
 from erp_trace_generator.planning import plan_cases, plan_nodes, plan_waves
 from erp_trace_generator.schema_export import schema_output_paths
 from erp_trace_generator.timeline import TimelinePlanner
@@ -378,6 +378,28 @@ def test_fraud_transformer_registration_rejects_duplicates() -> None:
             register_fraud_transformer("TEST_SCENARIO")(transformer)
     finally:
         FRAUD_TRANSFORMERS.pop("TEST_SCENARIO", None)
+
+
+def test_core_dataclass_invariants_fail_fast() -> None:
+    with pytest.raises(ValueError, match="quantity_min"):
+        MasterDataEntry(
+            material_id="M1",
+            valid_vendors=("V1",),
+            valid_plants=("P1",),
+            valid_purchasing_orgs=("O1",),
+            valid_storage_locations=("S1",),
+            quantity_min=2,
+            quantity_max=1,
+            price_min=1.0,
+            price_max=2.0,
+            currency="USD",
+            delivery_lead_time_min_days=1,
+            delivery_lead_time_max_days=2,
+        )
+    with pytest.raises(ValueError, match="min must be <= max"):
+        MinuteRange(min=2, max=1)
+    with pytest.raises(ValueError, match="target_share"):
+        FraudScenario(id="BAD", enabled=True, target_share=1.1)
 
 
 def test_binding_resolver_handles_supported_sources_and_named_derived_values() -> None:
