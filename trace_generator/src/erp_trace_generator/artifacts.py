@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from erp_trace_generator.artifact_models import ExecutionTraceArtifact, PostProcessingManifestArtifact
-from erp_trace_generator.env import read_env_values
 from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.models import CasePlan, GenerationConfig, GeneratedArtifacts, PlannedNode
 
@@ -20,7 +18,6 @@ def write_artifacts(
     cases: list[CasePlan],
     nodes: list[PlannedNode],
     waves: list[dict],
-    env_path: str | Path,
     out_dir: str | Path,
     run_id: str,
     seed: int,
@@ -30,7 +27,6 @@ def write_artifacts(
     output_dir = Path(out_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     execution_trace_path = output_dir / f"{run_id}.execution-trace.yaml"
-    executor_trace_path = output_dir / f"{run_id}.executor.trace.jsonl"
     post_processing_manifest_path = output_dir / f"{run_id}.post-processing-manifest.yaml"
 
     execution_trace = _validated_execution_trace(
@@ -39,11 +35,9 @@ def write_artifacts(
     manifest = _validated_manifest(_post_processing_manifest(config, cases, nodes, run_id, config_hash))
 
     execution_trace_path.write_text(yaml.safe_dump(execution_trace, sort_keys=False), encoding="utf-8")
-    executor_trace_path.write_text(_executor_jsonl(config, nodes, waves, env_path), encoding="utf-8")
     post_processing_manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
     return GeneratedArtifacts(
         execution_trace_path=execution_trace_path,
-        executor_trace_path=executor_trace_path,
         post_processing_manifest_path=post_processing_manifest_path,
     )
 
@@ -173,62 +167,6 @@ def _post_processing_manifest(
             "source_artifacts": ["execution_log", "object_registry"],
         },
     }
-
-
-def _executor_jsonl(config: GenerationConfig, nodes: list[PlannedNode], waves: list[dict], env_path: str | Path) -> str:
-    env_values = read_env_values(env_path)
-    nodes_by_id = {node.node_id: node for node in nodes}
-    scheduled_nodes = [
-        nodes_by_id[item["node_id"]]
-        for wave in waves
-        for item in sorted(wave["nodes"], key=lambda value: value["startup_order"])
-    ]
-    init_users = []
-    seen_actor_ids: set[str] = set()
-    actors_by_id = {actor.id: actor for actor in config.actors}
-
-    for node in scheduled_nodes:
-        if node.virtual_actor_id in seen_actor_ids:
-            continue
-        seen_actor_ids.add(node.virtual_actor_id)
-        actor = actors_by_id[node.virtual_actor_id]
-        technical_user = config.technical_user_for_actor(actor.id)
-        username = env_values.get(technical_user.username_env_var)
-        if username is None:
-            raise TraceGenerationError(
-                f"Missing username env var '{technical_user.username_env_var}' for actor '{actor.id}'"
-            )
-        init_user = {
-            "session_id": f"{actor.id}-session",
-            "user_id": actor.id,
-            "username": username,
-        }
-        login_url = env_values.get(technical_user.login_url_env_var) or env_values.get(config.sap_login_url_env_var)
-        if login_url:
-            init_user["login_url"] = login_url
-        init_users.append(init_user)
-
-    records = [{"kind": "init", "users": init_users}]
-    for node in scheduled_nodes:
-        records.append(
-            {
-                "task_id": node.node_id,
-                "session_id": node.session_id,
-                "user_id": node.virtual_actor_id,
-                "tool": node.tool_name,
-                "meta": {
-                    "case_id": node.case_id,
-                    "node_id": node.node_id,
-                    "step_type": node.step_type,
-                    "virtual_actor_id": node.virtual_actor_id,
-                    "technical_user_id": node.technical_user_id,
-                    "target_synthetic_start": node.target_start.isoformat(),
-                    "target_synthetic_end": node.target_end.isoformat(),
-                },
-                "input": node.inputs,
-            }
-        )
-    return "\n".join(json.dumps(record, separators=(",", ":")) for record in records) + "\n"
 
 
 def _case_record(case: CasePlan) -> dict[str, Any]:

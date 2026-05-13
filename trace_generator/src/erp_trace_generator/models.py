@@ -219,5 +219,4 @@ class PlannedNode:
 @dataclass(frozen=True)
 class GeneratedArtifacts:
     execution_trace_path: Path
-    executor_trace_path: Path
     post_processing_manifest_path: Path

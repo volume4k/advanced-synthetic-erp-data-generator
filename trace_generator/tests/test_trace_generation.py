@@ -25,23 +25,6 @@ def _write_yaml(path: Path, payload: dict) -> None:
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 
 
-def _write_env(path: Path) -> None:
-    path.write_text(
-        "\n".join(
-            [
-                "SAP_URL=https://sap.example.test/flp",
-                "SAP_USER_1_UN=BUYER1",
-                "SAP_USER_1_PW=secret1",
-                "SAP_USER_2_UN=WAREHOUSE1",
-                "SAP_USER_2_PW=secret2",
-                "SAP_USER_3_UN=AP1",
-                "SAP_USER_3_PW=secret3",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-
 def _base_config() -> dict:
     return {
         "version": "0.1.0",
@@ -471,15 +454,12 @@ def test_generated_inputs_fail_for_unknown_executor_tool(tmp_path: Path) -> None
     payload["toolRequirements"]["fiori.unknown_tool"] = unknown_tool
     payload["processes"][0]["steps"][0]["tool"] = unknown_tool
     config_path = tmp_path / "main.yaml"
-    env_path = tmp_path / ".env"
     out_dir = tmp_path / "build"
     _write_yaml(config_path, payload)
-    _write_env(env_path)
 
     with pytest.raises(TraceGenerationError, match="Tool 'fiori.unknown_tool' is not registered"):
         generate_trace_artifacts(
             config_path=config_path,
-            env_path=env_path,
             out_dir=out_dir,
             run_id="RUN_UNKNOWN_TOOL",
             seed=17,
@@ -522,39 +502,33 @@ def test_generated_inputs_validate_against_current_tool_schemas(tmp_path: Path) 
     )
     price_unit["value"] = "0"
     config_path = tmp_path / "main.yaml"
-    env_path = tmp_path / ".env"
     out_dir = tmp_path / "build"
     _write_yaml(config_path, payload)
-    _write_env(env_path)
 
     with pytest.raises(TraceGenerationError, match="Invalid input for tool 'fiori.create_purchase_requisition'"):
         generate_trace_artifacts(
             config_path=config_path,
-            env_path=env_path,
             out_dir=out_dir,
             run_id="RUN_BAD_INPUT",
             seed=17,
         )
 
 
-def test_generation_emits_canonical_trace_jsonl_and_post_processing_manifest(tmp_path: Path) -> None:
+def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path: Path) -> None:
     config_path = tmp_path / "main.yaml"
-    env_path = tmp_path / ".env"
     out_dir = tmp_path / "build"
     _write_yaml(config_path, _base_config())
-    _write_env(env_path)
 
     artifacts = generate_trace_artifacts(
         config_path=config_path,
-        env_path=env_path,
         out_dir=out_dir,
         run_id="RUN_TEST_001",
         seed=17,
     )
 
     assert artifacts.execution_trace_path.name == "RUN_TEST_001.execution-trace.yaml"
-    assert artifacts.executor_trace_path.name == "RUN_TEST_001.executor.trace.jsonl"
     assert artifacts.post_processing_manifest_path.name == "RUN_TEST_001.post-processing-manifest.yaml"
+    assert not (out_dir / "RUN_TEST_001.executor.trace.jsonl").exists()
 
     execution_trace = yaml.safe_load(artifacts.execution_trace_path.read_text(encoding="utf-8"))
     assert execution_trace["trace_version"] == "0.1"
@@ -596,37 +570,6 @@ def test_generation_emits_canonical_trace_jsonl_and_post_processing_manifest(tmp
     assert execution_trace["execution_schedule"]["mode"] == "waves"
     assert execution_trace["execution_schedule"]["waves"][0]["nodes"][0]["node_id"] == "C001_A1"
     assert execution_trace["validation_report"]["errors"] == []
-
-    jsonl_records = [
-        json.loads(line)
-        for line in artifacts.executor_trace_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    scheduled_node_ids = [
-        item["node_id"]
-        for wave in execution_trace["execution_schedule"]["waves"]
-        for item in sorted(wave["nodes"], key=lambda value: value["startup_order"])
-    ]
-    assert [record["task_id"] for record in jsonl_records[1:]] == scheduled_node_ids
-    assert jsonl_records[0] == {
-        "kind": "init",
-        "users": [
-            {"session_id": "procurement_01-session", "user_id": "procurement_01", "username": "BUYER1", "login_url": "https://sap.example.test/flp"},
-            {"session_id": "warehouse_01-session", "user_id": "warehouse_01", "username": "WAREHOUSE1", "login_url": "https://sap.example.test/flp"},
-            {"session_id": "accounts_payable_01-session", "user_id": "accounts_payable_01", "username": "AP1", "login_url": "https://sap.example.test/flp"},
-        ],
-    }
-    assert jsonl_records[1]["task_id"] == "C001_A1"
-    records_by_task_id = {record["task_id"]: record for record in jsonl_records[1:]}
-    assert records_by_task_id["C001_A2"]["input"]["purchase_requisition"] == "$purchase_requisition.pr_number"
-    assert records_by_task_id["C001_A3"]["input"]["purchase_order"] == "$purchase_order.po_number"
-    assert records_by_task_id["C001_A5"]["input"]["accounting_document"] == "$supplier_invoice.invoice_number"
-    assert "password" not in json.dumps(jsonl_records)
-    task_starts = [
-        datetime.fromisoformat(record["meta"]["target_synthetic_start"])
-        for record in jsonl_records[1:]
-    ]
-    assert task_starts == sorted(task_starts)
 
     manifest = yaml.safe_load(artifacts.post_processing_manifest_path.read_text(encoding="utf-8"))
     ExecutionTraceArtifact.model_validate(execution_trace)
@@ -670,16 +613,12 @@ def test_committed_artifact_json_schemas_are_current() -> None:
 
 def test_cli_writes_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     config_path = tmp_path / "main.yaml"
-    env_path = tmp_path / ".env"
     out_dir = tmp_path / "build"
     _write_yaml(config_path, _base_config())
-    _write_env(env_path)
 
     exit_code = main(
         [
             str(config_path),
-            "--env-file",
-            str(env_path),
             "--out-dir",
             str(out_dir),
             "--run-id",
@@ -691,6 +630,8 @@ def test_cli_writes_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]
 
     assert exit_code == 0
     assert (out_dir / "RUN_TEST_002.execution-trace.yaml").exists()
-    assert (out_dir / "RUN_TEST_002.executor.trace.jsonl").exists()
+    assert not (out_dir / "RUN_TEST_002.executor.trace.jsonl").exists()
     assert (out_dir / "RUN_TEST_002.post-processing-manifest.yaml").exists()
-    assert "RUN_TEST_002.executor.trace.jsonl" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "RUN_TEST_002.execution-trace.yaml" in output
+    assert "RUN_TEST_002.executor.trace.jsonl" not in output

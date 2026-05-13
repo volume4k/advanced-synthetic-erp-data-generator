@@ -17,7 +17,6 @@ from erp_trace_generator.tool_validation import validate_node_tool_inputs
 def generate_trace_artifacts(
     *,
     config_path: str | Path,
-    env_path: str | Path,
     out_dir: str | Path,
     run_id: str,
     seed: int | None = None,
@@ -35,7 +34,6 @@ def generate_trace_artifacts(
         cases=cases,
         nodes=nodes,
         waves=waves,
-        env_path=env_path,
         out_dir=out_dir,
         run_id=run_id,
         seed=effective_seed,
