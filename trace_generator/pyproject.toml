@@ -7,7 +7,7 @@ name = "erp-trace-generator"
 version = "0.1.0"
 description = "Trace planner that turns compiled ERP generation config into execution artifacts."
 readme = "README.md"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.13,<4"
 dependencies = [
   "playwright>=1.55,<2",
   "pydantic>=2.11,<3",
