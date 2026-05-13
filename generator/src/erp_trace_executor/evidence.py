@@ -19,8 +19,9 @@ class ExecutionEvidenceWriter:
         self.artifact_dir = Path(artifact_dir)
         self.run_id = _safe_run_id(run_id)
         self.artifact_dir.mkdir(parents=True, exist_ok=True)
-        self.execution_log_path = self.artifact_dir / f"{self.run_id}.execution-log.jsonl"
-        self.object_registry_path = self.artifact_dir / f"{self.run_id}.object-registry.jsonl"
+        artifact_root = self.artifact_dir.resolve()
+        self.execution_log_path = _artifact_path(artifact_root, self.run_id, ".execution-log.jsonl")
+        self.object_registry_path = _artifact_path(artifact_root, self.run_id, ".object-registry.jsonl")
 
     def log_event(self, event_type: str, **fields: Any) -> None:
         self._append(
@@ -48,16 +49,34 @@ class ExecutionEvidenceWriter:
                 handle.write(json.dumps(payload, separators=(",", ":"), default=str) + "\n")
                 handle.flush()
         except OSError as exc:
-            LOGGER.exception("Failed to write execution evidence to %s: %r", path, payload)
+            LOGGER.exception(
+                "Failed to write execution evidence to %s; payload keys=%s count=%s",
+                path,
+                sorted(payload),
+                len(payload),
+            )
             raise TraceExecutorError(f"Failed to write execution evidence to '{path}': {exc}") from exc
 
 
 def _safe_run_id(run_id: str) -> str:
     if not run_id:
         raise ValueError("run_id must not be empty")
-    if Path(run_id).is_absolute() or any(char in run_id for char in UNSAFE_RUN_ID_CHARS):
+    path = Path(run_id)
+    if (
+        path.is_absolute()
+        or path.name != run_id
+        or run_id in {".", ".."}
+        or any(char in run_id for char in UNSAFE_RUN_ID_CHARS)
+    ):
         raise ValueError(f"run_id contains unsafe filename characters: {run_id!r}")
     return run_id
+
+
+def _artifact_path(artifact_root: Path, run_id: str, suffix: str) -> Path:
+    path = (artifact_root / f"{run_id}{suffix}").resolve()
+    if not path.is_relative_to(artifact_root):
+        raise ValueError(f"evidence artifact path escapes artifact directory: {path}")
+    return path
 
 
 def _clean(fields: dict[str, Any]) -> dict[str, Any]:

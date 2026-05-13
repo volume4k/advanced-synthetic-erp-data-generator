@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,7 +12,7 @@ from pydantic import BaseModel
 from erp_trace_executor import executor as executor_module
 from erp_trace_executor.canonical import CanonicalTrace, build_init_from_sessions, load_canonical_trace
 from erp_trace_executor.evidence import ExecutionEvidenceWriter
-from erp_trace_executor.errors import TraceParseError
+from erp_trace_executor.errors import TraceExecutorError, TraceParseError
 from erp_trace_executor.executor import TraceExecutor
 from erp_trace_executor.models import ToolResult
 from erp_trace_executor.registry import ToolRegistry
@@ -197,8 +198,24 @@ def test_build_init_from_sessions_preserves_login_selectors() -> None:
 
 
 def test_evidence_writer_rejects_unsafe_run_ids(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="unsafe filename"):
-        ExecutionEvidenceWriter(tmp_path, run_id="../escape")
+    for run_id in ["../escape", "..", ".", "/tmp/escape", r"nested\escape"]:
+        with pytest.raises(ValueError, match="unsafe filename"):
+            ExecutionEvidenceWriter(tmp_path, run_id=run_id)
+
+
+def test_evidence_writer_logs_payload_metadata_without_values(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    writer = ExecutionEvidenceWriter(tmp_path, run_id="safe-run")
+    writer.execution_log_path.mkdir()
+
+    with caplog.at_level(logging.ERROR, logger="erp_trace_executor.evidence"):
+        with pytest.raises(TraceExecutorError):
+            writer.log_event("node_failed", password="secret-value")
+
+    assert "secret-value" not in caplog.text
+    assert "payload keys=" in caplog.text
+    assert "event_type" in caplog.text
 
 
 def test_canonical_executor_logs_registry_and_skips_failed_case(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
