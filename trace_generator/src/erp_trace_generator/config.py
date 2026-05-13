@@ -11,6 +11,7 @@ import yaml
 from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.models import (
     Actor,
+    ActorCapability,
     BindingSource,
     BindingValueType,
     FraudScenario,
@@ -78,6 +79,14 @@ def _actor(item: dict[str, Any]) -> Actor:
         timezone=str(item["timezone"]),
         speed_factor=float(item.get("speedFactor", 1.0)),
         expose_as=str(item.get("exposeInFinalDatasetAs", item["id"])),
+        capabilities=tuple(_actor_capability(value) for value in item.get("capabilities", [])),
+    )
+
+
+def _actor_capability(item: dict[str, Any]) -> ActorCapability:
+    return ActorCapability(
+        process_type=str(item["processType"]),
+        step_types=tuple(str(value) for value in item.get("stepTypes", [])),
     )
 
 
@@ -134,7 +143,6 @@ def _process(item: dict[str, Any], tool_requirements: dict[str, Any]) -> Process
                 step_id=str(step["stepId"]),
                 step_type=step_type,
                 tool_name=tool_name,
-                required_role=str(step["requiredRole"]),
                 input_bindings=tuple(_input_binding(binding, step_type) for binding in step.get("inputBindings", [])),
                 expected_outputs=tuple(str(value) for value in step.get("expectedOutputs", [])),
             )
@@ -256,15 +264,18 @@ def _validate(config: GenerationConfig) -> None:
         if mapping.technical_user_id not in technical_user_ids:
             raise TraceGenerationError(f"Identity mapping references unknown technical user '{mapping.technical_user_id}'")
 
-    mapped_actor_ids = {mapping.virtual_actor_id for mapping in config.identity_mappings}
     active_process = config.active_process()
-    roles = {actor.role for actor in config.actors}
+    mapped_actor_ids = {mapping.virtual_actor_id for mapping in config.identity_mappings}
+    _validate_actor_capabilities(config)
     for step in active_process.steps:
-        if step.required_role not in roles:
-            raise TraceGenerationError(f"Step '{step.step_type}' has no actor for role '{step.required_role}'")
-        actor = config.actor_for_role(step.required_role)
-        if actor.id not in mapped_actor_ids:
-            raise TraceGenerationError(f"Actor '{actor.id}' for step '{step.step_type}' has no technical user mapping")
+        capable_actors = config.actors_capable_of(active_process.process_type, step.step_type)
+        if not capable_actors:
+            raise TraceGenerationError(f"Step '{step.step_type}' has no capable actor")
+        unmapped_actor_ids = sorted(actor.id for actor in capable_actors if actor.id not in mapped_actor_ids)
+        if unmapped_actor_ids:
+            raise TraceGenerationError(
+                f"Capable actor(s) for step '{step.step_type}' have no technical user mapping: {unmapped_actor_ids}"
+            )
         if step.step_type not in config.run_settings.step_duration_minutes:
             raise TraceGenerationError(f"Step '{step.step_type}' has no step duration range")
         if not step.expected_outputs:
@@ -287,6 +298,25 @@ def _validate(config: GenerationConfig) -> None:
             )
     _validate_acyclic(active_process)
     ensure_fraud_scenarios_supported(config.fraud_scenarios)
+
+
+def _validate_actor_capabilities(config: GenerationConfig) -> None:
+    process_step_types = {
+        process.process_type: {step.step_type for step in process.steps}
+        for process in config.processes
+    }
+    process_types = set(process_step_types)
+    for actor in config.actors:
+        for capability in actor.capabilities:
+            if capability.process_type not in process_types:
+                raise TraceGenerationError(
+                    f"Actor '{actor.id}' capability references unknown process '{capability.process_type}'"
+                )
+            unknown_steps = sorted(set(capability.step_types) - process_step_types[capability.process_type])
+            if unknown_steps:
+                raise TraceGenerationError(
+                    f"Actor '{actor.id}' capability references unknown step type(s): {unknown_steps}"
+                )
 
 
 def _validate_acyclic(process: ProcessDefinition) -> None:

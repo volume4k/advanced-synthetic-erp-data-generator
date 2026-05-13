@@ -42,8 +42,19 @@ new objects.VirtualActor {
     pauseCharacteristicsIndex = 12
   }
   exposeInFinalDatasetAs = "procurement_01"
+  capabilities {
+    new objects.ActorCapability {
+      processType = "procure_to_pay"
+      stepTypes {
+        "create_purchase_requisition"
+        "create_purchase_order"
+      }
+    }
+  }
 }
 ```
+
+Scheduling uses `capabilities`, not `role`. `role` is descriptive metadata. A person can execute multiple process steps by listing multiple `stepTypes`; the trace generator still prevents one actor from working on two nodes at once.
 
 Add SAP accounts in `technical_users.pkl` using environment variable names only:
 
@@ -67,7 +78,6 @@ new objects.ProcessStep {
   stepId = "A1"
   stepType = "create_purchase_requisition"
   tool = toolRequirements["fiori.create_purchase_requisition"]
-  requiredRole = "procurement"
   inputBindings {
     new objects.ToolInputBinding {
       field = "material"

@@ -9,12 +9,19 @@ from typing import Literal
 
 
 @dataclass(frozen=True)
+class ActorCapability:
+    process_type: str
+    step_types: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Actor:
     id: str
     role: str
     timezone: str
     speed_factor: float
     expose_as: str
+    capabilities: tuple[ActorCapability, ...]
 
 
 @dataclass(frozen=True)
@@ -72,7 +79,6 @@ class ProcessStep:
     step_id: str
     step_type: str
     tool_name: str
-    required_role: str
     input_bindings: tuple[InputBinding, ...] = ()
     expected_outputs: tuple[str, ...] = ()
 
@@ -168,11 +174,13 @@ class GenerationConfig:
                 return process
         raise AssertionError("active process existence is validated by loader")
 
-    def actor_for_role(self, role: str) -> Actor:
-        for actor in self.actors:
-            if actor.role == role:
-                return actor
-        raise AssertionError("role existence is validated by loader")
+    def actors_capable_of(self, process_type: str, step_type: str) -> tuple[Actor, ...]:
+        return tuple(
+            actor
+            for actor in self.actors
+            for capability in actor.capabilities
+            if capability.process_type == process_type and step_type in capability.step_types
+        )
 
     def technical_user_for_actor(self, actor_id: str) -> TechnicalUser:
         mapping = next(item for item in self.identity_mappings if item.virtual_actor_id == actor_id)

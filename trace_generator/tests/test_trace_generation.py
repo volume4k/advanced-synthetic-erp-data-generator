@@ -17,6 +17,7 @@ from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.fraud import FRAUD_TRANSFORMERS, register_fraud_transformer
 from erp_trace_generator.generator import generate_trace_artifacts
 from erp_trace_generator.models import CasePlan, InputBinding, PlannedNode, ProcessStep
+from erp_trace_generator.planning import plan_cases, plan_nodes, plan_waves
 from erp_trace_generator.schema_export import schema_output_paths
 from erp_trace_generator.timeline import TimelinePlanner
 
@@ -64,11 +65,11 @@ def _base_config() -> dict:
             {
                 "processType": "procure_to_pay",
                 "steps": [
-                    _step("A1", "create_purchase_requisition", "fiori.create_purchase_requisition", "procurement"),
-                    _step("A2", "create_purchase_order", "fiori.create_purchase_order", "procurement"),
-                    _step("A3", "post_goods_receipt", "fiori.create_goods_receipt", "warehouse"),
-                    _step("A4", "enter_incoming_invoice", "fiori.create_supplier_invoice", "accounts_payable"),
-                    _step("A5", "post_outgoing_payment", "fiori.send_payment", "accounts_payable"),
+                    _step("A1", "create_purchase_requisition", "fiori.create_purchase_requisition"),
+                    _step("A2", "create_purchase_order", "fiori.create_purchase_order"),
+                    _step("A3", "post_goods_receipt", "fiori.create_goods_receipt"),
+                    _step("A4", "enter_incoming_invoice", "fiori.create_supplier_invoice"),
+                    _step("A5", "post_outgoing_payment", "fiori.send_payment"),
                 ],
                 "dependencies": [
                     _dependency("create_purchase_requisition", "create_purchase_order"),
@@ -160,6 +161,11 @@ def _base_config() -> dict:
 
 
 def _actor(actor_id: str, role: str, user_prefix: str) -> dict:
+    capabilities = {
+        "procurement": ["create_purchase_requisition", "create_purchase_order"],
+        "warehouse": ["post_goods_receipt"],
+        "accounts_payable": ["enter_incoming_invoice", "post_outgoing_payment"],
+    }.get(role, [])
     return {
         "id": actor_id,
         "displayName": actor_id,
@@ -173,6 +179,7 @@ def _actor(actor_id: str, role: str, user_prefix: str) -> dict:
             "pauseCharacteristicsIndex": 10,
         },
         "exposeInFinalDatasetAs": actor_id,
+        "capabilities": [{"processType": "procure_to_pay", "stepTypes": capabilities}],
     }
 
 
@@ -196,12 +203,11 @@ def _tool(name: str, required_fields: list[str]) -> dict:
     }
 
 
-def _step(step_id: str, step_type: str, tool_name: str, role: str) -> dict:
+def _step(step_id: str, step_type: str, tool_name: str) -> dict:
     return {
         "stepId": step_id,
         "stepType": step_type,
         "tool": {"toolName": tool_name, "title": tool_name, "inputModel": "Input", "requiredInputFields": [], "inputProperties": []},
-        "requiredRole": role,
         "inputBindings": _input_bindings(step_type),
         "expectedOutputs": _expected_outputs(step_type),
     }
@@ -307,6 +313,48 @@ def test_config_loader_rejects_unknown_binding_source(tmp_path: Path) -> None:
         load_generation_config(config_path)
 
 
+def test_config_loader_rejects_missing_actor_capability_for_active_step(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["actors"][1]["capabilities"][0]["stepTypes"] = []
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="Step 'post_goods_receipt' has no capable actor"):
+        load_generation_config(config_path)
+
+
+def test_config_loader_rejects_actor_capability_for_unknown_process(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["actors"][0]["capabilities"][0]["processType"] = "missing_process"
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="unknown process 'missing_process'"):
+        load_generation_config(config_path)
+
+
+def test_config_loader_rejects_actor_capability_for_unknown_step(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["actors"][0]["capabilities"][0]["stepTypes"].append("missing_step")
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="unknown step type"):
+        load_generation_config(config_path)
+
+
+def test_config_loader_rejects_capable_actor_without_identity_mapping(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["identityMappings"] = [
+        mapping for mapping in payload["identityMappings"] if mapping["virtualActorId"] != "warehouse_01"
+    ]
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="warehouse_01"):
+        load_generation_config(config_path)
+
+
 def test_enabled_unimplemented_fraud_scenario_fails(tmp_path: Path) -> None:
     payload = _base_config()
     payload["fraudScenarios"][0]["enabled"] = True
@@ -352,7 +400,6 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
         step_id="A1",
         step_type="sample_step",
         tool_name="fiori.sample",
-        required_role="procurement",
         input_bindings=(
             InputBinding("sample_step", "material", "master_data", "materialId"),
             InputBinding("sample_step", "quantity", "case", "quantity"),
@@ -398,7 +445,6 @@ def test_binding_resolver_reports_invalid_literal_casts() -> None:
         step_id="A1",
         step_type="sample_step",
         tool_name="fiori.sample",
-        required_role="procurement",
         input_bindings=(InputBinding("sample_step", "enabled", "literal", "maybe", "bool"),),
     )
 
@@ -432,6 +478,94 @@ def test_session_records_reject_same_session_for_multiple_actors(tmp_path: Path)
                 PlannedNode(node_id="C001_A3", virtual_actor_id="warehouse_01", **node_kwargs),
             ],
         )
+
+
+def test_scheduler_assigns_configured_multi_step_actor_without_overlap(tmp_path: Path) -> None:
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, _base_config())
+    config = load_generation_config(config_path)
+
+    nodes = plan_nodes(config, plan_cases(config, Random(17)), Random(17))
+    procurement_nodes = [
+        node for node in nodes
+        if node.virtual_actor_id == "procurement_01"
+    ]
+
+    assert {node.step_type for node in procurement_nodes} == {
+        "create_purchase_requisition",
+        "create_purchase_order",
+    }
+    _assert_no_resource_overlap(procurement_nodes)
+
+
+def test_scheduler_uses_second_capable_actor_when_first_is_busy(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["actors"].insert(
+        1,
+        {
+            **_actor("procurement_02", "procurement", "SAP_USER_4"),
+            "speedFactor": 1.0,
+        },
+    )
+    payload["technicalUsers"].append(_technical_user("GBGEN_P04", "SAP_USER_4"))
+    payload["identityMappings"].append({"virtualActorId": "procurement_02", "technicalUserId": "GBGEN_P04"})
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+
+    nodes = plan_nodes(config, plan_cases(config, Random(17)), Random(17))
+    requisition_actors = {
+        node.virtual_actor_id
+        for node in nodes
+        if node.step_type == "create_purchase_requisition"
+    }
+
+    assert requisition_actors == {"procurement_01", "procurement_02"}
+
+
+def test_scheduler_respects_shared_technical_user_availability(tmp_path: Path) -> None:
+    payload = _base_config()
+    for mapping in payload["identityMappings"]:
+        mapping["technicalUserId"] = "GBGEN_P01"
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+
+    nodes = plan_nodes(config, plan_cases(config, Random(17)), Random(17))
+
+    _assert_no_resource_overlap(nodes)
+
+
+def test_wave_scheduler_prevents_shared_technical_user_in_same_wave(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["actors"].insert(
+        1,
+        {
+            **_actor("procurement_02", "procurement", "SAP_USER_4"),
+            "speedFactor": 1.0,
+        },
+    )
+    payload["identityMappings"].append({"virtualActorId": "procurement_02", "technicalUserId": "GBGEN_P01"})
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    nodes = plan_nodes(config, plan_cases(config, Random(17)), Random(17))
+    nodes_by_id = {node.node_id: node for node in nodes}
+
+    for wave in plan_waves(config, nodes):
+        technical_user_ids = [
+            nodes_by_id[item["node_id"]].technical_user_id
+            for item in wave["nodes"]
+        ]
+        assert len(technical_user_ids) == len(set(technical_user_ids))
+
+
+def _assert_no_resource_overlap(nodes: list[PlannedNode]) -> None:
+    for first, second in zip(
+        sorted(nodes, key=lambda node: node.target_start),
+        sorted(nodes, key=lambda node: node.target_start)[1:],
+    ):
+        assert first.target_end <= second.target_start
 
 
 def test_generated_inputs_fail_for_unknown_executor_tool(tmp_path: Path) -> None:

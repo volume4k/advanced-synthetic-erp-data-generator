@@ -11,7 +11,6 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
       stepId = "A1"
       stepType = "create_purchase_requisition"
       tool = toolRequirements["fiori.create_purchase_requisition"]
-      requiredRole = "procurement"
       inputBindings {
         new objects.ToolInputBinding {
           field = "material"
@@ -73,7 +72,6 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
       stepId = "A2"
       stepType = "create_purchase_order"
       tool = toolRequirements["fiori.create_purchase_order"]
-      requiredRole = "procurement"
       inputBindings {
         new objects.ToolInputBinding {
           field = "purchase_requisition"
@@ -104,7 +102,6 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
       stepId = "A3"
       stepType = "post_goods_receipt"
       tool = toolRequirements["fiori.create_goods_receipt"]
-      requiredRole = "warehouse"
       inputBindings {
         new objects.ToolInputBinding {
           field = "purchase_order"
@@ -135,7 +132,6 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
       stepId = "A4"
       stepType = "enter_incoming_invoice"
       tool = toolRequirements["fiori.create_supplier_invoice"]
-      requiredRole = "accounts_payable"
       inputBindings {
         new objects.ToolInputBinding {
           field = "invoice_date"
@@ -172,7 +168,6 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
       stepId = "A5"
       stepType = "post_outgoing_payment"
       tool = toolRequirements["fiori.send_payment"]
-      requiredRole = "accounts_payable"
       inputBindings {
         new objects.ToolInputBinding {
           field = "company_code"

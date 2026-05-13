@@ -14,6 +14,15 @@ actors: Listing<objects.VirtualActor> = new Listing {
       pauseCharacteristicsIndex = 12
     }
     exposeInFinalDatasetAs = "procurement_01"
+    capabilities {
+      new objects.ActorCapability {
+        processType = "procure_to_pay"
+        stepTypes {
+          "create_purchase_requisition"
+          "create_purchase_order"
+        }
+      }
+    }
   }
   new objects.VirtualActor {
     id = "procurement_manager_01"
@@ -28,6 +37,12 @@ actors: Listing<objects.VirtualActor> = new Listing {
       pauseCharacteristicsIndex = 8
     }
     exposeInFinalDatasetAs = "procurement_manager_01"
+    capabilities {
+      new objects.ActorCapability {
+        processType = "procure_to_pay"
+        stepTypes {}
+      }
+    }
   }
   new objects.VirtualActor {
     id = "warehouse_01"
@@ -42,6 +57,14 @@ actors: Listing<objects.VirtualActor> = new Listing {
       pauseCharacteristicsIndex = 10
     }
     exposeInFinalDatasetAs = "warehouse_01"
+    capabilities {
+      new objects.ActorCapability {
+        processType = "procure_to_pay"
+        stepTypes {
+          "post_goods_receipt"
+        }
+      }
+    }
   }
   new objects.VirtualActor {
     id = "accounts_payable_01"
@@ -56,5 +79,14 @@ actors: Listing<objects.VirtualActor> = new Listing {
       pauseCharacteristicsIndex = 9
     }
     exposeInFinalDatasetAs = "accounts_payable_01"
+    capabilities {
+      new objects.ActorCapability {
+        processType = "procure_to_pay"
+        stepTypes {
+          "enter_incoming_invoice"
+          "post_outgoing_payment"
+        }
+      }
+    }
   }
 }

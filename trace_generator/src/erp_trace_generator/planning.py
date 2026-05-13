@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from random import Random
 
 from erp_trace_generator.bindings import business_dates_for_step, resolve_step_inputs
-from erp_trace_generator.models import CasePlan, GenerationConfig, PlannedNode
+from erp_trace_generator.models import Actor, CasePlan, GenerationConfig, PlannedNode, TechnicalUser
 from erp_trace_generator.timeline import TimelinePlanner
 
 
@@ -46,20 +46,28 @@ def plan_nodes(config: GenerationConfig, cases: list[CasePlan], rng: Random) -> 
     process = config.active_process()
     timeline = TimelinePlanner(config.run_settings, rng)
     actor_available: dict[str, datetime] = defaultdict(timeline.first_start)
+    technical_user_available: dict[str, datetime] = defaultdict(timeline.first_start)
     nodes: list[PlannedNode] = []
 
     for case in cases:
         previous_node: PlannedNode | None = None
         for step in process.steps:
-            actor = config.actor_for_role(step.required_role)
-            technical_user = config.technical_user_for_actor(actor.id)
             if previous_node is None:
                 earliest = timeline.first_start()
             else:
                 earliest = timeline.add_inter_step_delay(previous_node.target_end, previous_node.step_type, step.step_type)
-            start = timeline.align_start(max(earliest, actor_available[actor.id]))
+            actor, technical_user, start = _allocate_actor(
+                config=config,
+                process_type=process.process_type,
+                step_type=step.step_type,
+                earliest=earliest,
+                actor_available=actor_available,
+                technical_user_available=technical_user_available,
+                timeline=timeline,
+            )
             end = timeline.add_step_duration(start, step.step_type, actor.speed_factor)
             actor_available[actor.id] = end
+            technical_user_available[technical_user.id] = end
 
             node = PlannedNode(
                 node_id=f"{case.case_id}_{step.step_id}",
@@ -79,6 +87,35 @@ def plan_nodes(config: GenerationConfig, cases: list[CasePlan], rng: Random) -> 
             nodes.append(node)
             previous_node = node
     return nodes
+
+
+def _allocate_actor(
+    *,
+    config: GenerationConfig,
+    process_type: str,
+    step_type: str,
+    earliest: datetime,
+    actor_available: dict[str, datetime],
+    technical_user_available: dict[str, datetime],
+    timeline: TimelinePlanner,
+) -> tuple[Actor, TechnicalUser, datetime]:
+    candidates: list[tuple[datetime, int, Actor, TechnicalUser]] = []
+    capable_actors = set(config.actors_capable_of(process_type, step_type))
+    for actor_index, actor in enumerate(config.actors):
+        if actor not in capable_actors:
+            continue
+        technical_user = config.technical_user_for_actor(actor.id)
+        start = timeline.align_start(
+            max(
+                earliest,
+                actor_available[actor.id],
+                technical_user_available[technical_user.id],
+            )
+        )
+        candidates.append((start, actor_index, actor, technical_user))
+
+    start, _actor_index, actor, technical_user = min(candidates, key=lambda item: (item[0], item[1]))
+    return actor, technical_user, start
 
 
 def plan_waves(config: GenerationConfig, nodes: list[PlannedNode]) -> list[dict]:

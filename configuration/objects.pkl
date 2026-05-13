@@ -76,6 +76,12 @@ class PostProcessingExportGroup {
   description: String(this.length > 0)
 }
 
+/// Explicit work capability for one synthetic actor.
+class ActorCapability {
+  processType: String(this.length > 0)
+  stepTypes: Listing<String>
+}
+
 /// Synthetic business actor used by the trace generator.
 class VirtualActor {
   id: String(this.length > 0)
@@ -86,6 +92,7 @@ class VirtualActor {
   speedFactor: Float(this > 0)
   realismProfile: RealismProfile
   exposeInFinalDatasetAs: String(this.length > 0)
+  capabilities: Listing<ActorCapability>
 }
 
 /// Technical SAP account reference. Values are environment variable names, not secrets themselves.
@@ -108,7 +115,6 @@ class ProcessStep {
   stepId: String(this.length > 0)
   stepType: String(this.length > 0)
   tool: ToolRequirement?
-  requiredRole: String(this.length > 0)
   inputBindings: Listing<ToolInputBinding> = new Listing {}
   expectedOutputs: Listing<String> = new Listing {}
 }
