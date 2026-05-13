@@ -165,6 +165,18 @@ class PostProcessingExport(ArtifactModel):
     description: str
 
 
+class DateOverride(ArtifactModel):
+    node_id: str
+    case_id: str
+    step_type: str
+    object_type: str
+    field: str
+    planned_value: str
+    runtime_value_policy: Literal["sap_current_date"]
+    source: Literal["business_dates"]
+    reason: str
+
+
 class PostProcessingManifestArtifact(ArtifactModel):
     manifest_version: str
     run_id: str
@@ -176,4 +188,5 @@ class PostProcessingManifestArtifact(ArtifactModel):
     expected_object_keys: list[ExpectedObjectKeys]
     object_lineage: list[ObjectLineage]
     post_processing_exports: list[PostProcessingExport]
+    date_overrides: list[DateOverride]
     failed_case_policy: FailedCasePolicy

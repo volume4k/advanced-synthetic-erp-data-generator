@@ -88,6 +88,7 @@ class ProcessStep:
     step_type: str
     tool_name: str
     input_bindings: tuple[InputBinding, ...] = ()
+    business_date_bindings: tuple[InputBinding, ...] = ()
     expected_outputs: tuple[str, ...] = ()
 
 

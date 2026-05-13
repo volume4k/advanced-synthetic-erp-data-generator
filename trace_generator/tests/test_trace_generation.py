@@ -10,7 +10,7 @@ import yaml
 
 from erp_trace_generator.artifact_models import ExecutionTraceArtifact, PostProcessingManifestArtifact
 from erp_trace_generator.artifacts import _session_records
-from erp_trace_generator.bindings import resolve_step_inputs
+from erp_trace_generator.bindings import business_dates_for_step, resolve_step_inputs
 from erp_trace_generator.cli import main
 from erp_trace_generator.config import load_generation_config
 from erp_trace_generator.errors import TraceGenerationError
@@ -146,7 +146,7 @@ def _base_config() -> dict:
             ),
             "fiori.create_goods_receipt": _tool(
                 "fiori.create_goods_receipt",
-                ["purchase_order", "document_date", "posting_date", "storage_location"],
+                ["purchase_order", "storage_location"],
             ),
             "fiori.create_supplier_invoice": _tool(
                 "fiori.create_supplier_invoice",
@@ -209,6 +209,7 @@ def _step(step_id: str, step_type: str, tool_name: str) -> dict:
         "stepType": step_type,
         "tool": {"toolName": tool_name, "title": tool_name, "inputModel": "Input", "requiredInputFields": [], "inputProperties": []},
         "inputBindings": _input_bindings(step_type),
+        "businessDateBindings": _business_date_bindings(step_type),
         "expectedOutputs": _expected_outputs(step_type),
     }
 
@@ -243,8 +244,6 @@ def _input_bindings(step_type: str) -> list[dict]:
         ],
         "post_goods_receipt": [
             _binding("purchase_order", "prior_output", "purchase_order.po_number"),
-            _binding("document_date", "derived", "fiori_delivery_date"),
-            _binding("posting_date", "derived", "fiori_delivery_date"),
             _binding("storage_location", "derived", "storage_location_label"),
         ],
         "enter_incoming_invoice": [
@@ -263,6 +262,22 @@ def _input_bindings(step_type: str) -> list[dict]:
             _binding("general_ledger_account", "literal", "1800000"),
             _binding("amount", "derived", "gross_amount"),
             _binding("currency", "master_data", "currency"),
+        ],
+    }[step_type]
+
+
+def _business_date_bindings(step_type: str) -> list[dict]:
+    return {
+        "create_purchase_requisition": [_binding("delivery_date", "derived", "fiori_delivery_date")],
+        "create_purchase_order": [],
+        "post_goods_receipt": [
+            _binding("document_date", "derived", "fiori_delivery_date"),
+            _binding("posting_date", "derived", "fiori_delivery_date"),
+        ],
+        "enter_incoming_invoice": [_binding("invoice_date", "derived", "fiori_delivery_date")],
+        "post_outgoing_payment": [
+            _binding("posting_document_date", "derived", "fiori_delivery_date"),
+            _binding("posting_date", "derived", "fiori_payment_posting_date"),
         ],
     }[step_type]
 
@@ -432,6 +447,10 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
             InputBinding("sample_step", "document_date", "derived", "fiori_delivery_date"),
             InputBinding("sample_step", "storage_location", "derived", "storage_location_label"),
         ),
+        business_date_bindings=(
+            InputBinding("sample_step", "document_date", "derived", "fiori_delivery_date"),
+            InputBinding("sample_step", "posting_date", "derived", "fiori_payment_posting_date"),
+        ),
         expected_outputs=("sample.output",),
     )
 
@@ -444,6 +463,10 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
         "amount": 200.0,
         "document_date": "05/18/2026",
         "storage_location": "Trading Goods",
+    }
+    assert business_dates_for_step(step, case) == {
+        "document_date": "2026-05-18",
+        "posting_date": "2026-05-19",
     }
 
 
@@ -723,6 +746,15 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
         "enter_incoming_invoice",
         "post_outgoing_payment",
     ]
+    goods_receipt_node = execution_trace["dependency_graph"]["nodes"][2]
+    assert goods_receipt_node["inputs"] == {
+        "purchase_order": "$purchase_order.po_number",
+        "storage_location": "Trading Goods",
+    }
+    assert goods_receipt_node["business_dates"] == {
+        "document_date": "2026-05-23",
+        "posting_date": "2026-05-23",
+    }
     assert execution_trace["execution_schedule"]["mode"] == "waves"
     assert execution_trace["execution_schedule"]["waves"][0]["nodes"][0]["node_id"] == "C001_A1"
     assert execution_trace["validation_report"]["errors"] == []
@@ -752,6 +784,16 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
         "supplier_invoice",
         "payment_document",
     ]
+    assert {
+        (item["node_id"], item["field"], item["planned_value"], item["runtime_value_policy"])
+        for item in manifest["date_overrides"]
+    } == {
+        ("C001_A3", "document_date", "2026-05-23", "sap_current_date"),
+        ("C001_A3", "posting_date", "2026-05-23", "sap_current_date"),
+        ("C002_A3", "document_date", "2026-05-23", "sap_current_date"),
+        ("C002_A3", "posting_date", "2026-05-23", "sap_current_date"),
+    }
+    assert {item["step_type"] for item in manifest["date_overrides"]} == {"post_goods_receipt"}
 
     first_start = datetime.fromisoformat(execution_trace["dependency_graph"]["nodes"][0]["target_synthetic_time"]["start"])
     second_start = datetime.fromisoformat(execution_trace["dependency_graph"]["nodes"][1]["target_synthetic_time"]["start"])

@@ -3,7 +3,9 @@ from __future__ import annotations
 import inspect
 from pathlib import Path
 
+import pytest
 from pydantic import BaseModel
+from pydantic import ValidationError
 
 from erp_trace_executor.canonical import load_canonical_trace
 from erp_trace_executor.registry import build_default_registry
@@ -67,3 +69,23 @@ def test_registered_business_tools_have_valid_example_trace_inputs():
     missing_examples = business_tools - seen_tools
 
     assert missing_examples == set()
+
+
+def test_goods_receipt_tool_rejects_runtime_date_inputs():
+    spec = build_default_registry().get("fiori.create_goods_receipt")
+
+    spec.input_model.model_validate(
+        {
+            "purchase_order": "4500001234",
+            "storage_location": "Trading Goods",
+        }
+    )
+    with pytest.raises(ValidationError):
+        spec.input_model.model_validate(
+            {
+                "purchase_order": "4500001234",
+                "document_date": "05/14/2026",
+                "posting_date": "05/14/2026",
+                "storage_location": "Trading Goods",
+            }
+        )

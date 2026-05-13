@@ -144,6 +144,9 @@ def _process(item: dict[str, Any], tool_requirements: dict[str, Any]) -> Process
                 step_type=step_type,
                 tool_name=tool_name,
                 input_bindings=tuple(_input_binding(binding, step_type) for binding in step.get("inputBindings", [])),
+                business_date_bindings=tuple(
+                    _input_binding(binding, step_type) for binding in step.get("businessDateBindings", [])
+                ),
                 expected_outputs=tuple(str(value) for value in step.get("expectedOutputs", [])),
             )
         )
@@ -286,7 +289,8 @@ def _validate(config: GenerationConfig) -> None:
         if missing_bindings:
             missing = ", ".join(missing_bindings)
             raise TraceGenerationError(f"Step '{step.step_type}' missing bindings for required fields: {missing}")
-        unknown_binding_steps = {binding.step_type for binding in step.input_bindings if binding.step_type != step.step_type}
+        all_bindings = step.input_bindings + step.business_date_bindings
+        unknown_binding_steps = {binding.step_type for binding in all_bindings if binding.step_type != step.step_type}
         if unknown_binding_steps:
             raise TraceGenerationError(f"Step '{step.step_type}' has binding with mismatched stepType")
 

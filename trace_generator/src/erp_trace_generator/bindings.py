@@ -14,15 +14,10 @@ def resolve_step_inputs(step: ProcessStep, case: CasePlan) -> dict[str, Any]:
 
 
 def business_dates_for_step(step: ProcessStep, case: CasePlan) -> dict[str, str]:
-    dates: dict[str, str] = {}
-    for binding in step.input_bindings:
-        if binding.source != "derived" and binding.source != "business_date":
-            continue
-        if "delivery_date" in binding.value and "date" in binding.field:
-            dates[binding.field] = case.delivery_date.isoformat()
-        if "payment_posting_date" in binding.value and "date" in binding.field:
-            dates[binding.field] = (case.delivery_date + timedelta(days=1)).isoformat()
-    return dates
+    return {
+        binding.field: _business_date_binding_value(binding, case)
+        for binding in step.business_date_bindings
+    }
 
 
 def _resolve_binding(binding: InputBinding, case: CasePlan) -> Any:
@@ -54,6 +49,20 @@ def _business_date_value(case: CasePlan, value: str) -> str:
     if value == "payment_posting_date":
         return (case.delivery_date + timedelta(days=1)).isoformat()
     raise TraceGenerationError(f"Unknown business_date binding value '{value}'")
+
+
+def _business_date_binding_value(binding: InputBinding, case: CasePlan) -> str:
+    if binding.source == "business_date":
+        return _business_date_value(case, binding.value)
+    if binding.source == "derived":
+        if binding.value == "fiori_delivery_date":
+            return case.delivery_date.isoformat()
+        if binding.value == "fiori_payment_posting_date":
+            return (case.delivery_date + timedelta(days=1)).isoformat()
+    raise TraceGenerationError(
+        f"Business date binding '{binding.field}' uses unsupported source/value: "
+        f"{binding.source}.{binding.value}"
+    )
 
 
 def _derived_value(case: CasePlan, value: str) -> Any:

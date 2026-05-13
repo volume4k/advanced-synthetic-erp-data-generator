@@ -86,8 +86,6 @@ dependency_graph:
     session_id: tour-user-1-session
     inputs:
       purchase_order: $purchase_order.po_number
-      document_date: 05/09/2026
-      posting_date: 05/09/2026
       storage_location: Trading Goods
     expected_outputs:
     - material_document.material_document_number

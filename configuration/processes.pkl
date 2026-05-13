@@ -64,6 +64,13 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           value = "purchasing_org"
         }
       }
+      businessDateBindings {
+        new objects.ToolInputBinding {
+          field = "delivery_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+      }
       expectedOutputs {
         "purchase_requisition.pr_number"
       }
@@ -109,6 +116,13 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           value = "purchase_order.po_number"
         }
         new objects.ToolInputBinding {
+          field = "storage_location"
+          source = "derived"
+          value = "storage_location_label"
+        }
+      }
+      businessDateBindings {
+        new objects.ToolInputBinding {
           field = "document_date"
           source = "derived"
           value = "fiori_delivery_date"
@@ -117,11 +131,6 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           field = "posting_date"
           source = "derived"
           value = "fiori_delivery_date"
-        }
-        new objects.ToolInputBinding {
-          field = "storage_location"
-          source = "derived"
-          value = "storage_location_label"
         }
       }
       expectedOutputs {
@@ -157,6 +166,13 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           field = "tax_code"
           source = "literal"
           value = "XI"
+        }
+      }
+      businessDateBindings {
+        new objects.ToolInputBinding {
+          field = "invoice_date"
+          source = "derived"
+          value = "fiori_delivery_date"
         }
       }
       expectedOutputs {
@@ -208,6 +224,18 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           field = "currency"
           source = "master_data"
           value = "currency"
+        }
+      }
+      businessDateBindings {
+        new objects.ToolInputBinding {
+          field = "posting_document_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+        new objects.ToolInputBinding {
+          field = "posting_date"
+          source = "derived"
+          value = "fiori_payment_posting_date"
         }
       }
       expectedOutputs {

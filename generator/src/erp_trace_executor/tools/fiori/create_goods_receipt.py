@@ -6,11 +6,10 @@ import re
 from typing import Literal
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
-from erp_trace_executor.fiori_types import FioriDate
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
 
@@ -26,9 +25,9 @@ StorageLocation = Literal["Finished Goods", "Trading Goods", "Miscellaneous", "R
 class CreateGoodsReceiptInput(BaseModel):
     """Input values for posting a goods receipt against a purchase order."""
 
+    model_config = ConfigDict(extra="forbid")
+
     purchase_order: str
-    document_date: FioriDate
-    posting_date: FioriDate
     storage_location: StorageLocation
 
 
@@ -56,9 +55,6 @@ class SapGoodsReceiptFlow:
         purchase_order.press("Enter")
         self._raise_if_no_selectable_position(page, params.purchase_order)
 
-        self._fill_textbox(page, "Belegdatum", params.document_date)
-        self._fill_textbox(page, "Buchungsdatum", params.posting_date)
-
         page.locator(STORAGE_LOCATION_CELL_SELECTOR).first.click()
         page.locator(
             STORAGE_LOCATION_OPTION_SELECTOR, has_text=params.storage_location
@@ -73,8 +69,6 @@ class SapGoodsReceiptFlow:
         return {
             "material_document": material_document,
             "purchase_order": params.purchase_order,
-            "document_date": params.document_date,
-            "posting_date": params.posting_date,
             "storage_location": params.storage_location,
         }
 

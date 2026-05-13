@@ -60,6 +60,11 @@ def _validate_manifest_links(payload: dict[str, Any]) -> None:
             raise TraceGenerationError(f"Manifest expected object keys reference unknown node '{item['node_id']}'")
         if item["case_id"] not in case_ids:
             raise TraceGenerationError(f"Manifest expected object keys reference unknown case '{item['case_id']}'")
+    for item in payload["date_overrides"]:
+        if item["node_id"] not in node_ids:
+            raise TraceGenerationError(f"Manifest date override references unknown node '{item['node_id']}'")
+        if item["case_id"] not in case_ids:
+            raise TraceGenerationError(f"Manifest date override references unknown case '{item['case_id']}'")
 
 
 def _execution_trace(
@@ -162,6 +167,7 @@ def _post_processing_manifest(
             {"id": export.id, "description": export.description}
             for export in config.run_settings.post_processing_export_groups
         ],
+        "date_overrides": _date_overrides(nodes),
         "failed_case_policy": {
             "exclude_failed_cases": True,
             "source_artifacts": ["execution_log", "object_registry"],
@@ -188,6 +194,31 @@ def _case_record(case: CasePlan) -> dict[str, Any]:
             }
         ],
     }
+
+
+def _date_overrides(nodes: list[PlannedNode]) -> list[dict[str, str]]:
+    overrides: list[dict[str, str]] = []
+    for node in nodes:
+        if node.step_type != "post_goods_receipt":
+            continue
+        for field in ("document_date", "posting_date"):
+            planned_value = node.business_dates.get(field)
+            if planned_value is None:
+                continue
+            overrides.append(
+                {
+                    "node_id": node.node_id,
+                    "case_id": node.case_id,
+                    "step_type": node.step_type,
+                    "object_type": "material_document",
+                    "field": field,
+                    "planned_value": planned_value,
+                    "runtime_value_policy": "sap_current_date",
+                    "source": "business_dates",
+                    "reason": "sap_runtime_forces_current_date",
+                }
+            )
+    return overrides
 
 
 def _session_records(config: GenerationConfig, nodes: list[PlannedNode]) -> list[dict[str, Any]]:

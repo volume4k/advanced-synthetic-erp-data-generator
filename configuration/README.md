@@ -98,6 +98,8 @@ new objects.ProcessStep {
 
 Active steps must have a tool, bindings for every required tool input, and at least one expected output key. Bindings are owned by each `ProcessStep`; `run_settings.pkl` must not contain fallback tool-input maps.
 
+`businessDateBindings` hold planned business dates for the canonical trace and post-processing manifest. Use them when SAP runtime either cannot accept the planned date, as with goods receipt, or when post-processing needs a stable planned date contract.
+
 Supported binding sources are `literal`, `master_data`, `case`, `business_date`, `prior_output`, and `derived`. Supported derived values in v1 are `gross_amount`, `fiori_delivery_date`, `fiori_payment_posting_date`, and `storage_location_label`.
 
 Dependencies define directed graph edges:

@@ -53,6 +53,62 @@
       "title": "CaseLabel",
       "type": "object"
     },
+    "DateOverride": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "object_type": {
+          "title": "Object Type",
+          "type": "string"
+        },
+        "planned_value": {
+          "title": "Planned Value",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "runtime_value_policy": {
+          "const": "sap_current_date",
+          "title": "Runtime Value Policy",
+          "type": "string"
+        },
+        "source": {
+          "const": "business_dates",
+          "title": "Source",
+          "type": "string"
+        },
+        "step_type": {
+          "title": "Step Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "case_id",
+        "step_type",
+        "object_type",
+        "field",
+        "planned_value",
+        "runtime_value_policy",
+        "source",
+        "reason"
+      ],
+      "title": "DateOverride",
+      "type": "object"
+    },
     "ExpectedObjectKeys": {
       "additionalProperties": false,
       "properties": {
@@ -230,6 +286,13 @@
       "title": "Config Hash",
       "type": "string"
     },
+    "date_overrides": {
+      "items": {
+        "$ref": "#/$defs/DateOverride"
+      },
+      "title": "Date Overrides",
+      "type": "array"
+    },
     "expected_object_keys": {
       "items": {
         "$ref": "#/$defs/ExpectedObjectKeys"
@@ -284,6 +347,7 @@
     "expected_object_keys",
     "object_lineage",
     "post_processing_exports",
+    "date_overrides",
     "failed_case_policy"
   ],
   "title": "PostProcessingManifestArtifact",

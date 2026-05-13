@@ -116,6 +116,7 @@ class ProcessStep {
   stepType: String(this.length > 0)
   tool: ToolRequirement?
   inputBindings: Listing<ToolInputBinding> = new Listing {}
+  businessDateBindings: Listing<ToolInputBinding> = new Listing {}
   expectedOutputs: Listing<String> = new Listing {}
 }
 
