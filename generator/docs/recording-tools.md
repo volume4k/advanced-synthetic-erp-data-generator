@@ -29,7 +29,7 @@ Use it as a helper, not as the final source of truth. Generated code still needs
 5. Run a headed smoke test:
 
 ```bash
-uv run --project generator erp-trace-exec generator/examples/sap-procure-to-pay.execution-trace.yaml --headed
+uv run --project generator erp-trace-exec generator/examples/sap-create-purchase-requisition.execution-trace.yaml --headed
 ```
 
 ## Clean Generated Code

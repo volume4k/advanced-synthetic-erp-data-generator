@@ -1,0 +1,61 @@
+trace_version: '0.1'
+run_id: RUN_EXAMPLE_SEND_PAYMENT
+config_hash: example
+tool_catalog_hash: example
+trace_generator_version: 0.1.0
+llm_metadata:
+  used: false
+  seed: 17
+sessions:
+- session_id: tour-user-1-session
+  virtual_actor_id: tour-user-1
+  technical_user_id: TU_EXAMPLE
+  username_env_var: SAP_USER_1_UN
+  password_env_var: SAP_USER_1_PW
+  login_url_env_var: SAP_URL
+  success_selector: '#userActionsMenuHeaderButton'
+cases:
+- case_id: EXAMPLE_SEND_PAYMENT_001
+  process_type: procure_to_pay
+  scenario_id: NORMAL
+  case_label: normal
+  line_items: []
+dependency_graph:
+  nodes:
+  - node_id: task-send-payment-001
+    case_id: EXAMPLE_SEND_PAYMENT_001
+    step_type: post_outgoing_payment
+    tool_name: fiori.send_payment
+    virtual_actor_id: tour-user-1
+    technical_sap_user: TU_EXAMPLE
+    session_id: tour-user-1-session
+    inputs:
+      company_code: US00
+      posting_document_date: 05/09/2026
+      supplier: '107902'
+      accounting_document: '5105600103'
+      general_ledger_account: '1800000'
+      amount: 1976
+      currency: USD
+    expected_outputs:
+    - payment_document.payment_document_number
+    business_dates:
+      posting_document_date: '2026-05-09'
+    target_synthetic_time:
+      start: '2026-05-18T08:00:00+02:00'
+      end: '2026-05-18T08:05:00+02:00'
+    labels:
+      step_label: normal
+  edges: []
+execution_schedule:
+  mode: waves
+  max_parallel_sessions: 1
+  waves:
+  - wave_id: W001
+    sequence_no: 1
+    nodes:
+    - node_id: task-send-payment-001
+      startup_order: 1
+validation_report:
+  errors: []
+  warnings: []

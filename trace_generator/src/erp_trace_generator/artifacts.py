@@ -43,7 +43,7 @@ def write_artifacts(
 
 
 def _validated_execution_trace(payload: dict[str, Any]) -> dict[str, Any]:
-    return ExecutionTraceArtifact.model_validate(payload).model_dump(mode="json", by_alias=True)
+    return ExecutionTraceArtifact.model_validate(payload).model_dump(mode="json", by_alias=True, exclude_none=True)
 
 
 def _validated_manifest(payload: dict[str, Any]) -> dict[str, Any]:

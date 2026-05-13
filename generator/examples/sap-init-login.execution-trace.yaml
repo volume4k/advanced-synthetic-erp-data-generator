@@ -1,0 +1,27 @@
+trace_version: '0.1'
+run_id: RUN_EXAMPLE_INIT_LOGIN
+config_hash: example
+tool_catalog_hash: example
+trace_generator_version: 0.1.0
+llm_metadata:
+  used: false
+  seed: 17
+sessions:
+- session_id: tour-user-1-session
+  virtual_actor_id: tour-user-1
+  technical_user_id: TU_EXAMPLE
+  username_env_var: SAP_USER_1_UN
+  password_env_var: SAP_USER_1_PW
+  login_url_env_var: SAP_URL
+  success_selector: '#userActionsMenuHeaderButton'
+cases: []
+dependency_graph:
+  nodes: []
+  edges: []
+execution_schedule:
+  mode: waves
+  max_parallel_sessions: 1
+  waves: []
+validation_report:
+  errors: []
+  warnings: []

@@ -335,9 +335,45 @@
           "title": "Password Env Var",
           "type": "string"
         },
+        "password_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Password Selector"
+        },
         "session_id": {
           "title": "Session Id",
           "type": "string"
+        },
+        "submit_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Submit Selector"
+        },
+        "success_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Success Selector"
         },
         "technical_user_id": {
           "title": "Technical User Id",
@@ -346,6 +382,18 @@
         "username_env_var": {
           "title": "Username Env Var",
           "type": "string"
+        },
+        "username_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username Selector"
         },
         "virtual_actor_id": {
           "title": "Virtual Actor Id",

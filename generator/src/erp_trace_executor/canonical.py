@@ -23,6 +23,10 @@ class CanonicalSession(CanonicalModel):
     username_env_var: str
     password_env_var: str
     login_url_env_var: str
+    username_selector: str | None = None
+    password_selector: str | None = None
+    submit_selector: str | None = None
+    success_selector: str | None = None
 
 
 class CanonicalCase(CanonicalModel):
@@ -137,6 +141,10 @@ def build_init_from_sessions(trace: CanonicalTrace, env_values: dict[str, str]) 
                 username=username,
                 password=password,
                 login_url=login_url,
+                username_selector=session.username_selector,
+                password_selector=session.password_selector,
+                submit_selector=session.submit_selector,
+                success_selector=session.success_selector,
             )
         )
     return SessionInitRecord(line_number=1, users=users)

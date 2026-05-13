@@ -42,6 +42,10 @@ class TraceSession(ArtifactModel):
     username_env_var: str
     password_env_var: str
     login_url_env_var: str
+    username_selector: str | None = None
+    password_selector: str | None = None
+    submit_selector: str | None = None
+    success_selector: str | None = None
 
 
 class TargetSyntheticTime(ArtifactModel):

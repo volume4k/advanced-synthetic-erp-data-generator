@@ -11,6 +11,15 @@ from erp_trace_executor.tooling import ToolSpec
 
 EXAMPLES_DIR = Path(__file__).parents[1] / "examples"
 INFRASTRUCTURE_TOOLS = {"fiori.login"}
+EXPECTED_EXAMPLE_TRACES = {
+    "sap-create-goods-receipt.execution-trace.yaml",
+    "sap-create-purchase-order.execution-trace.yaml",
+    "sap-create-purchase-requisition.execution-trace.yaml",
+    "sap-create-supplier-invoice.execution-trace.yaml",
+    "sap-init-login.execution-trace.yaml",
+    "sap-procure-to-pay-runtime-handover.execution-trace.yaml",
+    "sap-send-payment.execution-trace.yaml",
+}
 
 
 def test_default_registry_tool_specs_satisfy_core_contract():
@@ -34,8 +43,11 @@ def test_default_registry_tool_specs_satisfy_core_contract():
 def test_registered_business_tools_have_valid_example_trace_inputs():
     registry = build_default_registry()
     seen_tools: set[str] = set()
+    trace_paths = sorted(EXAMPLES_DIR.glob("*.execution-trace.yaml"))
 
-    for trace_path in sorted(EXAMPLES_DIR.glob("*.execution-trace.yaml")):
+    assert {path.name for path in trace_paths} == EXPECTED_EXAMPLE_TRACES
+
+    for trace_path in trace_paths:
         trace = load_canonical_trace(trace_path)
         for session in trace.sessions:
             assert session.password_env_var, f"{trace_path} must reference a password env var"

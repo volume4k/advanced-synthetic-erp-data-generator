@@ -9,7 +9,7 @@ import yaml
 from pydantic import BaseModel
 
 from erp_trace_executor import executor as executor_module
-from erp_trace_executor.canonical import build_init_from_sessions, load_canonical_trace
+from erp_trace_executor.canonical import CanonicalTrace, build_init_from_sessions, load_canonical_trace
 from erp_trace_executor.evidence import ExecutionEvidenceWriter
 from erp_trace_executor.errors import TraceParseError
 from erp_trace_executor.executor import TraceExecutor
@@ -175,6 +175,25 @@ def test_canonical_loader_rejects_edge_refs_without_nodes(tmp_path: Path) -> Non
 
     with pytest.raises(TraceParseError, match="unknown to node"):
         load_canonical_trace(path)
+
+
+def test_build_init_from_sessions_preserves_login_selectors() -> None:
+    payload = _canonical_payload()
+    payload["sessions"][0]["username_selector"] = "#user"
+    payload["sessions"][0]["password_selector"] = "#pass"
+    payload["sessions"][0]["submit_selector"] = "#submit"
+    payload["sessions"][0]["success_selector"] = "#done"
+    trace = CanonicalTrace.model_validate(payload)
+
+    init = build_init_from_sessions(
+        trace,
+        {"SAP_USER_1_UN": "BUYER1", "SAP_USER_1_PW": "secret", "SAP_URL": "https://sap.example.test"},
+    )
+
+    assert init.users[0].username_selector == "#user"
+    assert init.users[0].password_selector == "#pass"
+    assert init.users[0].submit_selector == "#submit"
+    assert init.users[0].success_selector == "#done"
 
 
 def test_evidence_writer_rejects_unsafe_run_ids(tmp_path: Path) -> None:
