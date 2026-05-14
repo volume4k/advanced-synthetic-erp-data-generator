@@ -302,6 +302,16 @@ def _home_reset_failure_registry() -> ToolRegistry:
     return registry
 
 
+def _interrupt_registry() -> ToolRegistry:
+    registry = ToolRegistry()
+
+    def run_tool(context, _params: NoInput) -> ToolResult:
+        raise KeyboardInterrupt
+
+    registry.register(ToolSpec(name="fiori.interrupt_tool", input_model=NoInput, run=run_tool))
+    return registry
+
+
 def test_executor_logs_unknown_tools_as_node_failure(tmp_path, monkeypatch):
     contexts: list[ExecutionTaskRecord] = []
     record = _record("task-1", tool="missing.tool")
@@ -507,18 +517,76 @@ def test_executor_fails_run_when_home_reset_after_node_failure_fails(tmp_path, m
     page = FakeHomeResetPage(logo_click_succeeds=False, goto_raises=True)
     record = _record("C001_A1", tool="fiori.fail_tool", case_id="P2P_C001")
 
-    with pytest.raises(PlaywrightError, match="cannot goto home"):
-        _run_canonical_records(
-            executor=TraceExecutor(registry=_home_reset_failure_registry()),
-            records=[record],
-            tmp_path=tmp_path,
-            monkeypatch=monkeypatch,
-            context_factory=lambda item: FakeHomeResetContext(item, page),
-        )
+    with caplog.at_level(logging.ERROR, logger="erp_trace_executor.evidence"):
+        with pytest.raises(PlaywrightError, match="cannot goto home"):
+            _run_canonical_records(
+                executor=TraceExecutor(registry=_home_reset_failure_registry()),
+                records=[record],
+                tmp_path=tmp_path,
+                monkeypatch=monkeypatch,
+                context_factory=lambda item: FakeHomeResetContext(item, page),
+            )
 
+    assert "Home reset failed for node C001_A1" in caplog.text
     events = _read_events(tmp_path)
     assert any(event["event_type"] == "home_reset_failed" for event in events)
     assert any(event["event_type"] == "run_failed" for event in events)
+
+
+def test_executor_logs_node_and_run_interrupted_before_reraising(tmp_path, monkeypatch):
+    record = _record("C001_A1", tool="fiori.interrupt_tool", case_id="P2P_C001")
+
+    with pytest.raises(KeyboardInterrupt):
+        _run_canonical_records(
+            executor=TraceExecutor(registry=_interrupt_registry()),
+            records=[record],
+            tmp_path=tmp_path,
+            monkeypatch=monkeypatch,
+            context_factory=lambda item: FakeHomeResetContext(item, FakeHomeResetPage(logo_click_succeeds=True)),
+        )
+
+    events = _read_events(tmp_path)
+    assert [event["event_type"] for event in events if event["event_type"].endswith("_interrupted")] == [
+        "node_interrupted",
+        "run_interrupted",
+    ]
+    node_event = next(event for event in events if event["event_type"] == "node_interrupted")
+    assert node_event["node_id"] == "C001_A1"
+    assert node_event["severity"] == "WARNING"
+    run_event = next(event for event in events if event["event_type"] == "run_interrupted")
+    assert run_event["node_id"] == "C001_A1"
+    assert run_event["severity"] == "WARNING"
+
+
+def test_executor_logs_login_and_run_interrupted_before_reraising(tmp_path, monkeypatch):
+    record = _record("C001_A1", tool="fiori.fake_tool", case_id="P2P_C001")
+    trace = _trace_from_records([record])
+    writer = ExecutionEvidenceWriter(tmp_path, run_id=trace.run_id)
+
+    def interrupt_login(_context, _params) -> ToolResult:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(executor_module, "run_login", interrupt_login)
+
+    with pytest.raises(KeyboardInterrupt):
+        TraceExecutor(registry=_home_reset_registry()).execute_canonical(
+            trace,
+            init=_init_from_records([record]),
+            context_factory=lambda item: FakeHomeResetContext(item, FakeHomeResetPage(logo_click_succeeds=True)),
+            evidence_writer=writer,
+        )
+
+    events = _read_events(tmp_path)
+    assert [event["event_type"] for event in events if event["event_type"].endswith("_interrupted")] == [
+        "login_interrupted",
+        "run_interrupted",
+    ]
+    login_event = next(event for event in events if event["event_type"] == "login_interrupted")
+    assert login_event["session_id"] == "buyer-session"
+    assert login_event["severity"] == "WARNING"
+    run_event = next(event for event in events if event["event_type"] == "run_interrupted")
+    assert run_event["session_id"] == "buyer-session"
+    assert run_event["severity"] == "WARNING"
 
 
 class FakeHomeResetContext:

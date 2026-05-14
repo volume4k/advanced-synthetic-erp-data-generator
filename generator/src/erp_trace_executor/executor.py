@@ -65,6 +65,18 @@ class TraceExecutor:
                 try:
                     login_context = context_factory(login_record)
                     login_result = run_login(login_context, self._build_init_login_input(init_user))
+                except KeyboardInterrupt:
+                    evidence_writer.log_event(
+                        "login_interrupted",
+                        session_id=login_record.session_id,
+                        virtual_actor_id=login_record.user_id,
+                    )
+                    evidence_writer.log_event(
+                        "run_interrupted",
+                        session_id=login_record.session_id,
+                        virtual_actor_id=login_record.user_id,
+                    )
+                    raise
                 except Exception as exc:
                     evidence_writer.log_event(
                         "login_failed",
@@ -107,6 +119,10 @@ class TraceExecutor:
                         result = spec.run(context, params)
                         self._attach_fiori_messages(context, result)
                         _validate_expected_outputs(node, result)
+                    except KeyboardInterrupt:
+                        evidence_writer.log_event("node_interrupted", **event_meta)
+                        evidence_writer.log_event("run_interrupted", **event_meta)
+                        raise
                     except Exception as exc:
                         failed_cases.add(node.case_id)
                         sap_messages = self._capture_fiori_messages(context)
