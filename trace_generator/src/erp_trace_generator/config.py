@@ -126,7 +126,10 @@ def _master_data(item: dict[str, Any]) -> MasterDataEntry:
 
 def _process(item: dict[str, Any], tool_requirements: dict[str, Any]) -> ProcessDefinition:
     steps: list[ProcessStep] = []
-    for step in item.get("steps", []):
+    raw_steps = item.get("steps")
+    if not isinstance(raw_steps, list) or not raw_steps:
+        raise TraceGenerationError(f"Process '{item.get('processType')}' must declare at least one step")
+    for step in raw_steps:
         tool = step.get("tool")
         if tool is None:
             raise TraceGenerationError(

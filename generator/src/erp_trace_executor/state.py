@@ -53,6 +53,11 @@ class RuntimeStateStore:
         return runtime_object.keys[key]
 
     def record_tool_result(self, case_id: str | None, planned_step_id: str, result: ToolResult) -> None:
+        if result.planned_step_id != planned_step_id:
+            raise StateResolutionError(
+                f"Cannot record state for planned step '{planned_step_id}': "
+                f"ToolResult planned_step_id is '{result.planned_step_id}'"
+            )
         if not case_id:
             raise StateResolutionError(f"Cannot record state for planned step '{planned_step_id}': missing case_id")
 

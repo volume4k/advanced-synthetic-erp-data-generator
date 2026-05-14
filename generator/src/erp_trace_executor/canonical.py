@@ -138,6 +138,16 @@ def build_init_from_actor_sessions(trace: CanonicalTrace, env_values: dict[str, 
             )
         password = env_values.get(session.password_env_var)
         login_url = env_values.get(session.login_url_env_var)
+        if password is None:
+            raise TraceParseError(
+                f"Actor session '{session.actor_session_id}' references missing password env var "
+                f"'{session.password_env_var}'"
+            )
+        if login_url is None:
+            raise TraceParseError(
+                f"Actor session '{session.actor_session_id}' references missing login URL env var "
+                f"'{session.login_url_env_var}'"
+            )
         users.append(
             SessionInitUser(
                 actor_session_id=session.actor_session_id,
@@ -157,7 +167,7 @@ def build_init_from_actor_sessions(trace: CanonicalTrace, env_values: dict[str, 
 def _validate_canonical_refs(trace: CanonicalTrace) -> None:
     planned_step_ids = {planned_step.planned_step_id for planned_step in trace.dependency_graph.planned_steps}
     case_ids = {case.case_id for case in trace.cases}
-    session_ids = {session.actor_session_id for session in trace.actor_sessions}
+    sessions_by_id = {session.actor_session_id: session for session in trace.actor_sessions}
     scheduled_ids: list[str] = []
 
     for planned_step in trace.dependency_graph.planned_steps:
@@ -165,10 +175,23 @@ def _validate_canonical_refs(trace: CanonicalTrace) -> None:
             raise TraceParseError(
                 f"Canonical planned step '{planned_step.planned_step_id}' references unknown case '{planned_step.case_id}'"
             )
-        if planned_step.actor_session_id not in session_ids:
+        session = sessions_by_id.get(planned_step.actor_session_id)
+        if session is None:
             raise TraceParseError(
                 f"Canonical planned step '{planned_step.planned_step_id}' references unknown actor session "
                 f"'{planned_step.actor_session_id}'"
+            )
+        if planned_step.synthetic_actor_id != session.synthetic_actor_id:
+            raise TraceParseError(
+                f"Canonical planned step '{planned_step.planned_step_id}' has synthetic_actor_id "
+                f"'{planned_step.synthetic_actor_id}' that does not match actor session "
+                f"'{planned_step.actor_session_id}' ({session.synthetic_actor_id})"
+            )
+        if planned_step.technical_sap_user_id != session.technical_sap_user_id:
+            raise TraceParseError(
+                f"Canonical planned step '{planned_step.planned_step_id}' has technical_sap_user_id "
+                f"'{planned_step.technical_sap_user_id}' that does not match actor session "
+                f"'{planned_step.actor_session_id}' ({session.technical_sap_user_id})"
             )
 
     for dependency in trace.dependency_graph.dependencies:

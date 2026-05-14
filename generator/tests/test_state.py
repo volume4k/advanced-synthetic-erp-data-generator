@@ -7,9 +7,9 @@ from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.state import RuntimeStateStore
 
 
-def _purchase_requisition_result() -> ToolResult:
+def _purchase_requisition_result(planned_step_id: str = "C042_A1") -> ToolResult:
     return ToolResult(
-        planned_step_id="C042_A1",
+        planned_step_id=planned_step_id,
         actor_session_id="buyer-session",
         tool="fiori.create_purchase_requisition",
         data={
@@ -26,6 +26,13 @@ def test_runtime_state_records_returned_object_and_resolves_key():
     state.record_tool_result("P2P_C042", "C042_A1", _purchase_requisition_result())
 
     assert state.resolve("P2P_C042", "$purchase_requisition.pr_number", planned_step_id="C042_A2") == "10000030"
+
+
+def test_runtime_state_rejects_mismatched_result_planned_step_id():
+    state = RuntimeStateStore()
+
+    with pytest.raises(StateResolutionError, match="ToolResult planned_step_id"):
+        state.record_tool_result("P2P_C042", "C042_A2", _purchase_requisition_result())
 
 
 @pytest.mark.parametrize(
@@ -51,7 +58,7 @@ def test_runtime_state_rejects_duplicate_object_type_in_case():
     state.record_tool_result("P2P_C042", "C042_A1", _purchase_requisition_result())
 
     with pytest.raises(StateResolutionError, match="already exists"):
-        state.record_tool_result("P2P_C042", "C042_A1_retry", _purchase_requisition_result())
+        state.record_tool_result("P2P_C042", "C042_A1_retry", _purchase_requisition_result("C042_A1_retry"))
 
 
 def test_runtime_state_fails_missing_item_key_when_tool_did_not_return_it():

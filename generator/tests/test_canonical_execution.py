@@ -207,6 +207,45 @@ def test_build_init_from_sessions_preserves_login_selectors() -> None:
     assert init.users[0].success_selector == "#done"
 
 
+@pytest.mark.parametrize(
+    ("missing_key", "match"),
+    [
+        ("SAP_USER_1_PW", "missing password env var"),
+        ("SAP_URL", "missing login URL env var"),
+    ],
+)
+def test_build_init_from_sessions_rejects_missing_required_env_values(missing_key: str, match: str) -> None:
+    trace = CanonicalTrace.model_validate(_canonical_payload())
+    env_values = {
+        "SAP_USER_1_UN": "BUYER1",
+        "SAP_USER_1_PW": "secret",
+        "SAP_URL": "https://sap.example.test",
+    }
+    env_values.pop(missing_key)
+
+    with pytest.raises(TraceParseError, match=match):
+        build_init_from_actor_sessions(trace, env_values)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    [
+        ("synthetic_actor_id", "other_actor", "synthetic_actor_id"),
+        ("technical_sap_user_id", "TU_99", "technical_sap_user_id"),
+    ],
+)
+def test_canonical_loader_rejects_planned_step_identity_mismatch(
+    tmp_path: Path, field: str, value: str, match: str
+) -> None:
+    payload = _canonical_payload()
+    payload["dependency_graph"]["planned_steps"][0][field] = value
+    path = tmp_path / "trace.execution-trace.yaml"
+    _write_yaml(path, payload)
+
+    with pytest.raises(TraceParseError, match=match):
+        load_canonical_trace(path)
+
+
 def test_evidence_writer_rejects_unsafe_run_ids(tmp_path: Path) -> None:
     for run_id in ["../escape", "..", ".", "/tmp/escape", r"nested\escape"]:
         with pytest.raises(ValueError, match="unsafe filename"):

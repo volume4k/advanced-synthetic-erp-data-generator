@@ -126,11 +126,11 @@ def plan_waves(config: GenerationConfig, planned_steps: list[PlannedStep]) -> li
         key=lambda planned_step: (planned_step.target_start, step_rank[planned_step.step_type], planned_step.case_id),
     )
     scheduled: set[str] = set()
-    dependencies = {
-        (planned_step.case_id, dep.to_step_type): f"{planned_step.case_id}_{_step_id_for(process, dep.from_step_type)}"
-        for planned_step in planned_steps
-        for dep in process.dependencies
-    }
+    dependencies: dict[tuple[str, str], set[str]] = defaultdict(set)
+    case_ids = {planned_step.case_id for planned_step in planned_steps}
+    for case_id in case_ids:
+        for dep in process.dependencies:
+            dependencies[(case_id, dep.to_step_type)].add(f"{case_id}_{_step_id_for(process, dep.from_step_type)}")
     waves: list[dict] = []
 
     while unscheduled:
@@ -140,8 +140,8 @@ def plan_waves(config: GenerationConfig, planned_steps: list[PlannedStep]) -> li
 
         ready_steps = []
         for planned_step in unscheduled:
-            required_parent = dependencies.get((planned_step.case_id, planned_step.step_type))
-            if required_parent is not None and required_parent not in scheduled:
+            required_parents = dependencies.get((planned_step.case_id, planned_step.step_type), set())
+            if not required_parents.issubset(scheduled):
                 continue
             ready_steps.append(planned_step)
 

@@ -61,14 +61,21 @@ class TimelinePlanner:
 
     def _fit_into_workday(self, start: datetime, duration_minutes: int) -> datetime:
         current_start = self.align_start(start)
+        remaining_minutes = duration_minutes
         while True:
-            end = current_start + timedelta(minutes=duration_minutes)
             boundaries = self._boundaries_for(current_start.date())
-            if current_start < boundaries.pause_start < end:
+            segment_end = boundaries.work_end
+            if current_start < boundaries.pause_start:
+                segment_end = min(segment_end, boundaries.pause_start)
+
+            available_minutes = max(0, int((segment_end - current_start).total_seconds() // 60))
+            if remaining_minutes <= available_minutes:
+                return current_start + timedelta(minutes=remaining_minutes)
+
+            remaining_minutes -= available_minutes
+            if segment_end == boundaries.pause_start:
                 current_start = boundaries.pause_end
                 continue
-            if end <= boundaries.work_end:
-                return end
             current_start = datetime.combine(current_start.date() + timedelta(days=1), self._work_start, self._tz)
 
     def _boundaries_for(self, day: date) -> _DayBoundaries:

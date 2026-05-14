@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from random import Random
 
@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 from erp_trace_generator.artifact_models import ExecutionTraceArtifact, PostProcessingManifestArtifact
-from erp_trace_generator.artifacts import _session_records
+from erp_trace_generator.artifacts import _post_processing_manifest, _session_records
 from erp_trace_generator.bindings import planned_date_inputs_for_step, resolve_step_inputs
 from erp_trace_generator.cli import main
 from erp_trace_generator.config import load_generation_config
@@ -307,6 +307,16 @@ def test_config_loader_rejects_active_null_tool(tmp_path: Path) -> None:
         load_generation_config(config_path)
 
 
+def test_config_loader_rejects_process_without_steps(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["processes"][0]["steps"] = []
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="must declare at least one step"):
+        load_generation_config(config_path)
+
+
 def test_config_loader_rejects_missing_required_input_binding(tmp_path: Path) -> None:
     payload = _base_config()
     payload["processes"][0]["steps"][0]["inputBindings"] = [
@@ -526,6 +536,53 @@ def test_session_records_reject_same_session_for_multiple_actors(tmp_path: Path)
         )
 
 
+def test_manifest_actor_projection_uses_planned_actor_session_ids(tmp_path: Path) -> None:
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, _base_config())
+    config = load_generation_config(config_path)
+    case = CasePlan(
+        case_id="C001",
+        process_type="procure_to_pay",
+        material_id="MA025",
+        vendor_id="V17121",
+        plant="MI00",
+        purchasing_org="US00",
+        storage_location="0002",
+        storage_location_label="Trading Goods",
+        quantity=10,
+        target_price=20.0,
+        currency="USD",
+        delivery_date=date(2026, 5, 18),
+        gross_amount=200.0,
+    )
+    planned_step = PlannedStep(
+        planned_step_id="C001_A1",
+        case_id="C001",
+        step_id="A1",
+        step_type="create_purchase_requisition",
+        tool_name="fiori.create_purchase_requisition",
+        synthetic_actor_id="procurement_01",
+        technical_sap_user_id="GBGEN_P01",
+        actor_session_id="custom-procurement-session",
+        inputs={},
+        required_sap_object_keys=[],
+        planned_date_inputs={},
+        target_start=datetime(2026, 5, 18, 8, 0),
+        target_end=datetime(2026, 5, 18, 8, 1),
+    )
+
+    manifest = _post_processing_manifest(config, [case], [planned_step], "RUN_TEST", "config-hash")
+
+    assert manifest["actor_projection"] == [
+        {
+            "synthetic_actor_id": "procurement_01",
+            "technical_sap_user_id": "GBGEN_P01",
+            "actor_session_id": "custom-procurement-session",
+            "expose_as": "procurement_01",
+        }
+    ]
+
+
 def test_scheduler_assigns_configured_multi_step_actor_without_overlap(tmp_path: Path) -> None:
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, _base_config())
@@ -606,6 +663,75 @@ def test_wave_scheduler_prevents_shared_technical_user_in_same_wave(tmp_path: Pa
         assert len(technical_user_ids) == len(set(technical_user_ids))
 
 
+def test_wave_scheduler_waits_for_all_dependency_parents(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["processes"][0]["dependencies"] = [
+        _dependency("create_purchase_requisition", "post_goods_receipt"),
+        _dependency("create_purchase_order", "post_goods_receipt"),
+    ]
+    payload["runSettings"]["maxParallelActorSessions"] = 2
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    planned_steps = [
+        PlannedStep(
+            planned_step_id="C001_A2",
+            case_id="C001",
+            step_id="A2",
+            step_type="create_purchase_order",
+            tool_name="fiori.create_purchase_order",
+            synthetic_actor_id="procurement_01",
+            technical_sap_user_id="GBGEN_P01",
+            actor_session_id="procurement_01-session",
+            inputs={},
+            required_sap_object_keys=[],
+            planned_date_inputs={},
+            target_start=datetime(2026, 5, 18, 8, 0),
+            target_end=datetime(2026, 5, 18, 8, 1),
+        ),
+        PlannedStep(
+            planned_step_id="C001_A3",
+            case_id="C001",
+            step_id="A3",
+            step_type="post_goods_receipt",
+            tool_name="fiori.create_goods_receipt",
+            synthetic_actor_id="warehouse_01",
+            technical_sap_user_id="GBGEN_P02",
+            actor_session_id="warehouse_01-session",
+            inputs={},
+            required_sap_object_keys=[],
+            planned_date_inputs={},
+            target_start=datetime(2026, 5, 18, 8, 1),
+            target_end=datetime(2026, 5, 18, 8, 2),
+        ),
+        PlannedStep(
+            planned_step_id="C001_A1",
+            case_id="C001",
+            step_id="A1",
+            step_type="create_purchase_requisition",
+            tool_name="fiori.create_purchase_requisition",
+            synthetic_actor_id="procurement_01",
+            technical_sap_user_id="GBGEN_P01",
+            actor_session_id="procurement_01-session",
+            inputs={},
+            required_sap_object_keys=[],
+            planned_date_inputs={},
+            target_start=datetime(2026, 5, 18, 9, 0),
+            target_end=datetime(2026, 5, 18, 9, 1),
+        ),
+    ]
+
+    waves = plan_waves(config, planned_steps)
+    wave_by_step = {
+        item["planned_step_id"]: wave["sequence_no"]
+        for wave in waves
+        for item in wave["planned_steps"]
+    }
+
+    assert wave_by_step["C001_A3"] > wave_by_step["C001_A1"]
+    assert wave_by_step["C001_A3"] > wave_by_step["C001_A2"]
+
+
 def _assert_no_resource_overlap(planned_steps: list[PlannedStep]) -> None:
     for first, second in zip(
         sorted(planned_steps, key=lambda planned_step: planned_step.target_start),
@@ -671,6 +797,23 @@ def test_timeline_rejects_non_positive_speed_factor(tmp_path: Path) -> None:
 
     with pytest.raises(TraceGenerationError, match="speed_factor must be greater than 0"):
         planner.add_step_duration(planner.first_start(), "create_purchase_requisition", 0)
+
+
+def test_timeline_carries_remaining_duration_across_pause_and_workday(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["stepDurationMinutes"]["create_purchase_requisition"] = {"min": 20, "max": 20}
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    planner = TimelinePlanner(config.run_settings, Random(17))
+
+    pause_crossing_start = planner.first_start().replace(hour=11, minute=50)
+    pause_crossing_end = planner.add_step_duration(pause_crossing_start, "create_purchase_requisition", 1.0)
+    day_crossing_start = planner.first_start().replace(hour=16, minute=50)
+    day_crossing_end = planner.add_step_duration(day_crossing_start, "create_purchase_requisition", 1.0)
+
+    assert pause_crossing_end == pause_crossing_start.replace(hour=12, minute=40)
+    assert day_crossing_end == (day_crossing_start + timedelta(days=1)).replace(hour=8, minute=10)
 
 
 def test_generated_inputs_validate_against_current_tool_schemas(tmp_path: Path) -> None:

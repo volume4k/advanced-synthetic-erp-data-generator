@@ -121,13 +121,14 @@ def _post_processing_manifest(
     config_hash: str,
 ) -> dict[str, Any]:
     actor_projection = []
-    for actor in config.actors:
-        technical_user = config.technical_user_for_actor(actor.id)
+    actors_by_id = {actor.id: actor for actor in config.actors}
+    for session in _session_records(config, planned_steps):
+        actor = actors_by_id[session["synthetic_actor_id"]]
         actor_projection.append(
             {
-                "synthetic_actor_id": actor.id,
-                "technical_sap_user_id": technical_user.id,
-                "actor_session_id": f"{actor.id}-session",
+                "synthetic_actor_id": session["synthetic_actor_id"],
+                "technical_sap_user_id": session["technical_sap_user_id"],
+                "actor_session_id": session["actor_session_id"],
                 "expose_as": actor.expose_as,
             }
         )
