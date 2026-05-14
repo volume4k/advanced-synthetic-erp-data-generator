@@ -26,15 +26,10 @@
   box-sizing: border-box;
 }
 
-html {
-  overflow-x: hidden;
-}
-
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  overflow-x: hidden;
 }
 
 button,
@@ -370,6 +365,7 @@ button.compact {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   gap: 12px;
+  /* Clip timeline card overflow here so page-level horizontal scroll stays usable elsewhere. */
   overflow: hidden;
   padding: 12px;
   border: 1px solid var(--border);
