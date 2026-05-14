@@ -5,6 +5,7 @@ This repository contains tools for generating and executing synthetic SAP Fiori 
 The current implementation focuses on a Pkl-backed trace planner in `trace_generator/` and a Playwright-backed trace executor in `generator/`. The planner writes canonical `execution-trace.yaml` files, and the executor runs those waves against SAP Fiori.
 
 The broader generator vision and planned architecture are documented in `generator_vision_architecture_specification.md`.
+Project glossary terms live in `CONTEXT.md`; architectural decision records live in `docs/adr/`.
 
 ## Repository Layout
 
@@ -105,6 +106,11 @@ External contributors adding browser tools should start with:
 - `generator/docs/adding-tools.md`
 - `generator/docs/recording-tools.md`
 - `generator/docs/locator-guidelines.md`
+
+For architecture context, read:
+
+- `CONTEXT.md`
+- `docs/adr/`
 
 ## Commit Conventions
 
