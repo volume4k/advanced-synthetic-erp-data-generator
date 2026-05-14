@@ -36,6 +36,7 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
       "storage_location"
       "supplier"
       "quantity"
+      "net_price"
     }
     inputProperties {
       new objects.ToolInputProperty {
@@ -59,6 +60,12 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
       new objects.ToolInputProperty {
         name = "quantity"
         schemaType = "integer"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "net_price"
+        schemaType = "number"
         required = true
         defaultValue = null
       }

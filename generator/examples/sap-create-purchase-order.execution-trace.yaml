@@ -34,6 +34,7 @@ dependency_graph:
       storage_location: FG00
       supplier: '107902'
       quantity: 10
+      net_price: 20
     expected_outputs:
     - purchase_order.po_number
     business_dates: {}

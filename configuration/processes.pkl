@@ -100,6 +100,11 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           source = "case"
           value = "quantity"
         }
+        new objects.ToolInputBinding {
+          field = "net_price"
+          source = "case"
+          value = "target_price"
+        }
       }
       expectedOutputs {
         "purchase_order.po_number"

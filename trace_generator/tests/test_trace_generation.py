@@ -142,7 +142,7 @@ def _base_config() -> dict:
             ),
             "fiori.create_purchase_order": _tool(
                 "fiori.create_purchase_order",
-                ["purchase_requisition", "storage_location", "supplier", "quantity"],
+                ["purchase_requisition", "storage_location", "supplier", "quantity", "net_price"],
             ),
             "fiori.create_goods_receipt": _tool(
                 "fiori.create_goods_receipt",
@@ -241,6 +241,7 @@ def _input_bindings(step_type: str) -> list[dict]:
             _binding("storage_location", "case", "storage_location"),
             _binding("supplier", "master_data", "vendor_id"),
             _binding("quantity", "case", "quantity"),
+            _binding("net_price", "case", "target_price"),
         ],
         "post_goods_receipt": [
             _binding("purchase_order", "prior_output", "purchase_order.po_number"),
@@ -746,6 +747,14 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
         "enter_incoming_invoice",
         "post_outgoing_payment",
     ]
+    purchase_order_node = execution_trace["dependency_graph"]["nodes"][1]
+    assert purchase_order_node["inputs"] == {
+        "purchase_requisition": "$purchase_requisition.pr_number",
+        "storage_location": "0002",
+        "supplier": "V17121",
+        "quantity": 10,
+        "net_price": execution_trace["cases"][0]["line_items"][0]["target_price"],
+    }
     goods_receipt_node = execution_trace["dependency_graph"]["nodes"][2]
     assert goods_receipt_node["inputs"] == {
         "purchase_order": "$purchase_order.po_number",
