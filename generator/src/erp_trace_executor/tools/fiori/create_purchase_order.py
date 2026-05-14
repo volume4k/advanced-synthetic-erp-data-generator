@@ -10,6 +10,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
+from erp_trace_executor.tools.fiori.helpers import format_number
 
 
 IFRAME_SELECTOR = 'iframe[name="application-PurchaseOrder-create-iframe"]'
@@ -25,6 +26,7 @@ class CreatePurchaseOrderInput(BaseModel):
     storage_location: str
     supplier: str
     quantity: int = Field(gt=0)
+    net_price: float = Field(gt=0)
     tax_code: str = "XI"
 
 
@@ -34,7 +36,7 @@ class SapPurchaseOrderFlow:
     def __init__(self, page) -> None:
         self._page = page
 
-    def create(self, params: CreatePurchaseOrderInput) -> dict[str, str | int]:
+    def create(self, params: CreatePurchaseOrderInput) -> dict[str, str | int | float]:
         page = self._page
 
         page.get_by_role("button", name="Suche öffnen").click()
@@ -59,6 +61,9 @@ class SapPurchaseOrderFlow:
         quantity_input = frame.get_by_role("textbox", name="Bestellmenge").first
         quantity_input.wait_for(state="visible")
         self._replace_grid_textbox_value(quantity_input, str(params.quantity))
+        net_price_input = frame.get_by_role("textbox", name="Nettopreis").first
+        net_price_input.wait_for(state="visible")
+        self._type_selected_grid_textbox_value(net_price_input, format_number(params.net_price))
         frame.get_by_role("tablist").get_by_text("Rechnung").click()
         tax_code = frame.get_by_role("textbox", name="Steuerkennz.")
         tax_code.click()
@@ -76,6 +81,7 @@ class SapPurchaseOrderFlow:
             "storage_location": params.storage_location,
             "supplier": params.supplier,
             "quantity": params.quantity,
+            "net_price": params.net_price,
             "tax_code": params.tax_code,
         }
 
@@ -110,6 +116,13 @@ class SapPurchaseOrderFlow:
             cell.press(character)
         cell.press("Enter")
 
+    def _type_selected_grid_textbox_value(self, cell, value: str) -> None:
+        """Type into a SAP GUI grid textbox whose current value is already selected."""
+
+        for character in value:
+            cell.press(character)
+        cell.press("Enter")
+
     def _close_start_dialog_if_visible(self, frame) -> None:
         close_button = frame.get_by_role("button", name="Schließen")
         try:
@@ -127,8 +140,8 @@ def run_create_purchase_order(
     order_data = SapPurchaseOrderFlow(page).create(params)
 
     return ToolResult(
-        task_id=context.record.task_id,
-        session_id=context.record.session_id,
+        planned_step_id=context.record.planned_step_id,
+        actor_session_id=context.record.actor_session_id,
         tool=context.record.tool,
         data={
             "status": "created",

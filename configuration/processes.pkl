@@ -11,41 +11,245 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
       stepId = "A1"
       stepType = "create_purchase_requisition"
       tool = toolRequirements["fiori.create_purchase_requisition"]
-      requiredRole = "procurement"
+      inputBindings {
+        new objects.ToolInputBinding {
+          field = "material"
+          source = "master_data"
+          value = "materialId"
+        }
+        new objects.ToolInputBinding {
+          field = "quantity"
+          source = "case"
+          value = "quantity"
+        }
+        new objects.ToolInputBinding {
+          field = "valuation_price"
+          source = "case"
+          value = "target_price"
+        }
+        new objects.ToolInputBinding {
+          field = "currency"
+          source = "master_data"
+          value = "currency"
+        }
+        new objects.ToolInputBinding {
+          field = "price_unit"
+          source = "literal"
+          value = "1"
+          valueType = "int"
+        }
+        new objects.ToolInputBinding {
+          field = "delivery_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+        new objects.ToolInputBinding {
+          field = "plant"
+          source = "master_data"
+          value = "plant"
+        }
+        new objects.ToolInputBinding {
+          field = "purchasing_group"
+          source = "literal"
+          value = "N00"
+        }
+        new objects.ToolInputBinding {
+          field = "purchasing_organization"
+          source = "master_data"
+          value = "purchasing_org"
+        }
+        new objects.ToolInputBinding {
+          field = "company_code"
+          source = "master_data"
+          value = "purchasing_org"
+        }
+      }
+      plannedDateInputBindings {
+        new objects.ToolInputBinding {
+          field = "delivery_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+      }
+      requiredSapObjectKeys {
+        "purchase_requisition.pr_number"
+      }
     }
     new objects.ProcessStep {
       stepId = "A2"
       stepType = "create_purchase_order"
       tool = toolRequirements["fiori.create_purchase_order"]
-      requiredRole = "procurement"
+      inputBindings {
+        new objects.ToolInputBinding {
+          field = "purchase_requisition"
+          source = "prior_output"
+          value = "purchase_requisition.pr_number"
+        }
+        new objects.ToolInputBinding {
+          field = "storage_location"
+          source = "case"
+          value = "storage_location"
+        }
+        new objects.ToolInputBinding {
+          field = "supplier"
+          source = "master_data"
+          value = "vendor_id"
+        }
+        new objects.ToolInputBinding {
+          field = "quantity"
+          source = "case"
+          value = "quantity"
+        }
+        new objects.ToolInputBinding {
+          field = "net_price"
+          source = "case"
+          value = "target_price"
+        }
+      }
+      requiredSapObjectKeys {
+        "purchase_order.po_number"
+      }
     }
     new objects.ProcessStep {
       stepId = "A3"
-      stepType = "release_purchase_order"
-      tool = null
-      requiredRole = "procurement_manager"
+      stepType = "post_goods_receipt"
+      tool = toolRequirements["fiori.create_goods_receipt"]
+      inputBindings {
+        new objects.ToolInputBinding {
+          field = "purchase_order"
+          source = "prior_output"
+          value = "purchase_order.po_number"
+        }
+        new objects.ToolInputBinding {
+          field = "storage_location"
+          source = "derived"
+          value = "storage_location_label"
+        }
+      }
+      plannedDateInputBindings {
+        new objects.ToolInputBinding {
+          field = "document_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+        new objects.ToolInputBinding {
+          field = "posting_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+      }
+      requiredSapObjectKeys {
+        "material_document.material_document_number"
+      }
     }
     new objects.ProcessStep {
       stepId = "A4"
-      stepType = "post_goods_receipt"
-      tool = null
-      requiredRole = "warehouse"
+      stepType = "enter_incoming_invoice"
+      tool = toolRequirements["fiori.create_supplier_invoice"]
+      inputBindings {
+        new objects.ToolInputBinding {
+          field = "invoice_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+        new objects.ToolInputBinding {
+          field = "invoicing_party"
+          source = "master_data"
+          value = "vendor_id"
+        }
+        new objects.ToolInputBinding {
+          field = "gross_amount"
+          source = "derived"
+          value = "gross_amount"
+        }
+        new objects.ToolInputBinding {
+          field = "purchase_order"
+          source = "prior_output"
+          value = "purchase_order.po_number"
+        }
+        new objects.ToolInputBinding {
+          field = "tax_code"
+          source = "literal"
+          value = "XI"
+        }
+      }
+      plannedDateInputBindings {
+        new objects.ToolInputBinding {
+          field = "invoice_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+      }
+      requiredSapObjectKeys {
+        "supplier_invoice.invoice_number"
+        "supplier_invoice.fiscal_year"
+      }
     }
     new objects.ProcessStep {
       stepId = "A5"
-      stepType = "enter_incoming_invoice"
-      tool = null
-      requiredRole = "accounts_payable"
-    }
-    new objects.ProcessStep {
-      stepId = "A6"
       stepType = "post_outgoing_payment"
-      tool = null
-      requiredRole = "accounts_payable"
+      tool = toolRequirements["fiori.send_payment"]
+      inputBindings {
+        new objects.ToolInputBinding {
+          field = "company_code"
+          source = "master_data"
+          value = "purchasing_org"
+        }
+        new objects.ToolInputBinding {
+          field = "posting_document_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+        new objects.ToolInputBinding {
+          field = "posting_date"
+          source = "derived"
+          value = "fiori_payment_posting_date"
+        }
+        new objects.ToolInputBinding {
+          field = "supplier"
+          source = "master_data"
+          value = "vendor_id"
+        }
+        new objects.ToolInputBinding {
+          field = "accounting_document"
+          source = "prior_output"
+          value = "supplier_invoice.invoice_number"
+        }
+        new objects.ToolInputBinding {
+          field = "general_ledger_account"
+          source = "literal"
+          value = "1800000"
+        }
+        new objects.ToolInputBinding {
+          field = "amount"
+          source = "derived"
+          value = "gross_amount"
+        }
+        new objects.ToolInputBinding {
+          field = "currency"
+          source = "master_data"
+          value = "currency"
+        }
+      }
+      plannedDateInputBindings {
+        new objects.ToolInputBinding {
+          field = "posting_document_date"
+          source = "derived"
+          value = "fiori_delivery_date"
+        }
+        new objects.ToolInputBinding {
+          field = "posting_date"
+          source = "derived"
+          value = "fiori_payment_posting_date"
+        }
+      }
+      requiredSapObjectKeys {
+        "payment_document.payment_document_number"
+      }
     }
   }
 
-  // Dependencies define directed graph edges between process steps.
+  // Dependencies define process-step dependencies between process steps.
   // The trace planner must execute `fromStepType` before `toStepType`.
   // The description explains why the edge exists and which business object/data flows across it.
   dependencies {
@@ -57,15 +261,9 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
     }
     new objects.ProcessDependency {
       fromStepType = "create_purchase_order"
-      toStepType = "release_purchase_order"
-      description =
-        "Release purchase order after creation because A3 needs the purchase order created by A2."
-    }
-    new objects.ProcessDependency {
-      fromStepType = "release_purchase_order"
       toStepType = "post_goods_receipt"
       description =
-        "Post goods receipt after release because A4 requires a released purchase order."
+        "Post goods receipt after purchase order creation because A3 requires the purchase order created by A2."
     }
     new objects.ProcessDependency {
       fromStepType = "post_goods_receipt"

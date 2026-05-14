@@ -14,13 +14,13 @@ This folder owns trace-planning configuration. The generator stays execution-onl
 
 - `objects.pkl`: shared class definitions.
 - `generated_tool_config.pkl`: generated raw tool catalogue. Do not edit manually.
-- `actors.pkl`: virtual actors and realism profiles.
+- `actors.pkl`: synthetic actors and realism profiles.
 - `technical_users.pkl`: SAP technical user references. Contains env var names only, no secrets.
-- `identity_mapping.pkl`: mapping from virtual actors to technical SAP users.
+- `identity_mapping.pkl`: mapping from synthetic actors to technical SAP users.
 - `master_data.pkl`: material/vendor/plant/storage-location matrix and sampling ranges.
-- `processes.pkl`: process steps, tool assignments, and process dependencies.
+- `processes.pkl`: process steps, tool assignments, step-local input bindings, required SAP object keys, and process dependencies.
 - `fraud_scenarios.pkl`: enabled fraud scenario placeholders and target shares.
-- `run_settings.pkl`: case count, concurrency, timezone, active process types.
+- `run_settings.pkl`: case count, concurrency, timezone, active process types, scheduler seed, working hours, pause ranges, inter-step delay ranges, storage-location labels, and post-processing export groups.
 - `main.pkl`: final public entrypoint for compiled config.
 - `create-config.sh`: regenerates tool facts, validates Pkl, writes YAML.
 
@@ -29,7 +29,7 @@ This folder owns trace-planning configuration. The generator stays execution-onl
 Add synthetic business users in `actors.pkl`:
 
 ```pkl
-new objects.VirtualActor {
+new objects.SyntheticActor {
   id = "procurement_01"
   displayName = "Dieter Einkauf"
   role = "procurement"
@@ -42,8 +42,19 @@ new objects.VirtualActor {
     pauseCharacteristicsIndex = 12
   }
   exposeInFinalDatasetAs = "procurement_01"
+  capabilities {
+    new objects.ActorCapability {
+      processType = "procure_to_pay"
+      stepTypes {
+        "create_purchase_requisition"
+        "create_purchase_order"
+      }
+    }
+  }
 }
 ```
+
+Scheduling uses `capabilities`, not `role`. `role` is descriptive metadata. A person can execute multiple process steps by listing multiple `stepTypes`; the trace generator still prevents one actor from working on two planned steps at once.
 
 Add SAP accounts in `technical_users.pkl` using environment variable names only:
 
@@ -60,20 +71,38 @@ Connect both in `identity_mapping.pkl`.
 
 ## Processes
 
-Edit `processes.pkl` to assign tools to process steps:
+Edit `processes.pkl` to assign tools to process steps. Version-one procure-to-pay has no approval/release step in the current SAP environment:
 
 ```pkl
 new objects.ProcessStep {
   stepId = "A1"
   stepType = "create_purchase_requisition"
   tool = toolRequirements["fiori.create_purchase_requisition"]
-  requiredRole = "procurement"
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "material"
+      source = "master_data"
+      value = "materialId"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+  }
+  requiredSapObjectKeys {
+    "purchase_requisition.pr_number"
+  }
 }
 ```
 
-Use `tool = null` while a step has no implemented generator tool.
+Active steps must have a tool, bindings for every required tool input, and at least one required SAP object key. Bindings are owned by each `ProcessStep`; `run_settings.pkl` must not contain fallback tool-input maps.
 
-Dependencies define directed graph edges:
+`plannedDateInputBindings` hold planned date inputs for the canonical trace and post-processing manifest. Use them when SAP runtime either cannot accept the planned date, as with goods receipt, or when post-processing needs a stable planned date contract.
+
+Supported binding sources are `literal`, `master_data`, `case`, `planned_date`, `prior_output`, and `derived`. Supported derived values in v1 are `gross_amount`, `fiori_delivery_date`, `fiori_payment_posting_date`, and `storage_location_label`.
+
+Dependencies define process-step ordering:
 
 ```pkl
 new objects.ProcessDependency {
@@ -84,6 +113,10 @@ new objects.ProcessDependency {
 ```
 
 This means `create_purchase_requisition` must happen before `create_purchase_order`.
+
+## Trace Generator Settings
+
+Keep trace-planning settings in Pkl. `run_settings.pkl` defines FIFO scheduling, core working hours, pause ranges, deterministic step-duration ranges, inter-step waiting-time ranges, storage-location labels, and logical post-processing export groups. Those ranges are sampled by the trace generator today; an LLM can generate or refine the ranges later, but the compiled YAML remains the structured source of truth.
 
 ## Build YAML
 

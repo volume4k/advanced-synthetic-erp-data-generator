@@ -1,0 +1,350 @@
+{
+  "$defs": {
+    "ActorProjection": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_session_id": {
+          "title": "Actor Session Id",
+          "type": "string"
+        },
+        "expose_as": {
+          "title": "Expose As",
+          "type": "string"
+        },
+        "synthetic_actor_id": {
+          "title": "Synthetic Actor Id",
+          "type": "string"
+        },
+        "technical_sap_user_id": {
+          "title": "Technical Sap User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "synthetic_actor_id",
+        "technical_sap_user_id",
+        "actor_session_id",
+        "expose_as"
+      ],
+      "title": "ActorProjection",
+      "type": "object"
+    },
+    "CaseScenarioType": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_scenario_type": {
+          "title": "Case Scenario Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "case_scenario_type"
+      ],
+      "title": "CaseScenarioType",
+      "type": "object"
+    },
+    "FailedProcessCasePolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "exclude_failed_cases": {
+          "title": "Exclude Failed Cases",
+          "type": "boolean"
+        },
+        "source_artifacts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Artifacts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "exclude_failed_cases",
+        "source_artifacts"
+      ],
+      "title": "FailedProcessCasePolicy",
+      "type": "object"
+    },
+    "ObjectLineage": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "chain": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Chain",
+          "type": "array"
+        }
+      },
+      "required": [
+        "case_id",
+        "chain"
+      ],
+      "title": "ObjectLineage",
+      "type": "object"
+    },
+    "PlannedDateInputOverride": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "object_type": {
+          "title": "Object Type",
+          "type": "string"
+        },
+        "planned_step_id": {
+          "title": "Planned Step Id",
+          "type": "string"
+        },
+        "planned_value": {
+          "title": "Planned Value",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "runtime_value_policy": {
+          "const": "sap_current_date",
+          "title": "Runtime Value Policy",
+          "type": "string"
+        },
+        "source": {
+          "const": "planned_date_inputs",
+          "title": "Source",
+          "type": "string"
+        },
+        "step_type": {
+          "title": "Step Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "planned_step_id",
+        "case_id",
+        "step_type",
+        "object_type",
+        "field",
+        "planned_value",
+        "runtime_value_policy",
+        "source",
+        "reason"
+      ],
+      "title": "PlannedDateInputOverride",
+      "type": "object"
+    },
+    "PlannedStepTimestamp": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "planned_date_inputs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Planned Date Inputs",
+          "type": "object"
+        },
+        "planned_step_id": {
+          "title": "Planned Step Id",
+          "type": "string"
+        },
+        "planned_synthetic_end": {
+          "title": "Planned Synthetic End",
+          "type": "string"
+        },
+        "planned_synthetic_start": {
+          "title": "Planned Synthetic Start",
+          "type": "string"
+        },
+        "step_type": {
+          "title": "Step Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "planned_step_id",
+        "case_id",
+        "step_type",
+        "planned_synthetic_start",
+        "planned_synthetic_end",
+        "planned_date_inputs"
+      ],
+      "title": "PlannedStepTimestamp",
+      "type": "object"
+    },
+    "PostProcessingExport": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "description"
+      ],
+      "title": "PostProcessingExport",
+      "type": "object"
+    },
+    "RequiredSapObjectKeys": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "planned_step_id": {
+          "title": "Planned Step Id",
+          "type": "string"
+        },
+        "required_sap_object_keys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Sap Object Keys",
+          "type": "array"
+        }
+      },
+      "required": [
+        "planned_step_id",
+        "case_id",
+        "required_sap_object_keys"
+      ],
+      "title": "RequiredSapObjectKeys",
+      "type": "object"
+    },
+    "TimestampPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "generator_real_time_is_not_synthetic_time": {
+          "title": "Generator Real Time Is Not Synthetic Time",
+          "type": "boolean"
+        },
+        "preserve_process_order": {
+          "title": "Preserve Process Order",
+          "type": "boolean"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "preserve_process_order",
+        "generator_real_time_is_not_synthetic_time"
+      ],
+      "title": "TimestampPolicy",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "actor_projection": {
+      "items": {
+        "$ref": "#/$defs/ActorProjection"
+      },
+      "title": "Actor Projection",
+      "type": "array"
+    },
+    "case_scenario_types": {
+      "items": {
+        "$ref": "#/$defs/CaseScenarioType"
+      },
+      "title": "Case Scenario Types",
+      "type": "array"
+    },
+    "config_hash": {
+      "title": "Config Hash",
+      "type": "string"
+    },
+    "failed_process_case_policy": {
+      "$ref": "#/$defs/FailedProcessCasePolicy"
+    },
+    "manifest_version": {
+      "title": "Manifest Version",
+      "type": "string"
+    },
+    "object_lineage": {
+      "items": {
+        "$ref": "#/$defs/ObjectLineage"
+      },
+      "title": "Object Lineage",
+      "type": "array"
+    },
+    "planned_date_input_overrides": {
+      "items": {
+        "$ref": "#/$defs/PlannedDateInputOverride"
+      },
+      "title": "Planned Date Input Overrides",
+      "type": "array"
+    },
+    "planned_step_timestamps": {
+      "items": {
+        "$ref": "#/$defs/PlannedStepTimestamp"
+      },
+      "title": "Planned Step Timestamps",
+      "type": "array"
+    },
+    "post_processing_exports": {
+      "items": {
+        "$ref": "#/$defs/PostProcessingExport"
+      },
+      "title": "Post Processing Exports",
+      "type": "array"
+    },
+    "required_sap_object_keys": {
+      "items": {
+        "$ref": "#/$defs/RequiredSapObjectKeys"
+      },
+      "title": "Required Sap Object Keys",
+      "type": "array"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "timestamp_policy": {
+      "$ref": "#/$defs/TimestampPolicy"
+    }
+  },
+  "required": [
+    "manifest_version",
+    "run_id",
+    "config_hash",
+    "timestamp_policy",
+    "actor_projection",
+    "case_scenario_types",
+    "planned_step_timestamps",
+    "required_sap_object_keys",
+    "object_lineage",
+    "post_processing_exports",
+    "planned_date_input_overrides",
+    "failed_process_case_policy"
+  ],
+  "title": "PostProcessingManifestArtifact",
+  "type": "object"
+}

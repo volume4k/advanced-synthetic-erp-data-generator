@@ -7,10 +7,10 @@ from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.state import RuntimeStateStore
 
 
-def _purchase_requisition_result() -> ToolResult:
+def _purchase_requisition_result(planned_step_id: str = "C042_A1") -> ToolResult:
     return ToolResult(
-        task_id="C042_A1",
-        session_id="buyer-session",
+        planned_step_id=planned_step_id,
+        actor_session_id="buyer-session",
         tool="fiori.create_purchase_requisition",
         data={
             "returned_objects": [
@@ -25,7 +25,14 @@ def test_runtime_state_records_returned_object_and_resolves_key():
 
     state.record_tool_result("P2P_C042", "C042_A1", _purchase_requisition_result())
 
-    assert state.resolve("P2P_C042", "$purchase_requisition.pr_number", task_id="C042_A2") == "10000030"
+    assert state.resolve("P2P_C042", "$purchase_requisition.pr_number", planned_step_id="C042_A2") == "10000030"
+
+
+def test_runtime_state_rejects_mismatched_result_planned_step_id():
+    state = RuntimeStateStore()
+
+    with pytest.raises(StateResolutionError, match="ToolResult planned_step_id"):
+        state.record_tool_result("P2P_C042", "C042_A2", _purchase_requisition_result())
 
 
 @pytest.mark.parametrize(
@@ -43,7 +50,7 @@ def test_runtime_state_reports_missing_or_invalid_variables(case_id: str | None,
     state.record_tool_result("P2P_C042", "C042_A1", _purchase_requisition_result())
 
     with pytest.raises(StateResolutionError, match=match):
-        state.resolve(case_id, variable, task_id="C042_A2")
+        state.resolve(case_id, variable, planned_step_id="C042_A2")
 
 
 def test_runtime_state_rejects_duplicate_object_type_in_case():
@@ -51,7 +58,7 @@ def test_runtime_state_rejects_duplicate_object_type_in_case():
     state.record_tool_result("P2P_C042", "C042_A1", _purchase_requisition_result())
 
     with pytest.raises(StateResolutionError, match="already exists"):
-        state.record_tool_result("P2P_C042", "C042_A1_retry", _purchase_requisition_result())
+        state.record_tool_result("P2P_C042", "C042_A1_retry", _purchase_requisition_result("C042_A1_retry"))
 
 
 def test_runtime_state_fails_missing_item_key_when_tool_did_not_return_it():
@@ -60,8 +67,8 @@ def test_runtime_state_fails_missing_item_key_when_tool_did_not_return_it():
         "P2P_C042",
         "C042_A2",
         ToolResult(
-            task_id="C042_A2",
-            session_id="buyer-session",
+            planned_step_id="C042_A2",
+            actor_session_id="buyer-session",
             tool="fiori.create_purchase_order",
             data={
                 "returned_objects": [
@@ -72,7 +79,7 @@ def test_runtime_state_fails_missing_item_key_when_tool_did_not_return_it():
     )
 
     with pytest.raises(StateResolutionError, match="key 'po_item' not found"):
-        state.resolve("P2P_C042", "$purchase_order.po_item", task_id="C042_A3")
+        state.resolve("P2P_C042", "$purchase_order.po_item", planned_step_id="C042_A3")
 
 
 def test_runtime_state_rejects_invalid_batch_without_partial_commit():
@@ -83,8 +90,8 @@ def test_runtime_state_rejects_invalid_batch_without_partial_commit():
             "P2P_C042",
             "C042_A1",
             ToolResult(
-                task_id="C042_A1",
-                session_id="buyer-session",
+                planned_step_id="C042_A1",
+                actor_session_id="buyer-session",
                 tool="fiori.create_purchase_requisition",
                 data={
                     "returned_objects": [
@@ -96,7 +103,7 @@ def test_runtime_state_rejects_invalid_batch_without_partial_commit():
         )
 
     with pytest.raises(StateResolutionError, match="case has no runtime state"):
-        state.resolve("P2P_C042", "$purchase_requisition.pr_number", task_id="C042_A2")
+        state.resolve("P2P_C042", "$purchase_requisition.pr_number", planned_step_id="C042_A2")
 
 
 def test_runtime_state_rejects_duplicate_object_type_in_same_result():
@@ -107,8 +114,8 @@ def test_runtime_state_rejects_duplicate_object_type_in_same_result():
             "P2P_C042",
             "C042_A1",
             ToolResult(
-                task_id="C042_A1",
-                session_id="buyer-session",
+                planned_step_id="C042_A1",
+                actor_session_id="buyer-session",
                 tool="fiori.create_purchase_requisition",
                 data={
                     "returned_objects": [

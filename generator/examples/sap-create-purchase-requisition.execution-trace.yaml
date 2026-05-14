@@ -1,0 +1,63 @@
+trace_version: '0.2'
+run_id: RUN_EXAMPLE_CREATE_PR
+config_hash: example
+tool_catalog_hash: example
+trace_generator_version: 0.1.0
+llm_metadata:
+  used: false
+  seed: 17
+actor_sessions:
+- actor_session_id: tour-user-1-session
+  synthetic_actor_id: tour-user-1
+  technical_sap_user_id: TU_EXAMPLE
+  username_env_var: SAP_USER_1_UN
+  password_env_var: SAP_USER_1_PW
+  login_url_env_var: SAP_URL
+  success_selector: '#userActionsMenuHeaderButton'
+cases:
+- case_id: EXAMPLE_CREATE_PR_001
+  process_type: procure_to_pay
+  case_scenario_type: NORMAL
+  line_items: []
+dependency_graph:
+  planned_steps:
+  - planned_step_id: planned-step-create-pr-001
+    case_id: EXAMPLE_CREATE_PR_001
+    step_type: create_purchase_requisition
+    tool_name: fiori.create_purchase_requisition
+    synthetic_actor_id: tour-user-1
+    technical_sap_user_id: TU_EXAMPLE
+    actor_session_id: tour-user-1-session
+    inputs:
+      material: PUMP1902
+      quantity: 10
+      valuation_price: 20
+      currency: USD
+      price_unit: 1
+      delivery_date: 05/20/2026
+      plant: MI00
+      purchasing_group: N00
+      purchasing_organization: US00
+      company_code: US00
+    required_sap_object_keys:
+    - purchase_requisition.pr_number
+    planned_date_inputs:
+      delivery_date: '2026-05-20'
+    planned_synthetic_time:
+      start: '2026-05-18T08:00:00+02:00'
+      end: '2026-05-18T08:09:00+02:00'
+    labels:
+      step_label: normal
+  dependencies: []
+execution_schedule:
+  mode: waves
+  max_parallel_actor_sessions: 1
+  waves:
+  - wave_id: W001
+    sequence_no: 1
+    planned_steps:
+    - planned_step_id: planned-step-create-pr-001
+      startup_order: 1
+validation_report:
+  errors: []
+  warnings: []

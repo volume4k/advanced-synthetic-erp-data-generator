@@ -48,7 +48,7 @@ The first two fraud scenarios are:
 
 The version-one business simplification is **single-line purchasing**: each purchase requisition and purchase order contains one line item. The schemas must nevertheless model line items as arrays, so that multi-line documents can be added later without redesigning the trace format.
 
-Parallel execution is in scope. The target is approximately 15 technical SAP users and approximately 15 concurrent browser sessions. The exact concurrency limit remains configurable.
+Parallel execution is in scope. The target is approximately 15 technical SAP users and approximately 15 concurrent browser actor_sessions. The exact concurrency limit remains configurable.
 
 ## 4. Explicit non-goals
 
@@ -92,15 +92,15 @@ The post-processor is not expected to modify the SAP system. It transforms expor
 
 **Execution trace** means the complete planned trace artifact. It contains the business goal trace, dependency graph, executable schedule, labels, and post-processing metadata.
 
-**Dependency graph** means a directed acyclic graph in which nodes are planned tool calls and edges are dependencies between tool calls.
+**Dependency graph** means a directed acyclic graph in which planned_steps are planned tool calls and dependencies are dependencies between tool calls.
 
-**Node** means one atomic planned tool call, for example `C042_A2_create_purchase_order`.
+**Planned Step** means one atomic planned tool call, for example `C042_A2_create_purchase_order`.
 
-**Edge** means a dependency between two nodes, for example a purchase order node depending on the purchase requisition node.
+**Edge** means a dependency between two planned_steps, for example a purchase order planned step depending on the purchase requisition planned step.
 
 **Scheduler** means the trace-generator subcomponent that converts the dependency graph into deterministic execution waves.
 
-**Execution wave** means a deterministic batch of nodes that may be executed concurrently because their dependencies are satisfied and no actor/session constraints are violated.
+**Execution wave** means a deterministic batch of planned_steps that may be executed concurrently because their dependencies are satisfied and no actor/session constraints are violated.
 
 **Generator** means the deterministic browser-execution component. It consumes the execution schedule and runs the tools.
 
@@ -152,7 +152,7 @@ The trace generator owns:
 
 ### 6.3 Generator
 
-The generator consumes the execution schedule and executes it. It opens browser sessions, logs in with technical SAP users, invokes the specified tools, resolves dynamic placeholders, captures SAP object identifiers, updates the runtime state store, and writes execution logs.
+The generator consumes the execution schedule and executes it. It opens browser actor_sessions, logs in with technical SAP users, invokes the specified tools, resolves dynamic placeholders, captures SAP object identifiers, updates the runtime state store, and writes execution logs.
 
 The generator owns execution mechanics only. It does not own business planning.
 
@@ -186,16 +186,16 @@ The following rules are mandatory.
 2. The generator must not choose, reorder, or invent business steps.
 3. The trace generator must validate the dependency graph before scheduling.
 4. The dependency graph must be acyclic.
-5. No execution wave may contain two nodes where one depends on the other.
-6. No virtual actor may execute two nodes at the same time.
-7. No technical SAP user may be assigned to two concurrent browser sessions unless this is explicitly supported and tested.
-8. Every node must reference an existing tool in the tool catalogue.
+5. No execution wave may contain two planned_steps where one depends on the other.
+6. No virtual actor may execute two planned_steps at the same time.
+7. No technical SAP user may be assigned to two concurrent browser actor_sessions unless this is explicitly supported and tested.
+8. Every planned step must reference an existing tool in the tool catalogue.
 9. Every tool input must be schema-validated before execution.
 10. Every placeholder must resolve before the corresponding tool is started.
 11. Every mutating tool that creates SAP objects must return structured generated SAP object keys.
 12. Every generated SAP object key must be written to the runtime state store and object registry.
-13. A missing required generated object key marks the node as failed.
-14. A failed node marks the corresponding case as failed unless the tool explicitly declares the failure as non-mutating and recoverable.
+13. A missing required generated object key marks the planned step as failed.
+14. A failed planned step marks the corresponding case as failed unless the tool explicitly declares the failure as non-mutating and recoverable.
 15. Failed cases are excluded from the final ML-facing dataset by the post-processor.
 16. Correlation must use the object registry, not only timestamps.
 17. Artificial marker fields must not be inserted into SAP business documents for correlation.
@@ -267,14 +267,14 @@ For version one, a simple shadow-inventory model is sufficient. It should track 
 
 ## 10. Technical user and actor model
 
-The system should use multiple technical SAP users. This improves correlation in SAP logs because SAP fields such as user name can distinguish browser sessions more reliably.
+The system should use multiple technical SAP users. This improves correlation in SAP logs because SAP fields such as user name can distinguish browser actor_sessions more reliably.
 
 Recommended version-one rule:
 
 - Configure approximately 15 technical SAP users.
 - Map each active virtual actor to one technical SAP user where possible.
 - If there are more virtual actors than technical users, reuse technical users only across non-overlapping execution windows.
-- Do not allow two concurrent sessions for the same technical SAP user unless this has been explicitly tested.
+- Do not allow two concurrent actor_sessions for the same technical SAP user unless this has been explicitly tested.
 - Store credentials outside Pkl/YAML, for example as environment variables or secret references.
 
 Even with multiple technical users, role constraints are still software-enforced unless the SAP accounts have corresponding SAP authorizations. Therefore, the thesis should distinguish between:
@@ -289,7 +289,7 @@ Recommended user fields:
 
 ```yaml
 identity_mapping:
-  virtual_actor_id: "procurement_01"
+  synthetic_actor_id: "procurement_01"
   synthetic_person_name: "Dieter Einkauf"
   role: "procurement"
   technical_sap_user: "GBGEN_P01"
@@ -349,7 +349,7 @@ raw_observations:
   status_bar_text: "Purchase requisition 0010051229 created"
 ```
 
-If a required object key cannot be extracted from SAP, the tool must fail or the generator must classify the node as failed. The tool must not invent item keys such as `00010` unless it actually extracted or otherwise proved that value.
+If a required object key cannot be extracted from SAP, the tool must fail or the generator must classify the planned step as failed. The tool must not invent item keys such as `00010` unless it actually extracted or otherwise proved that value.
 
 ## 12. Execution trace structure
 
@@ -358,7 +358,7 @@ The execution trace should contain both the planning graph and the executable sc
 Top-level structure:
 
 ```yaml
-trace_version: "0.1"
+trace_version: "0.2"
 run_id: "RUN_2026_04_30_001"
 config_hash: "..."
 tool_catalog_hash: "..."
@@ -370,11 +370,11 @@ llm_metadata:
   seed: null
 cases: []
 dependency_graph:
-  nodes: []
-  edges: []
+  planned_steps: []
+  dependencies: []
 execution_schedule:
   mode: "waves"
-  max_parallel_sessions: 15
+  max_parallel_actor_sessions: 15
   waves: []
 post_processing_plan: {}
 ```
@@ -384,8 +384,7 @@ post_processing_plan: {}
 ```yaml
 case_id: "C042"
 process_type: "procure_to_pay"
-scenario_id: "NORMAL"
-case_label: "normal"
+case_scenario_type: "NORMAL"
 line_items:
   - line_id: "C042_L1"
     material_id: "MA025"
@@ -397,37 +396,37 @@ line_items:
     target_price: 42.50
 ```
 
-### 12.2 Node structure
+### 12.2 Planned Step structure
 
 ```yaml
-node_id: "C042_A2"
+planned_step_id: "C042_A2"
 case_id: "C042"
 step_type: "create_purchase_order"
 tool_name: "create_purchase_order"
-virtual_actor_id: "procurement_01"
-technical_sap_user: "GBGEN_P01"
+synthetic_actor_id: "procurement_01"
+technical_sap_user_id: "GBGEN_P01"
 inputs:
   purchase_requisition_number: "$purchase_requisition.pr_number"
   purchasing_org: "US00"
   purchasing_group: "001"
   vendor_id: "V17121"
-expected_outputs:
+required_sap_object_keys:
   - "purchase_order.po_number"
-business_dates:
+planned_date_inputs:
   document_date: "2026-02-03"
   planned_delivery_date: "2026-02-17"
-target_synthetic_time:
+planned_synthetic_time:
   start: "2026-02-03T10:14:00-05:00"
   end: "2026-02-03T10:19:00-05:00"
 labels:
   step_label: "normal"
 ```
 
-### 12.3 Edge structure
+### 12.3 Dependency structure
 
 ```yaml
-from: "C042_A1"
-to: "C042_A2"
+from_planned_step_id: "C042_A1"
+to_planned_step_id: "C042_A2"
 type: "data_dependency"
 reason: "purchase order requires purchase requisition number"
 ```
@@ -450,10 +449,10 @@ The generator must maintain a runtime state store. This store is both internal e
 
 Required behavior:
 
-1. Before starting a node, the generator resolves all placeholders in the node input.
-2. If any placeholder is unresolved, the node fails before SAP interaction.
+1. Before starting a planned step, the generator resolves all placeholders in the planned step input.
+2. If any placeholder is unresolved, the planned step fails before SAP interaction.
 3. After successful tool execution, the generator writes all returned object keys to the state store.
-4. The state update is persisted before any dependent node is started.
+4. The state update is persisted before any dependent planned step is started.
 5. The execution log records the state update.
 
 Recommended structure:
@@ -527,24 +526,24 @@ The concrete SAP tool for `post_inventory_reduction_or_scrap` is TBD.
 
 The scheduler belongs to the trace generator, not to the generator.
 
-The scheduler converts the dependency graph into deterministic execution waves. A wave is not a conversational round and it is not necessarily one task per actor. A wave is a bounded set of nodes that may run concurrently because all dependencies are already satisfied and no configured capacity or actor constraint is violated.
+The scheduler converts the dependency graph into deterministic execution waves. A wave is not a conversational round and it is not necessarily one task per actor. A wave is a bounded set of planned_steps that may run concurrently because all dependencies are already satisfied and no configured capacity or actor constraint is violated.
 
 A virtual actor can be idle in a wave. A wave does not require every actor to receive a task.
 
-Within a wave, nodes must not have business dependencies on one another. The generator may start them concurrently with a fixed worker limit. For reproducibility, the wave may still define a stable startup order.
+Within a wave, planned_steps must not have business dependencies on one another. The generator may start them concurrently with a fixed worker limit. For reproducibility, the wave may still define a stable startup order.
 
 ### 15.1 Scheduling constraints
 
 The scheduler must consider:
 
-- dependency graph edges;
+- dependency graph dependencies;
 - virtual actor availability;
 - working hours;
 - lunch breaks;
 - time zones;
 - role constraints;
 - technical SAP user assignment;
-- maximum browser sessions;
+- maximum browser actor_sessions;
 - planned delivery lead time;
 - business-date constraints;
 - target synthetic timestamps;
@@ -559,19 +558,19 @@ execution_schedule:
   waves:
     - wave_id: "W001"
       sequence_no: 1
-      nodes:
-        - node_id: "C001_A1"
+      planned_steps:
+        - planned_step_id: "C001_A1"
           startup_order: 1
-        - node_id: "C002_A1"
+        - planned_step_id: "C002_A1"
           startup_order: 2
-        - node_id: "C003_A1"
+        - planned_step_id: "C003_A1"
           startup_order: 3
     - wave_id: "W002"
       sequence_no: 2
-      nodes:
-        - node_id: "C001_A2"
+      planned_steps:
+        - planned_step_id: "C001_A2"
           startup_order: 1
-        - node_id: "C004_A1"
+        - planned_step_id: "C004_A1"
           startup_order: 2
 ```
 
@@ -583,17 +582,17 @@ Recommended algorithm:
 2. Merge case graphs into one run-level dependency graph.
 3. Validate the graph is acyclic.
 4. Assign actors according to role constraints and calendars.
-5. Assign business dates and target synthetic timestamps.
-6. Maintain a ready set of nodes whose dependencies are satisfied.
-7. Sort ready nodes by target synthetic start time and priority.
-8. Pack ready nodes into the next wave subject to concurrency, actor, technical user, and session constraints.
+5. Assign planned date inputs and target synthetic timestamps.
+6. Maintain a ready set of planned_steps whose dependencies are satisfied.
+7. Sort ready planned_steps by target synthetic start time and priority.
+8. Pack ready planned_steps into the next wave subject to concurrency, actor, technical user, and session constraints.
 9. Verify that the wave contains no intra-wave dependency edge.
-10. Continue until all nodes are scheduled.
+10. Continue until all planned_steps are scheduled.
 11. Emit target and actual fraud counts, scheduling statistics, and validation report.
 
 ## 16. Business dates, target timestamps, and process realism
 
-The system must distinguish business dates from technical timestamps.
+The system must distinguish planned date inputs from technical timestamps.
 
 Business dates should be entered into SAP during execution whenever possible. Examples include document date, posting date, planned delivery date, baseline date, and due date.
 
@@ -613,13 +612,13 @@ The trace generator must model realistic process timing, including:
 - fraud-specific timing windows;
 - persona-dependent work speed.
 
-Example: if the planned delivery date is two weeks after the purchase order, the goods receipt node must receive a business posting date near that delivery date and a target synthetic timestamp near that delivery date. The generator may execute it immediately in real time, but the final dataset should show the planned synthetic time.
+Example: if the planned delivery date is two weeks after the purchase order, the goods receipt planned step must receive a business posting date near that delivery date and a target synthetic timestamp near that delivery date. The generator may execute it immediately in real time, but the final dataset should show the planned synthetic time.
 
 ## 17. Generator execution contract
 
-For each node, the generator must perform the following deterministic procedure:
+For each planned step, the generator must perform the following deterministic procedure:
 
-1. Read the node from the current execution wave.
+1. Read the planned step from the current execution wave.
 2. Check that the case is not failed.
 3. Resolve placeholders from the runtime state store.
 4. Validate final tool inputs against the tool input schema.
@@ -630,8 +629,8 @@ For each node, the generator must perform the following deterministic procedure:
 9. Validate required returned object keys.
 10. Persist returned SAP object keys in the runtime state store.
 11. Write execution log events.
-12. Mark node successful or failed.
-13. If failed, mark the case failed and skip dependent nodes of that case.
+12. Mark planned step successful or failed.
+13. If failed, mark the case failed and skip dependent planned_steps of that case.
 
 The generator may manage concurrency and browser resources. It must not change business intent.
 
@@ -647,27 +646,27 @@ Minimum event types:
 - `tool_invoked`
 - `tool_result_received`
 - `state_updated`
-- `node_succeeded`
-- `node_failed`
+- `planned_step_succeeded`
+- `planned_step_failed`
 - `case_failed`
 - `wave_finished`
 - `run_finished`
 
-Required node log fields:
+Required planned step log fields:
 
 ```yaml
 run_id: "RUN_2026_04_30_001"
 case_id: "C042"
-node_id: "C042_A2"
+planned_step_id: "C042_A2"
 wave_id: "W007"
-virtual_actor_id: "procurement_01"
+synthetic_actor_id: "procurement_01"
 technical_sap_user: "GBGEN_P01"
-session_id: "session_03"
+actor_session_id: "session_03"
 tool_name: "create_purchase_order"
 real_start_time: "2026-04-30T09:05:11.122Z"
 real_end_time: "2026-04-30T09:07:49.883Z"
-target_synthetic_start_time: "2026-02-03T10:14:00-05:00"
-target_synthetic_end_time: "2026-02-03T10:19:00-05:00"
+planned_synthetic_start_time: "2026-02-03T10:14:00-05:00"
+planned_synthetic_end_time: "2026-02-03T10:19:00-05:00"
 status: "success"
 input_parameters: {}
 resolved_input_parameters: {}
@@ -680,9 +679,9 @@ Object registry fields:
 ```yaml
 run_id: "RUN_2026_04_30_001"
 case_id: "C042"
-node_id: "C042_A2"
-scenario_id: "NORMAL"
-virtual_actor_id: "procurement_01"
+planned_step_id: "C042_A2"
+case_scenario_type: "NORMAL"
+synthetic_actor_id: "procurement_01"
 technical_sap_user: "GBGEN_P01"
 sap_object_type: "purchase_order"
 sap_object_id: "4500008732"
@@ -711,7 +710,7 @@ Failure log fields:
 ```yaml
 status: "failed"
 failure_type: "navigation_error | sap_validation_error | post_save_unknown_state | required_output_missing"
-failed_node_id: "C042_A4"
+failed_planned_step_id: "C042_A4"
 case_exclusion_required: true
 created_objects_before_failure: []
 ```
@@ -724,7 +723,7 @@ Fraud scenarios should be implemented as graph transformations over a legitimate
 
 ### 20.1 Vendor Flipflop
 
-Vendor Flipflop adds two master-data manipulation nodes:
+Vendor Flipflop adds two master-data manipulation planned_steps:
 
 - `change_vendor_bank_data` before payment;
 - `revert_vendor_bank_data` after payment.
@@ -763,11 +762,10 @@ Required decision before implementation:
 
 The final dataset should support multi-level labels.
 
-Recommended label fields:
+Recommended scenario and label fields:
 
 ```yaml
-case_label: "normal | fraud"
-scenario_id: "NORMAL | VENDOR_FLIPFLOP | LARCENY"
+case_scenario_type: "NORMAL | VENDOR_FLIPFLOP | LARCENY"
 scenario_family: "none | vendor_master_manipulation | inventory_misappropriation"
 step_label: "normal | fraud_step | fraud_supporting_step | cleanup_step"
 object_label: "unaffected | affected_by_fraud"
@@ -827,10 +825,10 @@ label_mapping: "case_and_step_labels"
 ### 23.2 Trace generator
 
 - Dependency graph is acyclic.
-- All nodes reference valid tools.
+- All planned_steps reference valid tools.
 - All role assignments are valid.
 - All business-date constraints are valid.
-- All waves contain only dependency-independent nodes.
+- All waves contain only dependency-independent planned_steps.
 - No actor or technical user is double-booked within a wave.
 - Trace contains target and actual fraud counts.
 - Trace contains a validation report.
@@ -839,7 +837,7 @@ label_mapping: "case_and_step_labels"
 
 - Generator never calls an LLM.
 - Generator resolves placeholders only from runtime state.
-- Generator fails the node if required placeholders are missing.
+- Generator fails the planned step if required placeholders are missing.
 - Generator writes structured execution logs.
 - Generator writes object registry entries for every generated SAP object.
 - Generator marks failed cases explicitly.
@@ -877,7 +875,7 @@ Recommended evaluation dimensions:
 
 ### Phase 0: Stable schemas
 
-Define ToolSpec, execution trace schema, node schema, edge schema, execution wave schema, runtime state schema, and object registry schema.
+Define ToolSpec, execution trace schema, planned step schema, edge schema, execution wave schema, runtime state schema, and object registry schema.
 
 ### Phase 1: Tool catalogue
 
@@ -915,7 +913,7 @@ The following decisions remain open and must be resolved before implementation o
 2. Exact implementation variant for Larceny.
 3. Exact SAP table and field mapping for all P2P artifacts in the Global Bike S/4HANA system.
 4. Whether technical SAP users receive real SAP authorization restrictions or merely distinct usernames.
-5. Security Audit Log and trace fields available for correlation under multiple browser sessions.
+5. Security Audit Log and trace fields available for correlation under multiple browser actor_sessions.
 6. Exact treatment of payment terms, discounts, baseline dates, and due dates in version one.
 7. Whether final user fields are replaced by virtual actors or virtual actors are added as additional columns.
 8. Exact original source citation for the fraud scenario catalogue based on Tritscher et al.
@@ -925,36 +923,35 @@ The following decisions remain open and must be resolved before implementation o
 ```yaml
 case_id: "C001"
 process_type: "procure_to_pay"
-scenario_id: "NORMAL"
-case_label: "normal"
+case_scenario_type: "NORMAL"
 
-nodes:
-  - node_id: "C001_A1"
+planned_steps:
+  - planned_step_id: "C001_A1"
     step_type: "create_purchase_requisition"
     tool_name: "create_purchase_requisition"
-    virtual_actor_id: "procurement_01"
-    technical_sap_user: "GBGEN_P01"
+    synthetic_actor_id: "procurement_01"
+    technical_sap_user_id: "GBGEN_P01"
     inputs:
       material_id: "MA025"
       quantity: 25
       plant: "MI00"
       purchasing_group: "001"
       vendor_id: "V17121"
-    expected_outputs: ["purchase_requisition.pr_number"]
+    required_sap_object_keys: ["purchase_requisition.pr_number"]
 
-  - node_id: "C001_A2"
+  - planned_step_id: "C001_A2"
     step_type: "create_purchase_order"
     tool_name: "create_purchase_order"
-    virtual_actor_id: "procurement_01"
-    technical_sap_user: "GBGEN_P01"
+    synthetic_actor_id: "procurement_01"
+    technical_sap_user_id: "GBGEN_P01"
     inputs:
       purchase_requisition_number: "$purchase_requisition.pr_number"
       vendor_id: "V17121"
-    expected_outputs: ["purchase_order.po_number"]
+    required_sap_object_keys: ["purchase_order.po_number"]
 
-edges:
-  - from: "C001_A1"
-    to: "C001_A2"
+dependencies:
+  - from_planned_step_id: "C001_A1"
+    to_planned_step_id: "C001_A2"
     type: "data_dependency"
     reason: "PO requires PR number"
 ```
@@ -964,20 +961,19 @@ edges:
 ```yaml
 case_id: "C077"
 process_type: "procure_to_pay"
-scenario_id: "VENDOR_FLIPFLOP"
-case_label: "fraud"
+case_scenario_type: "VENDOR_FLIPFLOP"
 
-edges:
-  - from: "C077_A5"
-    to: "C077_F1"
+dependencies:
+  - from_planned_step_id: "C077_A5"
+    to_planned_step_id: "C077_F1"
     type: "business_dependency"
     reason: "invoice exists before bank-data manipulation"
-  - from: "C077_F1"
-    to: "C077_A6"
+  - from_planned_step_id: "C077_F1"
+    to_planned_step_id: "C077_A6"
     type: "fraud_dependency"
     reason: "payment must occur while manipulated bank data is active"
-  - from: "C077_A6"
-    to: "C077_F2"
+  - from_planned_step_id: "C077_A6"
+    to_planned_step_id: "C077_F2"
     type: "fraud_cleanup_dependency"
     reason: "vendor bank data must be reverted after payment"
 ```
@@ -991,7 +987,7 @@ Implementation agents should follow these directives:
 3. Do not add SAP marker fields for correlation.
 4. Use the object registry as the primary correlation mechanism.
 5. Use placeholders for unknown SAP identifiers.
-6. Persist runtime state before executing dependent nodes.
+6. Persist runtime state before executing dependent planned_steps.
 7. Keep the scheduler inside the trace generator.
 8. Keep browser mechanics inside the generator.
 9. Keep business scenario logic out of the generator.

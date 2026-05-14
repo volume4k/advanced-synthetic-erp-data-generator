@@ -10,25 +10,11 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
     inputModel = "CreateGoodsReceiptInput"
     requiredInputFields {
       "purchase_order"
-      "document_date"
-      "posting_date"
       "storage_location"
     }
     inputProperties {
       new objects.ToolInputProperty {
         name = "purchase_order"
-        schemaType = "string"
-        required = true
-        defaultValue = null
-      }
-      new objects.ToolInputProperty {
-        name = "document_date"
-        schemaType = "string"
-        required = true
-        defaultValue = null
-      }
-      new objects.ToolInputProperty {
-        name = "posting_date"
         schemaType = "string"
         required = true
         defaultValue = null
@@ -50,6 +36,7 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
       "storage_location"
       "supplier"
       "quantity"
+      "net_price"
     }
     inputProperties {
       new objects.ToolInputProperty {
@@ -73,6 +60,12 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
       new objects.ToolInputProperty {
         name = "quantity"
         schemaType = "integer"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "net_price"
+        schemaType = "number"
         required = true
         defaultValue = null
       }

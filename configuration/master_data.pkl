@@ -2,10 +2,9 @@ import "objects.pkl"
 
 masterData: Listing<objects.MasterDataEntry> = new Listing {
   new objects.MasterDataEntry {
-    materialId = "MA025"
+    materialId = "PUMP1902"
     validVendors {
-      "V17121"
-      "V17122"
+      "107902"
     }
     validPlants {
       "MI00"
@@ -22,7 +21,7 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     priceMin = 10.0
     priceMax = 120.0
     currency = "USD"
-    deliveryLeadTimeMinDays = 5
+    deliveryLeadTimeMinDays = 14
     deliveryLeadTimeMaxDays = 21
   }
 }

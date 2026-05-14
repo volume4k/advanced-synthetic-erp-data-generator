@@ -25,11 +25,11 @@ Use it as a helper, not as the final source of truth. Generated code still needs
 1. Copy only the meaningful browser actions into a page helper in `src/erp_trace_executor/tools/fiori/pages.py`.
 2. Add a small input model and runner module under `src/erp_trace_executor/tools/fiori/`.
 3. Register the `ToolSpec` in `src/erp_trace_executor/registry.py`.
-4. Add an example trace under `generator/examples/` with no passwords.
+4. Add or update a canonical example trace under `generator/examples/` with no passwords.
 5. Run a headed smoke test:
 
 ```bash
-uv run --project generator erp-trace-exec generator/examples/<trace>.trace.jsonl --headed
+uv run --project generator erp-trace-exec generator/examples/sap-create-purchase-requisition.execution-trace.yaml --headed
 ```
 
 ## Clean Generated Code

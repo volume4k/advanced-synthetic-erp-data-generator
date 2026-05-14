@@ -1,6 +1,6 @@
 # ERP Trace Executor
 
-`generator/` is an independent `uv` project inside the repository. It executes JSONL traces sequentially and reuses Playwright browser sessions by explicit `session_id`.
+`generator/` is an independent `uv` project inside the repository. It executes canonical `execution-trace.yaml` files and reuses Playwright browser sessions by explicit `session_id`.
 
 ## Bootstrap
 
@@ -12,76 +12,60 @@ uv run --project generator playwright install chromium
 ## Run
 
 ```bash
-uv run --project generator erp-trace-exec path/to/trace.jsonl
+uv run --project generator erp-trace-exec path/to/execution-trace.yaml
 ```
 
 The CLI prints one JSON object per executed task result as a JSON array.
 
+Canonical execution runs waves sequentially in planned `startup_order` and writes append-only runtime evidence:
+
+- `<run_id>.execution-log.jsonl`
+- `<run_id>.object-registry.jsonl`
+
 Credentials can be loaded from `configuration/.env` by default, or from another file with `--env-file`:
 
 ```bash
-uv run --project generator erp-trace-exec path/to/trace.jsonl --env-file path/to/credentials.env
+uv run --project generator erp-trace-exec path/to/execution-trace.yaml --env-file path/to/credentials.env --artifact-dir generator/build
 ```
+
+## Logging
+
+The executor keeps stdout reserved for the final JSON result array. Runtime progress and diagnostics are logged to stderr through Python's standard `logging` package.
+
+```bash
+uv run --project generator erp-trace-exec path/to/execution-trace.yaml --log-level DEBUG
+```
+
+`--log-level` accepts `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` and defaults to `INFO`. Evidence artifacts remain the machine-readable source of truth:
+
+- `<run_id>.execution-log.jsonl` records run, login, wave, planned-step, failure, skip, and interrupt events with `severity` and `message` fields.
+- `<run_id>.object-registry.jsonl` records created SAP object keys.
+
+If execution is interrupted with Ctrl-C, the CLI exits with code `130` and writes `*_interrupted` events for the active login or planned step plus the run. `SIGKILL` cannot be caught.
 
 ## Trace Format
 
-Task JSONL lines must contain:
+Canonical traces contain actor session metadata, cases, dependency graph planned steps, waves, and validation metadata. Actor session blocks reference env var names; they do not contain usernames or passwords:
 
-```json
-{
-  "task_id": "task-001",
-  "session_id": "session-001",
-  "user_id": "buyer-a",
-  "tool": "fiori.login",
-  "input": {
-    "username": "buyer-a",
-    "password": "secret"
-  },
-  "meta": {
-    "case_id": "case-1"
-  }
-}
+```yaml
+actor_sessions:
+- actor_session_id: buyer-session
+  synthetic_actor_id: buyer-a
+  technical_sap_user_id: TU_01
+  username_env_var: SAP_USER_1_UN
+  password_env_var: SAP_USER_1_PW
+  login_url_env_var: SAP_URL
 ```
 
-`session_id` is the only key used for browser-session reuse. Reusing a `session_id` with a different `user_id` is an error.
-
-### Optional Init Login Record
-
-A trace can start with one `kind: "init"` record. The executor logs in each configured user before running task records. Later tasks reuse the initialized `session_id` and `user_id`, so username and password do not need to be repeated.
-
-```json
-{"kind":"init","users":[{"session_id":"buyer-session","user_id":"buyer-a","username":"BUYERA","login_url":"https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE"},{"session_id":"approver-session","user_id":"approver-a","username":"APPROVERA"}]}
-{"task_id":"task-001","session_id":"buyer-session","user_id":"buyer-a","tool":"fiori.create_purchase_requisition","input":{"material":"PUMP1902","quantity":10,"valuation_price":20,"currency":"USD","price_unit":1,"delivery_date":"05/20/2026","plant":"MI00","purchasing_group":"N00","purchasing_organization":"US00","company_code":"US00"}}
-{"task_id":"task-002","session_id":"approver-session","user_id":"approver-a","tool":"fiori.create_purchase_requisition","input":{"material":"GEAR1000","quantity":1,"valuation_price":20,"currency":"USD","price_unit":1,"delivery_date":"05/20/2026","plant":"MI00","purchasing_group":"N00","purchasing_organization":"US00","company_code":"US00"}}
-```
-
-When an init user omits `password`, the executor looks up that password by username in the env file:
+The executor logs in every actor session before executing waves. Env files provide the actual secrets:
 
 ```text
-SAP_USER_1_UN=BUYERA
+SAP_URL=https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE
+SAP_USER_1_UN=BUYER_A
 SAP_USER_1_PW=secret
-SAP_USER_2_UN=APPROVERA
-SAP_USER_2_PW=secret
 ```
 
-`login_url` is optional and defaults to:
-
-```text
-https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE
-```
-
-For non-SAP fixtures or custom logon forms, each init user and `fiori.login` task can override selectors:
-
-```json
-{
-  "username_selector": "[data-testid=\"username\"]",
-  "password_selector": "[data-testid=\"password\"]",
-  "submit_selector": "[data-testid=\"login-submit\"]",
-  "success_selector": "[data-testid=\"session-user\"]"
-}
-```
-
-Passwords are used only to fill the login form and are not returned in tool results.
+Passwords are used only to fill the login form and are not returned in tool results or runtime evidence.
 
 ## Add A New Playwright Tool
 

@@ -1,20 +1,25 @@
 from __future__ import annotations
 
+import json
+import logging
 from types import SimpleNamespace
+from typing import Callable
 
 import pytest
 from playwright.sync_api import Error as PlaywrightError
 from pydantic import BaseModel
 
+from erp_trace_executor import executor as executor_module
 from erp_trace_executor.browser.session import BrowserSessionManager
+from erp_trace_executor.canonical import CanonicalTrace
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.credentials import EnvCredentialStore
-from erp_trace_executor.errors import SessionUserMismatchError, StateResolutionError, ToolInputValidationError, UnknownToolError
+from erp_trace_executor.evidence import ExecutionEvidenceWriter
+from erp_trace_executor.errors import SessionUserMismatchError
 from erp_trace_executor.executor import TraceExecutor
-from erp_trace_executor.models import ToolResult, TraceDefinition, TraceInitRecord, TraceInitUser, TraceRecord, returned_object
+from erp_trace_executor.models import ExecutionTaskRecord, SessionInitRecord, SessionInitUser, ToolResult, returned_object
 from erp_trace_executor.registry import ToolRegistry
 from erp_trace_executor.tooling import ToolSpec
-from erp_trace_executor.tools.fiori.login import LOGIN_TOOL
 
 
 class ProducePurchaseRequisitionInput(BaseModel):
@@ -46,13 +51,183 @@ def _purchase_requisition_input(**overrides: object) -> dict[str, object]:
     return payload
 
 
+def _record(
+    planned_step_id: str,
+    *,
+    tool: str,
+    input: dict[str, object] | None = None,
+    synthetic_actor_id: str = "buyer-a",
+    actor_session_id: str = "buyer-session",
+    case_id: str = "P2P_C001",
+    line_number: int = 1,
+    required_sap_object_keys: list[str] | None = None,
+) -> ExecutionTaskRecord:
+    return ExecutionTaskRecord(
+        planned_step_id=planned_step_id,
+        actor_session_id=actor_session_id,
+        synthetic_actor_id=synthetic_actor_id,
+        tool=tool,
+        input=input or {},
+        meta={"case_id": case_id, "required_sap_object_keys": required_sap_object_keys or []},
+        line_number=line_number,
+    )
+
+
+def _trace_from_records(records: list[ExecutionTaskRecord], *, run_id: str = "RUN_TEST") -> CanonicalTrace:
+    actor_sessions: dict[str, str] = {}
+    cases = sorted({str(record.meta.get("case_id") or "P2P_C001") for record in records})
+    for record in records:
+        actor_sessions.setdefault(record.actor_session_id, record.synthetic_actor_id)
+    technical_sap_user_ids_by_session = {
+        actor_session_id: f"TU_{index:02d}"
+        for index, actor_session_id in enumerate(actor_sessions, start=1)
+    }
+
+    return CanonicalTrace.model_validate(
+        {
+            "trace_version": "0.2",
+            "run_id": run_id,
+            "config_hash": "config",
+            "tool_catalog_hash": "tools",
+            "trace_generator_version": "0.1.0",
+            "llm_metadata": {"used": False},
+            "actor_sessions": [
+                {
+                    "actor_session_id": actor_session_id,
+                    "synthetic_actor_id": synthetic_actor_id,
+                    "technical_sap_user_id": technical_sap_user_ids_by_session[actor_session_id],
+                    "username_env_var": f"USER_{index}_UN",
+                    "password_env_var": f"USER_{index}_PW",
+                    "login_url_env_var": "SAP_URL",
+                }
+                for index, (actor_session_id, synthetic_actor_id) in enumerate(actor_sessions.items(), start=1)
+            ],
+            "cases": [
+                {
+                    "case_id": case_id,
+                    "process_type": "procure_to_pay",
+                    "case_scenario_type": "NORMAL",
+                    "line_items": [],
+                }
+                for case_id in cases
+            ],
+            "dependency_graph": {
+                "planned_steps": [
+                    {
+                        "planned_step_id": record.planned_step_id,
+                        "case_id": str(record.meta.get("case_id") or "P2P_C001"),
+                        "step_type": "test_step",
+                        "tool_name": record.tool,
+                        "synthetic_actor_id": record.synthetic_actor_id,
+                        "technical_sap_user_id": technical_sap_user_ids_by_session[record.actor_session_id],
+                        "actor_session_id": record.actor_session_id,
+                        "inputs": record.input,
+                        "required_sap_object_keys": record.meta.get("required_sap_object_keys", []),
+                        "planned_date_inputs": {},
+                        "planned_synthetic_time": {
+                            "start": "2026-05-18T08:00:00+02:00",
+                            "end": "2026-05-18T08:05:00+02:00",
+                        },
+                        "labels": {"step_label": "normal"},
+                    }
+                    for record in records
+                ],
+                "dependencies": [],
+            },
+            "execution_schedule": {
+                "mode": "waves",
+                "max_parallel_actor_sessions": max(1, len(actor_sessions)),
+                "waves": [
+                    {
+                        "wave_id": "W001",
+                        "sequence_no": 1,
+                        "planned_steps": [
+                            {"planned_step_id": record.planned_step_id, "startup_order": index}
+                            for index, record in enumerate(records, start=1)
+                        ],
+                    }
+                ],
+            },
+            "validation_report": {"errors": [], "warnings": []},
+        }
+    )
+
+
+def _init_from_records(
+    records: list[ExecutionTaskRecord],
+    *,
+    login_url: str | None = None,
+    selectors: dict[str, str] | None = None,
+    include_password: bool = True,
+) -> SessionInitRecord:
+    seen: dict[str, ExecutionTaskRecord] = {}
+    for record in records:
+        seen.setdefault(record.actor_session_id, record)
+
+    return SessionInitRecord(
+        line_number=1,
+        users=[
+            SessionInitUser(
+                actor_session_id=record.actor_session_id,
+                synthetic_actor_id=record.synthetic_actor_id,
+                username=record.synthetic_actor_id,
+                password="secret" if include_password else None,
+                login_url=login_url,
+                username_selector=(selectors or {}).get("username_selector"),
+                password_selector=(selectors or {}).get("password_selector"),
+                submit_selector=(selectors or {}).get("submit_selector"),
+                success_selector=(selectors or {}).get("success_selector"),
+            )
+            for record in seen.values()
+        ],
+    )
+
+
+def _fake_login(context, params) -> ToolResult:
+    return ToolResult(
+        planned_step_id=context.record.planned_step_id,
+        actor_session_id=context.record.actor_session_id,
+        tool=context.record.tool,
+        data={
+            "success": True,
+            "username": params.username,
+            "current_url": "https://sap.example.test/home",
+        },
+    )
+
+
+def _run_canonical_records(
+    *,
+    executor: TraceExecutor,
+    records: list[ExecutionTaskRecord],
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    context_factory: Callable[[ExecutionTaskRecord], object] | None = None,
+    init: SessionInitRecord | None = None,
+) -> list[ToolResult]:
+    monkeypatch.setattr(executor_module, "run_login", _fake_login)
+    trace = _trace_from_records(records)
+    writer = ExecutionEvidenceWriter(tmp_path, run_id=trace.run_id)
+    return executor.execute_canonical(
+        trace,
+        init=init or _init_from_records(records),
+        context_factory=context_factory or (lambda record: SimpleNamespace(record=record, **record.model_dump())),
+        evidence_writer=writer,
+    )
+
+
+def _read_events(tmp_path) -> list[dict]:
+    path = tmp_path / "RUN_TEST.execution-log.jsonl"
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
 def _state_test_registry(captured_inputs: list[ConsumePurchaseRequisitionInput] | None = None) -> ToolRegistry:
     registry = ToolRegistry()
 
     def run_produce(context, params: ProducePurchaseRequisitionInput) -> ToolResult:
         return ToolResult(
-            task_id=context.task_id,
-            session_id=context.session_id,
+            planned_step_id=context.planned_step_id,
+            actor_session_id=context.actor_session_id,
             tool=context.tool,
             data={
                 "returned_objects": [
@@ -65,8 +240,8 @@ def _state_test_registry(captured_inputs: list[ConsumePurchaseRequisitionInput] 
         if captured_inputs is not None:
             captured_inputs.append(params)
         return ToolResult(
-            task_id=context.task_id,
-            session_id=context.session_id,
+            planned_step_id=context.planned_step_id,
+            actor_session_id=context.actor_session_id,
             tool=context.tool,
             data={"status": "consumed"},
         )
@@ -88,132 +263,162 @@ def _state_test_registry(captured_inputs: list[ConsumePurchaseRequisitionInput] 
     return registry
 
 
-def _home_reset_registry(*, include_login: bool = False) -> ToolRegistry:
+def _home_reset_registry() -> ToolRegistry:
     registry = ToolRegistry()
-    if include_login:
-        registry.register(LOGIN_TOOL)
 
     def run_tool(context, _params: NoInput) -> ToolResult:
         return ToolResult(
-            task_id=context.record.task_id,
-            session_id=context.record.session_id,
+            planned_step_id=context.record.planned_step_id,
+            actor_session_id=context.record.actor_session_id,
             tool=context.record.tool,
-            data={"status": "done"},
+            data={"success": True, "status": "done"},
         )
 
     registry.register(ToolSpec(name="fiori.fake_tool", input_model=NoInput, run=run_tool))
     return registry
 
 
-def test_executor_rejects_unknown_tools():
-    executor = TraceExecutor()
-    record = TraceRecord(
-        task_id="task-1",
-        session_id="session-1",
-        user_id="user-1",
-        tool="missing.tool",
-        input={},
-        line_number=1,
+def _home_reset_failure_registry() -> ToolRegistry:
+    registry = ToolRegistry()
+
+    def run_tool(context, _params: NoInput) -> ToolResult:
+        context.get_browser_session().fiori_messages.append(
+            {
+                "severity": "error",
+                "text": "SAP says no",
+                "source": "sap-message-popover",
+                "url": "https://sap.example.test/current",
+            }
+        )
+        raise RuntimeError("planned tool failure")
+
+    def run_ok(context, _params: NoInput) -> ToolResult:
+        return ToolResult(
+            planned_step_id=context.record.planned_step_id,
+            actor_session_id=context.record.actor_session_id,
+            tool=context.record.tool,
+            data={"success": True, "status": "done"},
+        )
+
+    registry.register(ToolSpec(name="fiori.fail_tool", input_model=NoInput, run=run_tool))
+    registry.register(ToolSpec(name="fiori.fake_tool", input_model=NoInput, run=run_ok))
+    return registry
+
+
+def _interrupt_registry() -> ToolRegistry:
+    registry = ToolRegistry()
+
+    def run_tool(context, _params: NoInput) -> ToolResult:
+        raise KeyboardInterrupt
+
+    registry.register(ToolSpec(name="fiori.interrupt_tool", input_model=NoInput, run=run_tool))
+    return registry
+
+
+def test_executor_logs_unknown_tools_as_planned_step_failure(tmp_path, monkeypatch):
+    contexts: list[ExecutionTaskRecord] = []
+    record = _record("planned-step-1", tool="missing.tool")
+
+    results = _run_canonical_records(
+        executor=TraceExecutor(),
+        records=[record],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        context_factory=lambda item: contexts.append(item) or SimpleNamespace(record=item, **item.model_dump()),
     )
 
-    with pytest.raises(UnknownToolError, match=r"missing\.tool"):
-        executor.execute([record], context_factory=lambda item: item)
+    assert [result.planned_step_id for result in results] == ["init-login-buyer-session"]
+    assert [item.planned_step_id for item in contexts] == ["init-login-buyer-session"]
+    events = _read_events(tmp_path)
+    assert any(event["event_type"] == "planned_step_failed" and "missing.tool" in event["error"] for event in events)
 
 
-def test_executor_reports_tool_input_validation_errors():
-    executor = TraceExecutor()
-    record = TraceRecord(
-        task_id="task-1",
-        session_id="session-1",
-        user_id="user-1",
+def test_executor_logs_tool_input_validation_errors(tmp_path, monkeypatch):
+    contexts: list[ExecutionTaskRecord] = []
+    record = _record(
+        "planned-step-1",
         tool="fiori.create_purchase_requisition",
         input=_purchase_requisition_input(quantity=0),
-        line_number=1,
     )
 
-    with pytest.raises(ToolInputValidationError, match="line 1"):
-        executor.execute([record], context_factory=lambda item: item)
+    _run_canonical_records(
+        executor=TraceExecutor(),
+        records=[record],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        context_factory=lambda item: contexts.append(item) or SimpleNamespace(record=item, **item.model_dump()),
+    )
+
+    assert [item.planned_step_id for item in contexts] == ["init-login-buyer-session"]
+    events = _read_events(tmp_path)
+    assert any(event["event_type"] == "planned_step_failed" and "Invalid input" in event["error"] for event in events)
 
 
-def test_executor_resolves_process_scoped_state_variables_before_validation():
+def test_executor_resolves_process_scoped_state_variables_before_validation(tmp_path, monkeypatch):
     captured_inputs: list[ConsumePurchaseRequisitionInput] = []
     records = [
-        TraceRecord(
-            task_id="C042_A1",
-            session_id="buyer-session",
-            user_id="buyer-a",
+        _record(
+            "C042_A1",
             tool="test.produce_purchase_requisition",
             input={"pr_number": "10000030"},
-            meta={"case_id": "P2P_C042"},
+            case_id="P2P_C042",
             line_number=1,
         ),
-        TraceRecord(
-            task_id="C042_A2",
-            session_id="buyer-session",
-            user_id="buyer-a",
+        _record(
+            "C042_A2",
             tool="test.consume_purchase_requisition",
             input={"purchase_requisition": "$purchase_requisition.pr_number"},
-            meta={"case_id": "P2P_C042"},
+            case_id="P2P_C042",
             line_number=2,
         ),
     ]
 
-    executor = TraceExecutor(registry=_state_test_registry(captured_inputs))
-    results = executor.execute(records, context_factory=lambda record: record)
+    results = _run_canonical_records(
+        executor=TraceExecutor(registry=_state_test_registry(captured_inputs)),
+        records=records,
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+    )
 
     assert [result.tool for result in results] == [
+        "fiori.login",
         "test.produce_purchase_requisition",
         "test.consume_purchase_requisition",
     ]
     assert captured_inputs[0].purchase_requisition == "10000030"
 
 
-def test_executor_fails_unresolved_state_variable_before_context_creation():
-    record = TraceRecord(
-        task_id="C042_A2",
-        session_id="buyer-session",
-        user_id="buyer-a",
+def test_executor_logs_unresolved_state_variable_before_context_creation(tmp_path, monkeypatch):
+    contexts: list[ExecutionTaskRecord] = []
+    record = _record(
+        "C042_A2",
         tool="test.consume_purchase_requisition",
         input={"purchase_requisition": "$purchase_requisition.pr_number"},
-        meta={"case_id": "P2P_C042"},
-        line_number=1,
+        case_id="P2P_C042",
     )
 
-    executor = TraceExecutor(registry=_state_test_registry())
-
-    with pytest.raises(StateResolutionError, match="C042_A2"):
-        executor.execute([record], context_factory=lambda _record: pytest.fail("context should not be created"))
-
-
-def test_executor_fails_state_variable_without_case_id_before_context_creation():
-    record = TraceRecord(
-        task_id="C042_A2",
-        session_id="buyer-session",
-        user_id="buyer-a",
-        tool="test.consume_purchase_requisition",
-        input={"purchase_requisition": "$purchase_requisition.pr_number"},
-        line_number=1,
+    _run_canonical_records(
+        executor=TraceExecutor(registry=_state_test_registry()),
+        records=[record],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        context_factory=lambda item: contexts.append(item) or SimpleNamespace(record=item, **item.model_dump()),
     )
 
-    executor = TraceExecutor(registry=_state_test_registry())
+    assert [item.planned_step_id for item in contexts] == ["init-login-buyer-session"]
+    events = _read_events(tmp_path)
+    assert any(event["event_type"] == "planned_step_failed" and "C042_A2" in event["error"] for event in events)
 
-    with pytest.raises(StateResolutionError, match="missing case_id"):
-        executor.execute([record], context_factory=lambda _record: pytest.fail("context should not be created"))
 
-
-def test_executor_clicks_sap_home_logo_twice_after_successful_fiori_tool():
+def test_executor_clicks_sap_home_logo_twice_after_successful_fiori_tool(tmp_path, monkeypatch):
     page = FakeHomeResetPage(logo_click_succeeds=True)
-    record = TraceRecord(
-        task_id="task-1",
-        session_id="session-1",
-        user_id="user-1",
-        tool="fiori.fake_tool",
-        input={},
-        line_number=1,
-    )
+    record = _record("planned-step-1", tool="fiori.fake_tool")
 
-    TraceExecutor(registry=_home_reset_registry()).execute(
-        [record],
+    _run_canonical_records(
+        executor=TraceExecutor(registry=_home_reset_registry()),
+        records=[record],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
         context_factory=lambda item: FakeHomeResetContext(item, page),
     )
 
@@ -221,7 +426,7 @@ def test_executor_clicks_sap_home_logo_twice_after_successful_fiori_tool():
     assert page.goto_urls == []
 
 
-def test_executor_attaches_fiori_messages_to_tool_result():
+def test_executor_attaches_fiori_messages_to_tool_result(tmp_path, monkeypatch):
     registry = ToolRegistry()
 
     def run_tool(context, _params: NoInput) -> ToolResult:
@@ -234,26 +439,27 @@ def test_executor_attaches_fiori_messages_to_tool_result():
             }
         )
         return ToolResult(
-            task_id=context.record.task_id,
-            session_id=context.record.session_id,
+            planned_step_id=context.record.planned_step_id,
+            actor_session_id=context.record.actor_session_id,
             tool=context.record.tool,
-            data={"status": "done"},
+            data={"success": True, "status": "done"},
         )
 
     registry.register(ToolSpec(name="fiori.fake_tool", input_model=NoInput, run=run_tool))
-    record = TraceRecord(
-        task_id="task-1",
-        session_id="session-1",
-        user_id="user-1",
-        tool="fiori.fake_tool",
-        input={},
-        line_number=1,
-    )
+    record = _record("planned-step-1", tool="fiori.fake_tool")
     context = FakeMessageContext(record)
 
-    result = TraceExecutor(registry=registry).execute([record], context_factory=lambda _record: context)[0]
+    results = _run_canonical_records(
+        executor=TraceExecutor(registry=registry),
+        records=[record],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        context_factory=lambda item: FakeHomeResetContext(item, context.session.page)
+        if item.tool == "fiori.login"
+        else context,
+    )
 
-    assert result.data["sap_messages"] == [
+    assert results[1].data["sap_messages"] == [
         {
             "severity": "error",
             "text": "Geben Sie ein Rechnungsdatum ein.",
@@ -264,58 +470,146 @@ def test_executor_attaches_fiori_messages_to_tool_result():
     assert context.session.fiori_messages == []
 
 
-def test_executor_falls_back_to_current_login_url_when_home_logo_clicks_fail():
+def test_executor_falls_back_to_current_login_url_when_home_logo_clicks_fail(tmp_path, monkeypatch):
     page = FakeHomeResetPage(logo_click_succeeds=False)
-    trace = [
-        TraceRecord(
-            task_id="login-1",
-            session_id="session-1",
-            user_id="user-1",
-            tool="fiori.login",
-            input={
-                "url": "https://sap.example.test/home",
-                "username": "user-1",
-                "password": "secret",
-                "username_selector": "#username",
-                "password_selector": "#password",
-                "submit_selector": "#login",
-            },
-            line_number=1,
-        ),
-        TraceRecord(
-            task_id="task-1",
-            session_id="session-1",
-            user_id="user-1",
-            tool="fiori.fake_tool",
-            input={},
-            line_number=2,
-        ),
-    ]
+    record = _record("planned-step-1", tool="fiori.fake_tool")
 
-    TraceExecutor(registry=_home_reset_registry(include_login=True)).execute(
-        trace,
+    _run_canonical_records(
+        executor=TraceExecutor(registry=_home_reset_registry()),
+        records=[record],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
         context_factory=lambda item: FakeHomeResetContext(item, page),
     )
 
     assert page.logo_click_count == 2
-    assert page.goto_urls == [
-        "https://sap.example.test/home",
-        "https://sap.example.test/current",
+    assert page.goto_urls == ["https://sap.example.test/home"]
+
+
+def test_executor_logs_failed_fiori_planned_step_resets_home_and_continues_other_cases(
+    tmp_path, monkeypatch, caplog
+):
+    page = FakeHomeResetPage(logo_click_succeeds=True)
+    records = [
+        _record("C001_A1", tool="fiori.fail_tool", case_id="P2P_C001"),
+        _record("C002_A1", tool="fiori.fake_tool", case_id="P2P_C002"),
     ]
+
+    with caplog.at_level(logging.ERROR, logger="erp_trace_executor.evidence"):
+        results = _run_canonical_records(
+            executor=TraceExecutor(registry=_home_reset_failure_registry()),
+            records=records,
+            tmp_path=tmp_path,
+            monkeypatch=monkeypatch,
+            context_factory=lambda item: FakeHomeResetContext(item, page),
+        )
+
+    assert [result.planned_step_id for result in results] == ["init-login-buyer-session", "C002_A1"]
+    assert page.logo_click_count == 4
+    assert "Failed planned step C001_A1" in caplog.text
+    assert "planned tool failure" in caplog.text
+    assert "SAP says no" in caplog.text
+    events = _read_events(tmp_path)
+    failed = next(event for event in events if event["event_type"] == "planned_step_failed")
+    assert failed["planned_step_id"] == "C001_A1"
+    assert failed["sap_messages"][0]["text"] == "SAP says no"
+    assert any(event["event_type"] == "planned_step_succeeded" and event["planned_step_id"] == "C002_A1" for event in events)
+
+
+def test_executor_fails_run_when_home_reset_after_planned_step_failure_fails(tmp_path, monkeypatch, caplog):
+    page = FakeHomeResetPage(logo_click_succeeds=False, goto_raises=True)
+    record = _record("C001_A1", tool="fiori.fail_tool", case_id="P2P_C001")
+
+    with caplog.at_level(logging.ERROR, logger="erp_trace_executor.evidence"):
+        with pytest.raises(PlaywrightError, match="cannot goto home"):
+            _run_canonical_records(
+                executor=TraceExecutor(registry=_home_reset_failure_registry()),
+                records=[record],
+                tmp_path=tmp_path,
+                monkeypatch=monkeypatch,
+                context_factory=lambda item: FakeHomeResetContext(item, page),
+            )
+
+    assert "Home reset failed for planned step C001_A1" in caplog.text
+    events = _read_events(tmp_path)
+    assert any(event["event_type"] == "home_reset_failed" for event in events)
+    assert any(event["event_type"] == "run_failed" for event in events)
+
+
+def test_executor_logs_planned_step_and_run_interrupted_before_reraising(tmp_path, monkeypatch):
+    record = _record("C001_A1", tool="fiori.interrupt_tool", case_id="P2P_C001")
+
+    with pytest.raises(KeyboardInterrupt):
+        _run_canonical_records(
+            executor=TraceExecutor(registry=_interrupt_registry()),
+            records=[record],
+            tmp_path=tmp_path,
+            monkeypatch=monkeypatch,
+            context_factory=lambda item: FakeHomeResetContext(item, FakeHomeResetPage(logo_click_succeeds=True)),
+        )
+
+    events = _read_events(tmp_path)
+    assert [event["event_type"] for event in events if event["event_type"].endswith("_interrupted")] == [
+        "planned_step_interrupted",
+        "run_interrupted",
+    ]
+    planned_step_event = next(event for event in events if event["event_type"] == "planned_step_interrupted")
+    assert planned_step_event["planned_step_id"] == "C001_A1"
+    assert planned_step_event["severity"] == "WARNING"
+    run_event = next(event for event in events if event["event_type"] == "run_interrupted")
+    assert run_event["planned_step_id"] == "C001_A1"
+    assert run_event["severity"] == "WARNING"
+
+
+def test_executor_logs_login_and_run_interrupted_before_reraising(tmp_path, monkeypatch):
+    record = _record("C001_A1", tool="fiori.fake_tool", case_id="P2P_C001")
+    trace = _trace_from_records([record])
+    writer = ExecutionEvidenceWriter(tmp_path, run_id=trace.run_id)
+
+    def interrupt_login(_context, _params) -> ToolResult:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(executor_module, "run_login", interrupt_login)
+
+    with pytest.raises(KeyboardInterrupt):
+        TraceExecutor(registry=_home_reset_registry()).execute_canonical(
+            trace,
+            init=_init_from_records([record]),
+            context_factory=lambda item: FakeHomeResetContext(item, FakeHomeResetPage(logo_click_succeeds=True)),
+            evidence_writer=writer,
+        )
+
+    events = _read_events(tmp_path)
+    assert [event["event_type"] for event in events if event["event_type"].endswith("_interrupted")] == [
+        "login_interrupted",
+        "run_interrupted",
+    ]
+    login_event = next(event for event in events if event["event_type"] == "login_interrupted")
+    assert login_event["actor_session_id"] == "buyer-session"
+    assert login_event["severity"] == "WARNING"
+    run_event = next(event for event in events if event["event_type"] == "run_interrupted")
+    assert run_event["actor_session_id"] == "buyer-session"
+    assert run_event["severity"] == "WARNING"
 
 
 class FakeHomeResetContext:
-    def __init__(self, record: TraceRecord, page: "FakeHomeResetPage") -> None:
+    def __init__(self, record: ExecutionTaskRecord, page: "FakeHomeResetPage") -> None:
         self.record = record
-        self._session = SimpleNamespace(page=page)
+        self.planned_step_id = record.planned_step_id
+        self.actor_session_id = record.actor_session_id
+        self.tool = record.tool
+        self._session = SimpleNamespace(page=page, fiori_messages=[])
 
     def get_browser_session(self):
         return self._session
 
 
 class FakeMessageContext:
-    def __init__(self, record: TraceRecord) -> None:
+    def __init__(self, record: ExecutionTaskRecord) -> None:
         self.record = record
+        self.planned_step_id = record.planned_step_id
+        self.actor_session_id = record.actor_session_id
+        self.tool = record.tool
         self.session = SimpleNamespace(
             page=FakeHomeResetPage(logo_click_succeeds=True),
             fiori_messages=[],
@@ -328,12 +622,15 @@ class FakeMessageContext:
 class FakeHomeResetPage:
     url = "https://sap.example.test/current"
 
-    def __init__(self, *, logo_click_succeeds: bool) -> None:
+    def __init__(self, *, logo_click_succeeds: bool, goto_raises: bool = False) -> None:
         self.logo_click_succeeds = logo_click_succeeds
+        self.goto_raises = goto_raises
         self.logo_click_count = 0
         self.goto_urls: list[str] = []
 
     def goto(self, url: str) -> None:
+        if self.goto_raises:
+            raise PlaywrightError("cannot goto home")
         self.goto_urls.append(url)
 
     def locator(self, selector: str):
@@ -366,9 +663,9 @@ class FakeHomeResetLocator:
 
 def test_browser_session_manager_reuses_session_ids():
     with BrowserSessionManager() as session_manager:
-        first = session_manager.get_session(session_id="session-1", user_id="user-1")
-        second = session_manager.get_session(session_id="session-1", user_id="user-1")
-        other = session_manager.get_session(session_id="session-2", user_id="user-1")
+        first = session_manager.get_session(actor_session_id="session-1", synthetic_actor_id="user-1")
+        second = session_manager.get_session(actor_session_id="session-1", synthetic_actor_id="user-1")
+        other = session_manager.get_session(actor_session_id="session-2", synthetic_actor_id="user-1")
 
         assert first is second
         assert other is not first
@@ -377,48 +674,32 @@ def test_browser_session_manager_reuses_session_ids():
 
 def test_browser_session_manager_rejects_mixed_users_for_same_session():
     with BrowserSessionManager() as session_manager:
-        session_manager.get_session(session_id="session-1", user_id="user-1")
+        session_manager.get_session(actor_session_id="session-1", synthetic_actor_id="user-1")
 
         with pytest.raises(SessionUserMismatchError, match="session-1"):
-            session_manager.get_session(session_id="session-1", user_id="user-2")
+            session_manager.get_session(actor_session_id="session-1", synthetic_actor_id="user-2")
 
 
-def test_executor_runs_login_then_purchase_requisition_against_fixture_app(fixture_app_url):
+def test_executor_runs_login_then_purchase_requisition_against_fixture_app(fixture_app_url, tmp_path):
     records = [
-        TraceRecord(
-            task_id="task-1",
-            session_id="session-1",
-            user_id="buyer-a",
-            tool="fiori.login",
-            input={
-                "base_url": fixture_app_url,
-                "username": "buyer-a",
-                "password": "secret",
-                "username_selector": '[data-testid="username"]',
-                "password_selector": '[data-testid="password"]',
-                "submit_selector": '[data-testid="login-submit"]',
-                "success_selector": '[data-testid="session-user"]',
-            },
-            line_number=1,
-        ),
-        TraceRecord(
-            task_id="task-2",
-            session_id="session-1",
-            user_id="buyer-a",
+        _record(
+            "planned-step-1",
             tool="fiori.create_purchase_requisition",
             input=_purchase_requisition_input(quantity=3),
-            line_number=2,
-        ),
+        )
     ]
-
+    trace = _trace_from_records(records)
     executor = TraceExecutor()
+
     with BrowserSessionManager() as session_manager:
-        results = executor.execute(
-            records,
+        results = executor.execute_canonical(
+            trace,
+            init=_fixture_init(records, fixture_app_url),
             context_factory=lambda record: ExecutionContext(
                 record=record,
                 session_manager=session_manager,
             ),
+            evidence_writer=ExecutionEvidenceWriter(tmp_path, run_id=trace.run_id),
         )
 
         assert session_manager.active_session_count() == 1
@@ -429,162 +710,53 @@ def test_executor_runs_login_then_purchase_requisition_against_fixture_app(fixtu
     assert results[1].data["purchase_requisition"] == "PR-0001"
 
 
-def test_executor_runs_init_logins_before_tasks_against_fixture_app(fixture_app_url):
-    trace = TraceDefinition(
-        init=TraceInitRecord(
-            line_number=1,
-            users=[
-                TraceInitUser(
-                    session_id="buyer-session",
-                    user_id="buyer-a",
-                    username="buyer-a",
-                    password="secret",
-                    login_url=fixture_app_url,
-                    username_selector='[data-testid="username"]',
-                    password_selector='[data-testid="password"]',
-                    submit_selector='[data-testid="login-submit"]',
-                    success_selector='[data-testid="session-user"]',
-                ),
-                TraceInitUser(
-                    session_id="approver-session",
-                    user_id="approver-a",
-                    username="approver-a",
-                    password="secret",
-                    login_url=fixture_app_url,
-                    username_selector='[data-testid="username"]',
-                    password_selector='[data-testid="password"]',
-                    submit_selector='[data-testid="login-submit"]',
-                    success_selector='[data-testid="session-user"]',
-                ),
-            ],
-        ),
-        tasks=[
-            TraceRecord(
-                task_id="task-1",
-                session_id="buyer-session",
-                user_id="buyer-a",
-                tool="fiori.create_purchase_requisition",
-                input=_purchase_requisition_input(quantity=3),
-                line_number=2,
-            ),
-            TraceRecord(
-                task_id="task-2",
-                session_id="approver-session",
-                user_id="approver-a",
-                tool="fiori.create_purchase_requisition",
-                input=_purchase_requisition_input(material="GEAR1000", quantity=1),
-                line_number=3,
-            ),
-        ],
-    )
-
-    executor = TraceExecutor()
-    with BrowserSessionManager() as session_manager:
-        results = executor.execute(
-            trace,
-            context_factory=lambda record: ExecutionContext(
-                record=record,
-                session_manager=session_manager,
-            ),
+def test_executor_resolves_init_passwords_from_credentials_against_fixture_app(fixture_app_url, tmp_path):
+    records = [
+        _record(
+            "planned-step-1",
+            tool="fiori.create_purchase_requisition",
+            input=_purchase_requisition_input(quantity=1),
         )
-
-        assert session_manager.active_session_count() == 2
-
-    assert [result.tool for result in results] == [
-        "fiori.login",
-        "fiori.login",
-        "fiori.create_purchase_requisition",
-        "fiori.create_purchase_requisition",
     ]
-    assert results[0].data["username"] == "buyer-a"
-    assert results[1].data["username"] == "approver-a"
-    assert results[2].data["purchase_requisition"] == "PR-0001"
-    assert results[2].data["quantity"] == 3
-    assert results[3].data["purchase_requisition"] == "PR-0001"
-    assert results[3].data["quantity"] == 1
-
-
-def test_executor_resolves_init_passwords_from_credentials_against_fixture_app(fixture_app_url):
-    trace = TraceDefinition(
-        init=TraceInitRecord(
-            line_number=1,
-            users=[
-                TraceInitUser(
-                    session_id="buyer-session",
-                    user_id="buyer-a",
-                    username="buyer-a",
-                    login_url=fixture_app_url,
-                    username_selector='[data-testid="username"]',
-                    password_selector='[data-testid="password"]',
-                    submit_selector='[data-testid="login-submit"]',
-                    success_selector='[data-testid="session-user"]',
-                )
-            ],
-        ),
-        tasks=[
-            TraceRecord(
-                task_id="task-1",
-                session_id="buyer-session",
-                user_id="buyer-a",
-                tool="fiori.create_purchase_requisition",
-                input=_purchase_requisition_input(quantity=1),
-                line_number=2,
-            )
-        ],
-    )
-
+    trace = _trace_from_records(records)
     executor = TraceExecutor(credential_store=EnvCredentialStore({"buyer-a": "secret"}))
+
     with BrowserSessionManager() as session_manager:
-        results = executor.execute(
+        results = executor.execute_canonical(
             trace,
+            init=_fixture_init(records, fixture_app_url, include_password=False),
             context_factory=lambda record: ExecutionContext(
                 record=record,
                 session_manager=session_manager,
             ),
+            evidence_writer=ExecutionEvidenceWriter(tmp_path, run_id=trace.run_id),
         )
 
     assert results[0].data["username"] == "buyer-a"
     assert results[1].data["purchase_requisition"] == "PR-0001"
 
 
-def test_executor_creates_purchase_requisition_against_fixture_app(fixture_app_url):
-    trace = TraceDefinition(
-        init=TraceInitRecord(
-            line_number=1,
-            users=[
-                TraceInitUser(
-                    session_id="buyer-session",
-                    user_id="buyer-a",
-                    username="buyer-a",
-                    password="secret",
-                    login_url=fixture_app_url,
-                    username_selector='[data-testid="username"]',
-                    password_selector='[data-testid="password"]',
-                    submit_selector='[data-testid="login-submit"]',
-                    success_selector='[data-testid="session-user"]',
-                )
-            ],
-        ),
-        tasks=[
-            TraceRecord(
-                task_id="task-1",
-                session_id="buyer-session",
-                user_id="buyer-a",
-                tool="fiori.create_purchase_requisition",
-                input=_purchase_requisition_input(),
-                line_number=2,
-            )
-        ],
-    )
-
+def test_executor_creates_purchase_requisition_against_fixture_app(fixture_app_url, tmp_path):
+    records = [
+        _record(
+            "planned-step-1",
+            tool="fiori.create_purchase_requisition",
+            input=_purchase_requisition_input(),
+            required_sap_object_keys=["purchase_requisition.pr_number"],
+        )
+    ]
+    trace = _trace_from_records(records)
     executor = TraceExecutor()
+
     with BrowserSessionManager() as session_manager:
-        results = executor.execute(
+        results = executor.execute_canonical(
             trace,
+            init=_fixture_init(records, fixture_app_url),
             context_factory=lambda record: ExecutionContext(
                 record=record,
                 session_manager=session_manager,
             ),
+            evidence_writer=ExecutionEvidenceWriter(tmp_path, run_id=trace.run_id),
         )
 
     assert results[1].tool == "fiori.create_purchase_requisition"
@@ -602,63 +774,20 @@ def test_executor_creates_purchase_requisition_against_fixture_app(fixture_app_u
     ]
 
 
-def test_executor_rejects_uninitialized_task_sessions_before_login():
-    trace = TraceDefinition(
-        init=TraceInitRecord(
-            line_number=1,
-            users=[
-                TraceInitUser(
-                    session_id="buyer-session",
-                    user_id="buyer-a",
-                    username="buyer-a",
-                    password="secret",
-                )
-            ],
-        ),
-        tasks=[
-            TraceRecord(
-                task_id="task-1",
-                session_id="missing-session",
-                user_id="buyer-a",
-                tool="fiori.create_purchase_requisition",
-                input={},
-                line_number=2,
-            )
-        ],
+def _fixture_init(
+    records: list[ExecutionTaskRecord],
+    fixture_app_url: str,
+    *,
+    include_password: bool = True,
+) -> SessionInitRecord:
+    return _init_from_records(
+        records,
+        login_url=fixture_app_url,
+        include_password=include_password,
+        selectors={
+            "username_selector": '[data-testid="username"]',
+            "password_selector": '[data-testid="password"]',
+            "submit_selector": '[data-testid="login-submit"]',
+            "success_selector": '[data-testid="session-user"]',
+        },
     )
-
-    executor = TraceExecutor()
-
-    with pytest.raises(SessionUserMismatchError, match="missing-session"):
-        executor.execute(trace, context_factory=lambda _record: pytest.fail("context should not be created"))
-
-
-def test_executor_rejects_initialized_session_user_mismatch_before_login():
-    trace = TraceDefinition(
-        init=TraceInitRecord(
-            line_number=1,
-            users=[
-                TraceInitUser(
-                    session_id="buyer-session",
-                    user_id="buyer-a",
-                    username="buyer-a",
-                    password="secret",
-                )
-            ],
-        ),
-        tasks=[
-            TraceRecord(
-                task_id="task-1",
-                session_id="buyer-session",
-                user_id="approver-a",
-                tool="fiori.create_purchase_requisition",
-                input={},
-                line_number=2,
-            )
-        ],
-    )
-
-    executor = TraceExecutor()
-
-    with pytest.raises(SessionUserMismatchError, match="approver-a"):
-        executor.execute(trace, context_factory=lambda _record: pytest.fail("context should not be created"))

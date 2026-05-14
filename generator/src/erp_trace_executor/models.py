@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
@@ -22,30 +22,27 @@ def returned_object(object_type: str, **keys: Any) -> dict[str, Any]:
     }
 
 
-class TraceTaskRecord(BaseModel):
-    """One JSONL task record."""
+class ExecutionTaskRecord(BaseModel):
+    """One planned-step execution record."""
 
     model_config = ConfigDict(extra="forbid")
 
-    task_id: str
-    session_id: str
-    user_id: str
+    planned_step_id: str
+    actor_session_id: str
+    synthetic_actor_id: str
     tool: str
     input: dict[str, Any]
     meta: dict[str, Any] = Field(default_factory=dict)
     line_number: int
 
 
-TraceRecord = TraceTaskRecord
-
-
-class TraceInitUser(BaseModel):
-    """One browser user to log in before task execution."""
+class SessionInitUser(BaseModel):
+    """One actor session to log in before planned-step execution."""
 
     model_config = ConfigDict(extra="forbid")
 
-    session_id: str
-    user_id: str
+    actor_session_id: str
+    synthetic_actor_id: str
     username: str
     password: str | None = None
     login_url: HttpUrl | None = None
@@ -55,38 +52,28 @@ class TraceInitUser(BaseModel):
     success_selector: str | None = None
 
 
-class TraceInitRecord(BaseModel):
-    """Optional first JSONL record for pre-task browser logins."""
+class SessionInitRecord(BaseModel):
+    """Actor session logins required before planned-step execution."""
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["init"] = "init"
-    users: list[TraceInitUser] = Field(min_length=1)
+    users: list[SessionInitUser] = Field(min_length=1)
     line_number: int
-
-
-class TraceDefinition(BaseModel):
-    """Parsed trace with optional init and ordered task records."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    init: TraceInitRecord | None = None
-    tasks: list[TraceTaskRecord] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class ToolResult:
     """Structured output for one tool execution."""
 
-    task_id: str
-    session_id: str
+    planned_step_id: str
+    actor_session_id: str
     tool: str
     data: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "task_id": self.task_id,
-            "session_id": self.session_id,
+            "planned_step_id": self.planned_step_id,
+            "actor_session_id": self.actor_session_id,
             "tool": self.tool,
             "data": self.data,
         }

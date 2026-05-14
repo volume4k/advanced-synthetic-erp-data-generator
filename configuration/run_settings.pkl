@@ -1,10 +1,99 @@
 import "objects.pkl"
 
 runSettings: objects.RunSettings = new objects.RunSettings {
-  caseCount = 10
-  maxParallelSessions = 4
-  targetTimezone = "Europe/Berlin"
+  caseCount = 3
+  maxParallelActorSessions = 4
+  targetTimezone = "America/New_York"
   activeProcessTypes {
     "procure_to_pay"
+  }
+  schedulerSeed = 42
+  runStartDate = "2026-05-18"
+  runHorizonDays = 30
+  queuePolicy = "fifo"
+  workingHours {
+    coreStart = "08:00"
+    coreEnd = "17:00"
+    dailyDeviationHoursMin = -1.0
+    dailyDeviationHoursMax = 1.0
+    pauseWindowStart = "12:00"
+    pauseWindowEnd = "13:30"
+    pauseDurationMinutesMin = 30
+    pauseDurationMinutesMax = 75
+  }
+  stepDurationMinutes {
+    ["create_purchase_requisition"] = new objects.MinuteRange {
+      min = 8
+      max = 14
+    }
+    ["create_purchase_order"] = new objects.MinuteRange {
+      min = 7
+      max = 12
+    }
+    ["post_goods_receipt"] = new objects.MinuteRange {
+      min = 5
+      max = 10
+    }
+    ["enter_incoming_invoice"] = new objects.MinuteRange {
+      min = 8
+      max = 15
+    }
+    ["post_outgoing_payment"] = new objects.MinuteRange {
+      min = 5
+      max = 10
+    }
+  }
+  interStepDelayMinutes {
+    new objects.InterStepDelayRange {
+      fromStepType = "create_purchase_requisition"
+      toStepType = "create_purchase_order"
+      min = 30
+      max = 180
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "create_purchase_order"
+      toStepType = "post_goods_receipt"
+      min = 240
+      max = 2880
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "post_goods_receipt"
+      toStepType = "enter_incoming_invoice"
+      min = 120
+      max = 1440
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "enter_incoming_invoice"
+      toStepType = "post_outgoing_payment"
+      min = 240
+      max = 2880
+    }
+  }
+  storageLocationLabels {
+    ["0001"] = "Finished Goods"
+    ["0002"] = "Trading Goods"
+  }
+  postProcessingExportGroups {
+    new objects.PostProcessingExportGroup {
+      id = "change_documents"
+      description =
+        "SAP change document exports used for timestamp and object-change reconciliation."
+    }
+    new objects.PostProcessingExportGroup {
+      id = "purchase_orders"
+      description = "Purchase order exports used to correlate purchase order headers and items."
+    }
+    new objects.PostProcessingExportGroup {
+      id = "material_documents"
+      description = "Material document exports used to correlate goods receipts."
+    }
+    new objects.PostProcessingExportGroup {
+      id = "supplier_invoices"
+      description = "Supplier invoice exports used to correlate incoming invoices."
+    }
+    new objects.PostProcessingExportGroup {
+      id = "accounting_documents"
+      description = "Accounting document exports used to correlate outgoing payments."
+    }
   }
 }

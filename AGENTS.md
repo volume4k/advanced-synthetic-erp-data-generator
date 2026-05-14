@@ -2,6 +2,12 @@
 
 After new features or fixes, commit them using conventional commit messages. Be fine granular. Use `BREAKING CHANGE` if applicable. If you encounter problems, fix them immediately.
 
+## Repo-Local Skills
+
+Repo-local generic agent skills live in `.agents/skills/`. When a user asks for a named repo-local skill, read that skill's `SKILL.md` and follow any adjacent format files before acting.
+
+Use `.agents/skills/grill-with-docs/` when stress-testing plans against project language, updating `CONTEXT.md`, or deciding whether an ADR belongs in `docs/adr/`.
+
 ## Testing Strategy
 
 Default tests for this repository are core-centric. They should prove the generator framework works, not that a mocked SAP page behaves like the real SAP tenant.
