@@ -183,7 +183,7 @@ textarea {
   min-height: 90px;
   resize: vertical;
   padding: 10px 12px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   line-height: 1.45;
 }
@@ -549,7 +549,7 @@ td code {
   background: #101828;
   color: #ecfdf6;
   padding: 12px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   line-height: 1.5;
 }

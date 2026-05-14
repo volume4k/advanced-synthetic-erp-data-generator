@@ -21,6 +21,7 @@ const state = {
 };
 
 let graph = null;
+const warnedMissingEdgeSources = new Set();
 const app = document.querySelector("#app");
 if (!app) {
   throw new Error("ERP Trace Visualizer requires a #app root element.");
@@ -878,6 +879,10 @@ function getActiveModel() {
     ...edge,
     from: edge.from || edge.from_,
   }));
+  const missingEdgeSourceCount = edges.filter((edge) => !edge.from).length;
+  if (missingEdgeSourceCount > 0) {
+    warnMissingEdgeSources(run.runId, missingEdgeSourceCount);
+  }
   const sessions = execution?.sessions || [];
   const cases = execution?.cases || [];
   const waves = execution?.execution_schedule?.waves || [];
@@ -925,6 +930,15 @@ function ensureValidNodeSelection(model) {
   if (!model.nodeById.has(state.selectedNodeId)) {
     state.selectedNodeId = model.nodes[0]?.node_id || "";
   }
+}
+
+function warnMissingEdgeSources(runId, count) {
+  const key = `${runId}:${count}`;
+  if (warnedMissingEdgeSources.has(key)) {
+    return;
+  }
+  warnedMissingEdgeSources.add(key);
+  console.warn(`ERP trace visualizer: ${count} edge(s) in run ${runId} have no source.`);
 }
 
 function buildScheduleIndex(waves) {
