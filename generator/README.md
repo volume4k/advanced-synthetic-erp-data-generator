@@ -28,6 +28,21 @@ Credentials can be loaded from `configuration/.env` by default, or from another 
 uv run --project generator erp-trace-exec path/to/execution-trace.yaml --env-file path/to/credentials.env --artifact-dir generator/build
 ```
 
+## Logging
+
+The executor keeps stdout reserved for the final JSON result array. Runtime progress and diagnostics are logged to stderr through Python's standard `logging` package.
+
+```bash
+uv run --project generator erp-trace-exec path/to/execution-trace.yaml --log-level DEBUG
+```
+
+`--log-level` accepts `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` and defaults to `INFO`. Evidence artifacts remain the machine-readable source of truth:
+
+- `<run_id>.execution-log.jsonl` records run, login, wave, node, failure, skip, and interrupt events with `severity` and `message` fields.
+- `<run_id>.object-registry.jsonl` records created SAP object keys.
+
+If execution is interrupted with Ctrl-C, the CLI exits with code `130` and writes `*_interrupted` events for the active login or node plus the run. `SIGKILL` cannot be caught.
+
 ## Trace Format
 
 Canonical traces contain session metadata, cases, dependency graph nodes, waves, and validation metadata. Session blocks reference env var names; they do not contain usernames or passwords:
