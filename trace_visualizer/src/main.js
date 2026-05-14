@@ -22,11 +22,15 @@ const state = {
 
 let graph = null;
 const app = document.querySelector("#app");
+if (!app) {
+  throw new Error("ERP Trace Visualizer requires a #app root element.");
+}
 
 render();
 
 function render() {
   const model = getActiveModel();
+  ensureValidNodeSelection(model);
   if (state.activeView !== "graph") {
     destroyGraph();
   }
@@ -557,9 +561,6 @@ function renderDetail(model) {
   }
 
   const node = model.nodeById.get(state.selectedNodeId) || model.nodes[0];
-  if (node && state.selectedNodeId !== node.node_id) {
-    state.selectedNodeId = node.node_id;
-  }
   if (!node) {
     return renderBlank("No node selected", "Trace has no dependency graph nodes.");
   }
@@ -914,6 +915,16 @@ function getActiveModel() {
     visibleNodes,
     warnings: buildRunWarnings(run, execution, manifest),
   };
+}
+
+function ensureValidNodeSelection(model) {
+  if (!model?.execution) {
+    state.selectedNodeId = "";
+    return;
+  }
+  if (!model.nodeById.has(state.selectedNodeId)) {
+    state.selectedNodeId = model.nodes[0]?.node_id || "";
+  }
 }
 
 function buildScheduleIndex(waves) {
