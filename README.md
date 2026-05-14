@@ -22,7 +22,7 @@ Project glossary terms live in `CONTEXT.md`; architectural decision records live
 
 - `configuration/` owns experiment parameters in Pkl: process steps, tools, actors, technical users, working hours, pause ranges, and delay ranges.
 - `trace_generator/` owns planning: case generation, input binding, actor assignment, synthetic timestamps, FIFO wave scheduling, validation, and artifact writing.
-- `generator/` owns execution mechanics only: browser sessions, SAP tool calls, runtime placeholder resolution, and SAP object capture.
+- `generator/` owns execution mechanics only: actor sessions, SAP tool calls, runtime placeholder resolution, and SAP object capture.
 - Future `post_processor/` work should use the trace-generator execution trace and manifest as planned truth when shifting SAP export timestamps and projecting synthetic actors.
 
 ## Quick Start
@@ -60,16 +60,16 @@ uv run --project generator erp-trace-exec path/to/execution-trace.yaml --headed
 Canonical traces contain session blocks with env var names, not credentials:
 
 ```yaml
-sessions:
-- session_id: buyer-session
-  virtual_actor_id: buyer-a
-  technical_user_id: TU_01
+actor_sessions:
+- actor_session_id: buyer-session
+  synthetic_actor_id: buyer-a
+  technical_sap_user_id: TU_01
   username_env_var: SAP_USER_1_UN
   password_env_var: SAP_USER_1_PW
   login_url_env_var: SAP_URL
 ```
 
-Each session is logged in once before scheduled nodes run. Keep real credentials out of Git and put them in `configuration/.env`:
+Each session is logged in once before scheduled planned steps run. Keep real credentials out of Git and put them in `configuration/.env`:
 
 Put credentials in `configuration/.env`:
 

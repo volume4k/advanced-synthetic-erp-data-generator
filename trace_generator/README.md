@@ -19,7 +19,7 @@ flowchart LR
   scheduler --> writer["ArtifactWriter"]
   cli --> writer
   writer --> canonical["execution-trace.yaml\ncanonical graph and waves"]
-  writer --> manifest["post-processing-manifest.yaml\nlabels, timestamp plan, object lineage, date overrides"]
+  writer --> manifest["post-processing-manifest.yaml\ncase scenario types, timestamp plan, object lineage, planned date inputs"]
   canonical --> executor["generator/\nSAP execution"]
   canonical --> post["post processor\nplanned truth"]
   manifest --> post
@@ -33,4 +33,4 @@ uv run --project trace_generator erp-trace-generate configuration/build/main.yam
 
 Generated traces do not contain passwords. Canonical session blocks reference env var names so the executor can resolve usernames, passwords, and login URLs at runtime.
 
-Goods receipt runtime uses SAP's current posting date. Planned goods-receipt document/posting dates stay in `business_dates` and `date_overrides` so post processing can rewrite material document exports.
+Goods receipt runtime uses SAP's current posting date. Planned goods-receipt document/posting dates stay in `planned_date_inputs` and `planned_date_input_overrides` so post processing can rewrite material document exports.

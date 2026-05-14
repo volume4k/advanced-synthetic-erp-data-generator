@@ -38,26 +38,26 @@ uv run --project generator erp-trace-exec path/to/execution-trace.yaml --log-lev
 
 `--log-level` accepts `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` and defaults to `INFO`. Evidence artifacts remain the machine-readable source of truth:
 
-- `<run_id>.execution-log.jsonl` records run, login, wave, node, failure, skip, and interrupt events with `severity` and `message` fields.
+- `<run_id>.execution-log.jsonl` records run, login, wave, planned-step, failure, skip, and interrupt events with `severity` and `message` fields.
 - `<run_id>.object-registry.jsonl` records created SAP object keys.
 
-If execution is interrupted with Ctrl-C, the CLI exits with code `130` and writes `*_interrupted` events for the active login or node plus the run. `SIGKILL` cannot be caught.
+If execution is interrupted with Ctrl-C, the CLI exits with code `130` and writes `*_interrupted` events for the active login or planned step plus the run. `SIGKILL` cannot be caught.
 
 ## Trace Format
 
-Canonical traces contain session metadata, cases, dependency graph nodes, waves, and validation metadata. Session blocks reference env var names; they do not contain usernames or passwords:
+Canonical traces contain actor session metadata, cases, dependency graph planned steps, waves, and validation metadata. Actor session blocks reference env var names; they do not contain usernames or passwords:
 
 ```yaml
-sessions:
-- session_id: buyer-session
-  virtual_actor_id: buyer-a
-  technical_user_id: TU_01
+actor_sessions:
+- actor_session_id: buyer-session
+  synthetic_actor_id: buyer-a
+  technical_sap_user_id: TU_01
   username_env_var: SAP_USER_1_UN
   password_env_var: SAP_USER_1_PW
   login_url_env_var: SAP_URL
 ```
 
-The executor logs in every session before executing waves. Env files provide the actual secrets:
+The executor logs in every actor session before executing waves. Env files provide the actual secrets:
 
 ```text
 SAP_URL=https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE

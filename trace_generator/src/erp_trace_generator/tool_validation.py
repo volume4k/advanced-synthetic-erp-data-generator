@@ -8,20 +8,25 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from erp_trace_generator.errors import TraceGenerationError
-from erp_trace_generator.models import PlannedNode
+from erp_trace_generator.models import PlannedStep
 
 
-def validate_node_tool_inputs(nodes: list[PlannedNode]) -> None:
+def validate_planned_step_tool_inputs(planned_steps: list[PlannedStep]) -> None:
     registry = _build_executor_registry()
     registered_tools = set(registry.names())
-    for node in nodes:
-        if node.tool_name not in registered_tools:
-            raise TraceGenerationError(f"Tool '{node.tool_name}' is not registered for node '{node.node_id}'")
-        tool = registry.get(node.tool_name)
+    for planned_step in planned_steps:
+        if planned_step.tool_name not in registered_tools:
+            raise TraceGenerationError(
+                f"Tool '{planned_step.tool_name}' is not registered for planned step '{planned_step.planned_step_id}'"
+            )
+        tool = registry.get(planned_step.tool_name)
         try:
-            tool.input_model.model_validate(node.inputs)
+            tool.input_model.model_validate(planned_step.inputs)
         except ValidationError as exc:
-            raise TraceGenerationError(f"Invalid input for tool '{node.tool_name}' on node '{node.node_id}': {exc}") from exc
+            raise TraceGenerationError(
+                f"Invalid input for tool '{planned_step.tool_name}' on planned step "
+                f"'{planned_step.planned_step_id}': {exc}"
+            ) from exc
 
 
 def _build_executor_registry():

@@ -1,7 +1,7 @@
 import "objects.pkl"
 
-actors: Listing<objects.VirtualActor> = new Listing {
-  new objects.VirtualActor {
+actors: Listing<objects.SyntheticActor> = new Listing {
+  new objects.SyntheticActor {
     id = "procurement_01"
     displayName = "Dieter Einkauf"
     role = "procurement"
@@ -24,7 +24,7 @@ actors: Listing<objects.VirtualActor> = new Listing {
       }
     }
   }
-  new objects.VirtualActor {
+  new objects.SyntheticActor {
     id = "procurement_manager_01"
     displayName = "Marta Freigabe"
     role = "procurement_manager"
@@ -44,7 +44,7 @@ actors: Listing<objects.VirtualActor> = new Listing {
       }
     }
   }
-  new objects.VirtualActor {
+  new objects.SyntheticActor {
     id = "warehouse_01"
     displayName = "Werner Lager"
     role = "warehouse"
@@ -66,7 +66,7 @@ actors: Listing<objects.VirtualActor> = new Listing {
       }
     }
   }
-  new objects.VirtualActor {
+  new objects.SyntheticActor {
     id = "accounts_payable_01"
     displayName = "Anna Kreditoren"
     role = "accounts_payable"

@@ -3,140 +3,52 @@
     "ActorProjection": {
       "additionalProperties": false,
       "properties": {
+        "actor_session_id": {
+          "title": "Actor Session Id",
+          "type": "string"
+        },
         "expose_as": {
           "title": "Expose As",
           "type": "string"
         },
-        "session_id": {
-          "title": "Session Id",
+        "synthetic_actor_id": {
+          "title": "Synthetic Actor Id",
           "type": "string"
         },
-        "technical_user_id": {
-          "title": "Technical User Id",
-          "type": "string"
-        },
-        "virtual_actor_id": {
-          "title": "Virtual Actor Id",
+        "technical_sap_user_id": {
+          "title": "Technical Sap User Id",
           "type": "string"
         }
       },
       "required": [
-        "virtual_actor_id",
-        "technical_user_id",
-        "session_id",
+        "synthetic_actor_id",
+        "technical_sap_user_id",
+        "actor_session_id",
         "expose_as"
       ],
       "title": "ActorProjection",
       "type": "object"
     },
-    "CaseLabel": {
+    "CaseScenarioType": {
       "additionalProperties": false,
       "properties": {
         "case_id": {
           "title": "Case Id",
           "type": "string"
         },
-        "case_label": {
-          "title": "Case Label",
-          "type": "string"
-        },
-        "scenario_id": {
-          "title": "Scenario Id",
+        "case_scenario_type": {
+          "title": "Case Scenario Type",
           "type": "string"
         }
       },
       "required": [
         "case_id",
-        "scenario_id",
-        "case_label"
+        "case_scenario_type"
       ],
-      "title": "CaseLabel",
+      "title": "CaseScenarioType",
       "type": "object"
     },
-    "DateOverride": {
-      "additionalProperties": false,
-      "properties": {
-        "case_id": {
-          "title": "Case Id",
-          "type": "string"
-        },
-        "field": {
-          "title": "Field",
-          "type": "string"
-        },
-        "node_id": {
-          "title": "Node Id",
-          "type": "string"
-        },
-        "object_type": {
-          "title": "Object Type",
-          "type": "string"
-        },
-        "planned_value": {
-          "title": "Planned Value",
-          "type": "string"
-        },
-        "reason": {
-          "title": "Reason",
-          "type": "string"
-        },
-        "runtime_value_policy": {
-          "const": "sap_current_date",
-          "title": "Runtime Value Policy",
-          "type": "string"
-        },
-        "source": {
-          "const": "business_dates",
-          "title": "Source",
-          "type": "string"
-        },
-        "step_type": {
-          "title": "Step Type",
-          "type": "string"
-        }
-      },
-      "required": [
-        "node_id",
-        "case_id",
-        "step_type",
-        "object_type",
-        "field",
-        "planned_value",
-        "runtime_value_policy",
-        "source",
-        "reason"
-      ],
-      "title": "DateOverride",
-      "type": "object"
-    },
-    "ExpectedObjectKeys": {
-      "additionalProperties": false,
-      "properties": {
-        "case_id": {
-          "title": "Case Id",
-          "type": "string"
-        },
-        "expected_outputs": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Expected Outputs",
-          "type": "array"
-        },
-        "node_id": {
-          "title": "Node Id",
-          "type": "string"
-        }
-      },
-      "required": [
-        "node_id",
-        "case_id",
-        "expected_outputs"
-      ],
-      "title": "ExpectedObjectKeys",
-      "type": "object"
-    },
-    "FailedCasePolicy": {
+    "FailedProcessCasePolicy": {
       "additionalProperties": false,
       "properties": {
         "exclude_failed_cases": {
@@ -155,49 +67,7 @@
         "exclude_failed_cases",
         "source_artifacts"
       ],
-      "title": "FailedCasePolicy",
-      "type": "object"
-    },
-    "NodeTimestamp": {
-      "additionalProperties": false,
-      "properties": {
-        "business_dates": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "title": "Business Dates",
-          "type": "object"
-        },
-        "case_id": {
-          "title": "Case Id",
-          "type": "string"
-        },
-        "node_id": {
-          "title": "Node Id",
-          "type": "string"
-        },
-        "step_type": {
-          "title": "Step Type",
-          "type": "string"
-        },
-        "target_synthetic_end": {
-          "title": "Target Synthetic End",
-          "type": "string"
-        },
-        "target_synthetic_start": {
-          "title": "Target Synthetic Start",
-          "type": "string"
-        }
-      },
-      "required": [
-        "node_id",
-        "case_id",
-        "step_type",
-        "target_synthetic_start",
-        "target_synthetic_end",
-        "business_dates"
-      ],
-      "title": "NodeTimestamp",
+      "title": "FailedProcessCasePolicy",
       "type": "object"
     },
     "ObjectLineage": {
@@ -222,6 +92,104 @@
       "title": "ObjectLineage",
       "type": "object"
     },
+    "PlannedDateInputOverride": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "object_type": {
+          "title": "Object Type",
+          "type": "string"
+        },
+        "planned_step_id": {
+          "title": "Planned Step Id",
+          "type": "string"
+        },
+        "planned_value": {
+          "title": "Planned Value",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "runtime_value_policy": {
+          "const": "sap_current_date",
+          "title": "Runtime Value Policy",
+          "type": "string"
+        },
+        "source": {
+          "const": "planned_date_inputs",
+          "title": "Source",
+          "type": "string"
+        },
+        "step_type": {
+          "title": "Step Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "planned_step_id",
+        "case_id",
+        "step_type",
+        "object_type",
+        "field",
+        "planned_value",
+        "runtime_value_policy",
+        "source",
+        "reason"
+      ],
+      "title": "PlannedDateInputOverride",
+      "type": "object"
+    },
+    "PlannedStepTimestamp": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "planned_date_inputs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Planned Date Inputs",
+          "type": "object"
+        },
+        "planned_step_id": {
+          "title": "Planned Step Id",
+          "type": "string"
+        },
+        "planned_synthetic_end": {
+          "title": "Planned Synthetic End",
+          "type": "string"
+        },
+        "planned_synthetic_start": {
+          "title": "Planned Synthetic Start",
+          "type": "string"
+        },
+        "step_type": {
+          "title": "Step Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "planned_step_id",
+        "case_id",
+        "step_type",
+        "planned_synthetic_start",
+        "planned_synthetic_end",
+        "planned_date_inputs"
+      ],
+      "title": "PlannedStepTimestamp",
+      "type": "object"
+    },
     "PostProcessingExport": {
       "additionalProperties": false,
       "properties": {
@@ -239,6 +207,33 @@
         "description"
       ],
       "title": "PostProcessingExport",
+      "type": "object"
+    },
+    "RequiredSapObjectKeys": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "planned_step_id": {
+          "title": "Planned Step Id",
+          "type": "string"
+        },
+        "required_sap_object_keys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Sap Object Keys",
+          "type": "array"
+        }
+      },
+      "required": [
+        "planned_step_id",
+        "case_id",
+        "required_sap_object_keys"
+      ],
+      "title": "RequiredSapObjectKeys",
       "type": "object"
     },
     "TimestampPolicy": {
@@ -275,44 +270,23 @@
       "title": "Actor Projection",
       "type": "array"
     },
-    "case_labels": {
+    "case_scenario_types": {
       "items": {
-        "$ref": "#/$defs/CaseLabel"
+        "$ref": "#/$defs/CaseScenarioType"
       },
-      "title": "Case Labels",
+      "title": "Case Scenario Types",
       "type": "array"
     },
     "config_hash": {
       "title": "Config Hash",
       "type": "string"
     },
-    "date_overrides": {
-      "items": {
-        "$ref": "#/$defs/DateOverride"
-      },
-      "title": "Date Overrides",
-      "type": "array"
-    },
-    "expected_object_keys": {
-      "items": {
-        "$ref": "#/$defs/ExpectedObjectKeys"
-      },
-      "title": "Expected Object Keys",
-      "type": "array"
-    },
-    "failed_case_policy": {
-      "$ref": "#/$defs/FailedCasePolicy"
+    "failed_process_case_policy": {
+      "$ref": "#/$defs/FailedProcessCasePolicy"
     },
     "manifest_version": {
       "title": "Manifest Version",
       "type": "string"
-    },
-    "node_timestamps": {
-      "items": {
-        "$ref": "#/$defs/NodeTimestamp"
-      },
-      "title": "Node Timestamps",
-      "type": "array"
     },
     "object_lineage": {
       "items": {
@@ -321,11 +295,32 @@
       "title": "Object Lineage",
       "type": "array"
     },
+    "planned_date_input_overrides": {
+      "items": {
+        "$ref": "#/$defs/PlannedDateInputOverride"
+      },
+      "title": "Planned Date Input Overrides",
+      "type": "array"
+    },
+    "planned_step_timestamps": {
+      "items": {
+        "$ref": "#/$defs/PlannedStepTimestamp"
+      },
+      "title": "Planned Step Timestamps",
+      "type": "array"
+    },
     "post_processing_exports": {
       "items": {
         "$ref": "#/$defs/PostProcessingExport"
       },
       "title": "Post Processing Exports",
+      "type": "array"
+    },
+    "required_sap_object_keys": {
+      "items": {
+        "$ref": "#/$defs/RequiredSapObjectKeys"
+      },
+      "title": "Required Sap Object Keys",
       "type": "array"
     },
     "run_id": {
@@ -342,13 +337,13 @@
     "config_hash",
     "timestamp_policy",
     "actor_projection",
-    "case_labels",
-    "node_timestamps",
-    "expected_object_keys",
+    "case_scenario_types",
+    "planned_step_timestamps",
+    "required_sap_object_keys",
     "object_lineage",
     "post_processing_exports",
-    "date_overrides",
-    "failed_case_policy"
+    "planned_date_input_overrides",
+    "failed_process_case_policy"
   ],
   "title": "PostProcessingManifestArtifact",
   "type": "object"

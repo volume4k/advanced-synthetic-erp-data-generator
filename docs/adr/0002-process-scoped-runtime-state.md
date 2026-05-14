@@ -1,6 +1,6 @@
 # Process-Scoped Runtime State
 
-Some SAP object identifiers are known only after a tool runs, but traces should stay business-readable instead of carrying verbose task-to-task references. We represent generated SAP object keys in process-scoped runtime state, where a task input beginning with `$` resolves inside the current case, for example `$purchase_requisition.pr_number`.
+Some SAP object identifiers are known only after a browser tool runs, but traces should stay business-readable instead of carrying verbose planned-step references. We represent generated SAP object keys in process-scoped runtime state, where a planned-step input beginning with `$` resolves inside the current process case, for example `$purchase_requisition.pr_number`.
 
 ## Consequences
 

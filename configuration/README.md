@@ -14,11 +14,11 @@ This folder owns trace-planning configuration. The generator stays execution-onl
 
 - `objects.pkl`: shared class definitions.
 - `generated_tool_config.pkl`: generated raw tool catalogue. Do not edit manually.
-- `actors.pkl`: virtual actors and realism profiles.
+- `actors.pkl`: synthetic actors and realism profiles.
 - `technical_users.pkl`: SAP technical user references. Contains env var names only, no secrets.
-- `identity_mapping.pkl`: mapping from virtual actors to technical SAP users.
+- `identity_mapping.pkl`: mapping from synthetic actors to technical SAP users.
 - `master_data.pkl`: material/vendor/plant/storage-location matrix and sampling ranges.
-- `processes.pkl`: process steps, tool assignments, step-local input bindings, expected outputs, and process dependencies.
+- `processes.pkl`: process steps, tool assignments, step-local input bindings, required SAP object keys, and process dependencies.
 - `fraud_scenarios.pkl`: enabled fraud scenario placeholders and target shares.
 - `run_settings.pkl`: case count, concurrency, timezone, active process types, scheduler seed, working hours, pause ranges, inter-step delay ranges, storage-location labels, and post-processing export groups.
 - `main.pkl`: final public entrypoint for compiled config.
@@ -29,7 +29,7 @@ This folder owns trace-planning configuration. The generator stays execution-onl
 Add synthetic business users in `actors.pkl`:
 
 ```pkl
-new objects.VirtualActor {
+new objects.SyntheticActor {
   id = "procurement_01"
   displayName = "Dieter Einkauf"
   role = "procurement"
@@ -54,7 +54,7 @@ new objects.VirtualActor {
 }
 ```
 
-Scheduling uses `capabilities`, not `role`. `role` is descriptive metadata. A person can execute multiple process steps by listing multiple `stepTypes`; the trace generator still prevents one actor from working on two nodes at once.
+Scheduling uses `capabilities`, not `role`. `role` is descriptive metadata. A person can execute multiple process steps by listing multiple `stepTypes`; the trace generator still prevents one actor from working on two planned steps at once.
 
 Add SAP accounts in `technical_users.pkl` using environment variable names only:
 
@@ -90,19 +90,19 @@ new objects.ProcessStep {
       value = "fiori_delivery_date"
     }
   }
-  expectedOutputs {
+  requiredSapObjectKeys {
     "purchase_requisition.pr_number"
   }
 }
 ```
 
-Active steps must have a tool, bindings for every required tool input, and at least one expected output key. Bindings are owned by each `ProcessStep`; `run_settings.pkl` must not contain fallback tool-input maps.
+Active steps must have a tool, bindings for every required tool input, and at least one required SAP object key. Bindings are owned by each `ProcessStep`; `run_settings.pkl` must not contain fallback tool-input maps.
 
-`businessDateBindings` hold planned business dates for the canonical trace and post-processing manifest. Use them when SAP runtime either cannot accept the planned date, as with goods receipt, or when post-processing needs a stable planned date contract.
+`plannedDateInputBindings` hold planned date inputs for the canonical trace and post-processing manifest. Use them when SAP runtime either cannot accept the planned date, as with goods receipt, or when post-processing needs a stable planned date contract.
 
-Supported binding sources are `literal`, `master_data`, `case`, `business_date`, `prior_output`, and `derived`. Supported derived values in v1 are `gross_amount`, `fiori_delivery_date`, `fiori_payment_posting_date`, and `storage_location_label`.
+Supported binding sources are `literal`, `master_data`, `case`, `planned_date`, `prior_output`, and `derived`. Supported derived values in v1 are `gross_amount`, `fiori_delivery_date`, `fiori_payment_posting_date`, and `storage_location_label`.
 
-Dependencies define directed graph edges:
+Dependencies define process-step ordering:
 
 ```pkl
 new objects.ProcessDependency {

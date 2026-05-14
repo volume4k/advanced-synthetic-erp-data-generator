@@ -6,8 +6,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from random import Random
 
-from erp_trace_generator.bindings import business_dates_for_step, resolve_step_inputs
-from erp_trace_generator.models import Actor, CasePlan, GenerationConfig, PlannedNode, TechnicalUser
+from erp_trace_generator.bindings import planned_date_inputs_for_step, resolve_step_inputs
+from erp_trace_generator.models import Actor, CasePlan, GenerationConfig, PlannedStep, TechnicalUser
 from erp_trace_generator.timeline import TimelinePlanner
 
 
@@ -42,20 +42,20 @@ def plan_cases(config: GenerationConfig, rng: Random) -> list[CasePlan]:
     return cases
 
 
-def plan_nodes(config: GenerationConfig, cases: list[CasePlan], rng: Random) -> list[PlannedNode]:
+def plan_steps(config: GenerationConfig, cases: list[CasePlan], rng: Random) -> list[PlannedStep]:
     process = config.active_process()
     timeline = TimelinePlanner(config.run_settings, rng)
     actor_available: dict[str, datetime] = defaultdict(timeline.first_start)
     technical_user_available: dict[str, datetime] = defaultdict(timeline.first_start)
-    nodes: list[PlannedNode] = []
+    planned_steps: list[PlannedStep] = []
 
     for case in cases:
-        previous_node: PlannedNode | None = None
+        previous_step: PlannedStep | None = None
         for step in process.steps:
-            if previous_node is None:
+            if previous_step is None:
                 earliest = timeline.first_start()
             else:
-                earliest = timeline.add_inter_step_delay(previous_node.target_end, previous_node.step_type, step.step_type)
+                earliest = timeline.add_inter_step_delay(previous_step.target_end, previous_step.step_type, step.step_type)
             actor, technical_user, start = _allocate_actor(
                 config=config,
                 process_type=process.process_type,
@@ -69,24 +69,24 @@ def plan_nodes(config: GenerationConfig, cases: list[CasePlan], rng: Random) -> 
             actor_available[actor.id] = end
             technical_user_available[technical_user.id] = end
 
-            node = PlannedNode(
-                node_id=f"{case.case_id}_{step.step_id}",
+            planned_step = PlannedStep(
+                planned_step_id=f"{case.case_id}_{step.step_id}",
                 case_id=case.case_id,
                 step_id=step.step_id,
                 step_type=step.step_type,
                 tool_name=step.tool_name,
-                virtual_actor_id=actor.id,
-                technical_user_id=technical_user.id,
-                session_id=f"{actor.id}-session",
+                synthetic_actor_id=actor.id,
+                technical_sap_user_id=technical_user.id,
+                actor_session_id=f"{actor.id}-session",
                 inputs=resolve_step_inputs(step, case),
-                expected_outputs=list(step.expected_outputs),
-                business_dates=business_dates_for_step(step, case),
+                required_sap_object_keys=list(step.required_sap_object_keys),
+                planned_date_inputs=planned_date_inputs_for_step(step, case),
                 target_start=start,
                 target_end=end,
             )
-            nodes.append(node)
-            previous_node = node
-    return nodes
+            planned_steps.append(planned_step)
+            previous_step = planned_step
+    return planned_steps
 
 
 def _allocate_actor(
@@ -118,14 +118,17 @@ def _allocate_actor(
     return actor, technical_user, start
 
 
-def plan_waves(config: GenerationConfig, nodes: list[PlannedNode]) -> list[dict]:
+def plan_waves(config: GenerationConfig, planned_steps: list[PlannedStep]) -> list[dict]:
     process = config.active_process()
     step_rank = {step.step_type: index for index, step in enumerate(process.steps)}
-    unscheduled = sorted(nodes, key=lambda node: (node.target_start, step_rank[node.step_type], node.case_id))
+    unscheduled = sorted(
+        planned_steps,
+        key=lambda planned_step: (planned_step.target_start, step_rank[planned_step.step_type], planned_step.case_id),
+    )
     scheduled: set[str] = set()
     dependencies = {
-        (node.case_id, dep.to_step_type): f"{node.case_id}_{_step_id_for(process, dep.from_step_type)}"
-        for node in nodes
+        (planned_step.case_id, dep.to_step_type): f"{planned_step.case_id}_{_step_id_for(process, dep.from_step_type)}"
+        for planned_step in planned_steps
         for dep in process.dependencies
     }
     waves: list[dict] = []
@@ -133,38 +136,41 @@ def plan_waves(config: GenerationConfig, nodes: list[PlannedNode]) -> list[dict]
     while unscheduled:
         used_actors: set[str] = set()
         used_technical_users: set[str] = set()
-        wave_nodes: list[PlannedNode] = []
+        wave_steps: list[PlannedStep] = []
 
-        ready_nodes = []
-        for node in unscheduled:
-            required_parent = dependencies.get((node.case_id, node.step_type))
+        ready_steps = []
+        for planned_step in unscheduled:
+            required_parent = dependencies.get((planned_step.case_id, planned_step.step_type))
             if required_parent is not None and required_parent not in scheduled:
                 continue
-            ready_nodes.append(node)
+            ready_steps.append(planned_step)
 
-        for node in sorted(ready_nodes, key=lambda item: (item.target_start, step_rank[item.step_type], item.case_id)):
-            if node.virtual_actor_id in used_actors or node.technical_user_id in used_technical_users:
+        for planned_step in sorted(
+            ready_steps,
+            key=lambda item: (item.target_start, step_rank[item.step_type], item.case_id),
+        ):
+            if planned_step.synthetic_actor_id in used_actors or planned_step.technical_sap_user_id in used_technical_users:
                 continue
-            if len(wave_nodes) >= config.run_settings.max_parallel_sessions:
+            if len(wave_steps) >= config.run_settings.max_parallel_actor_sessions:
                 continue
-            wave_nodes.append(node)
-            used_actors.add(node.virtual_actor_id)
-            used_technical_users.add(node.technical_user_id)
+            wave_steps.append(planned_step)
+            used_actors.add(planned_step.synthetic_actor_id)
+            used_technical_users.add(planned_step.technical_sap_user_id)
 
-        if not wave_nodes:
+        if not wave_steps:
             raise AssertionError("scheduler validation missed impossible schedule")
 
-        for node in wave_nodes:
-            unscheduled.remove(node)
-            scheduled.add(node.node_id)
+        for planned_step in wave_steps:
+            unscheduled.remove(planned_step)
+            scheduled.add(planned_step.planned_step_id)
 
         waves.append(
             {
                 "wave_id": f"W{len(waves) + 1:03d}",
                 "sequence_no": len(waves) + 1,
-                "nodes": [
-                    {"node_id": node.node_id, "startup_order": index}
-                    for index, node in enumerate(wave_nodes, start=1)
+                "planned_steps": [
+                    {"planned_step_id": planned_step.planned_step_id, "startup_order": index}
+                    for index, planned_step in enumerate(wave_steps, start=1)
                 ],
             }
         )
@@ -172,23 +178,23 @@ def plan_waves(config: GenerationConfig, nodes: list[PlannedNode]) -> list[dict]
     return waves
 
 
-def align_node_times_to_waves(nodes: list[PlannedNode], waves: list[dict]) -> None:
+def align_planned_step_times_to_waves(planned_steps: list[PlannedStep], waves: list[dict]) -> None:
     """Shift later waves forward when wave barriers would otherwise invert planned time."""
 
-    nodes_by_id = {node.node_id: node for node in nodes}
+    planned_steps_by_id = {planned_step.planned_step_id: planned_step for planned_step in planned_steps}
     wave_floor: datetime | None = None
     for wave in waves:
-        wave_nodes = [
-            nodes_by_id[item["node_id"]]
-            for item in sorted(wave["nodes"], key=lambda value: value["startup_order"])
+        wave_steps = [
+            planned_steps_by_id[item["planned_step_id"]]
+            for item in sorted(wave["planned_steps"], key=lambda value: value["startup_order"])
         ]
         if wave_floor is not None:
-            for node in wave_nodes:
-                if node.target_start < wave_floor:
-                    duration = node.target_end - node.target_start
-                    node.target_start = wave_floor
-                    node.target_end = wave_floor + duration
-        wave_floor = max(node.target_end for node in wave_nodes)
+            for planned_step in wave_steps:
+                if planned_step.target_start < wave_floor:
+                    duration = planned_step.target_end - planned_step.target_start
+                    planned_step.target_start = wave_floor
+                    planned_step.target_end = wave_floor + duration
+        wave_floor = max(planned_step.target_end for planned_step in wave_steps)
 
 
 def _step_id_for(process, step_type: str) -> str:

@@ -13,10 +13,10 @@ def resolve_step_inputs(step: ProcessStep, case: CasePlan) -> dict[str, Any]:
     return {binding.field: _resolve_binding(binding, case) for binding in step.input_bindings}
 
 
-def business_dates_for_step(step: ProcessStep, case: CasePlan) -> dict[str, str]:
+def planned_date_inputs_for_step(step: ProcessStep, case: CasePlan) -> dict[str, str]:
     return {
-        binding.field: _business_date_binding_value(binding, case)
-        for binding in step.business_date_bindings
+        binding.field: _planned_date_input_binding_value(binding, case)
+        for binding in step.planned_date_input_bindings
     }
 
 
@@ -29,8 +29,8 @@ def _resolve_binding(binding: InputBinding, case: CasePlan) -> Any:
         return _case_value(case, binding.value)
     if binding.source == "case":
         return _case_value(case, binding.value)
-    if binding.source == "business_date":
-        return _business_date_value(case, binding.value)
+    if binding.source == "planned_date":
+        return _planned_date_value(case, binding.value)
     if binding.source == "derived":
         return _derived_value(case, binding.value)
     raise TraceGenerationError(f"unsupported binding source '{binding.source}'")
@@ -43,17 +43,17 @@ def _case_value(case: CasePlan, value: str) -> Any:
     return getattr(case, attr)
 
 
-def _business_date_value(case: CasePlan, value: str) -> str:
+def _planned_date_value(case: CasePlan, value: str) -> str:
     if value == "delivery_date":
         return case.delivery_date.isoformat()
     if value == "payment_posting_date":
         return (case.delivery_date + timedelta(days=1)).isoformat()
-    raise TraceGenerationError(f"Unknown business_date binding value '{value}'")
+    raise TraceGenerationError(f"Unknown planned_date binding value '{value}'")
 
 
-def _business_date_binding_value(binding: InputBinding, case: CasePlan) -> str:
-    if binding.source == "business_date":
-        return _business_date_value(case, binding.value)
+def _planned_date_input_binding_value(binding: InputBinding, case: CasePlan) -> str:
+    if binding.source == "planned_date":
+        return _planned_date_value(case, binding.value)
     if binding.source == "derived":
         if binding.value == "fiori_delivery_date":
             return case.delivery_date.isoformat()

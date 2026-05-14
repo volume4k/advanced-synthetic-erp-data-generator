@@ -23,13 +23,13 @@ def returned_object(object_type: str, **keys: Any) -> dict[str, Any]:
 
 
 class ExecutionTaskRecord(BaseModel):
-    """One planned node execution record."""
+    """One planned-step execution record."""
 
     model_config = ConfigDict(extra="forbid")
 
-    task_id: str
-    session_id: str
-    user_id: str
+    planned_step_id: str
+    actor_session_id: str
+    synthetic_actor_id: str
     tool: str
     input: dict[str, Any]
     meta: dict[str, Any] = Field(default_factory=dict)
@@ -37,12 +37,12 @@ class ExecutionTaskRecord(BaseModel):
 
 
 class SessionInitUser(BaseModel):
-    """One browser user to log in before task execution."""
+    """One actor session to log in before planned-step execution."""
 
     model_config = ConfigDict(extra="forbid")
 
-    session_id: str
-    user_id: str
+    actor_session_id: str
+    synthetic_actor_id: str
     username: str
     password: str | None = None
     login_url: HttpUrl | None = None
@@ -53,7 +53,7 @@ class SessionInitUser(BaseModel):
 
 
 class SessionInitRecord(BaseModel):
-    """Browser session logins required before node execution."""
+    """Actor session logins required before planned-step execution."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -65,15 +65,15 @@ class SessionInitRecord(BaseModel):
 class ToolResult:
     """Structured output for one tool execution."""
 
-    task_id: str
-    session_id: str
+    planned_step_id: str
+    actor_session_id: str
     tool: str
     data: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "task_id": self.task_id,
-            "session_id": self.session_id,
+            "planned_step_id": self.planned_step_id,
+            "actor_session_id": self.actor_session_id,
             "tool": self.tool,
             "data": self.data,
         }

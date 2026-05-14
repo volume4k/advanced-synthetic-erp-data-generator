@@ -16,9 +16,9 @@ SENSITIVE_FIELD_NAMES = {"password", "password_value", "input", "inputs"}
 
 EVENT_SEVERITY_BY_TYPE = {
     "state_updated": "DEBUG",
-    "node_skipped": "WARNING",
+    "planned_step_skipped": "WARNING",
     "login_interrupted": "WARNING",
-    "node_interrupted": "WARNING",
+    "planned_step_interrupted": "WARNING",
     "run_interrupted": "WARNING",
 }
 
@@ -111,8 +111,8 @@ def _severity_for(event_type: str) -> str:
 
 
 def _message_for(event_type: str, fields: dict[str, Any]) -> str:
-    node_id = fields.get("node_id")
-    session_id = fields.get("session_id")
+    planned_step_id = fields.get("planned_step_id")
+    actor_session_id = fields.get("actor_session_id")
     wave_id = fields.get("wave_id")
     error = _compact_text(fields.get("error"))
 
@@ -124,35 +124,38 @@ def _message_for(event_type: str, fields: dict[str, Any]) -> str:
     if event_type == "run_failed":
         return _join_message("Executor run failed", error)
     if event_type == "run_interrupted":
-        return _join_message("Executor run interrupted by user", _node_suffix(node_id))
+        return _join_message("Executor run interrupted by user", _planned_step_suffix(planned_step_id))
     if event_type == "login_started":
-        return f"Login started for session {session_id}"
+        return f"Login started for actor session {actor_session_id}"
     if event_type == "login_succeeded":
-        return f"Login succeeded for session {session_id}"
+        return f"Login succeeded for actor session {actor_session_id}"
     if event_type == "login_failed":
-        return _join_message(f"Login failed for session {session_id}", error)
+        return _join_message(f"Login failed for actor session {actor_session_id}", error)
     if event_type == "login_interrupted":
-        return f"Login interrupted by user for session {session_id}"
+        return f"Login interrupted by user for actor session {actor_session_id}"
     if event_type == "wave_started":
-        return f"Wave {wave_id} started"
+        return f"Execution wave {wave_id} started"
     if event_type == "wave_completed":
-        return f"Wave {wave_id} completed"
-    if event_type == "node_started":
-        return f"Node {node_id} started"
-    if event_type == "node_succeeded":
-        return f"Node {node_id} succeeded"
-    if event_type == "node_skipped":
-        return f"Skipped node {node_id}: {fields.get('reason')}"
-    if event_type == "node_failed":
-        return _join_message(f"Failed node {node_id}", error, _sap_message_suffix(fields))
-    if event_type == "node_interrupted":
-        return f"Interrupted node {node_id} by user"
+        return f"Execution wave {wave_id} completed"
+    if event_type == "planned_step_started":
+        return f"Planned step {planned_step_id} started"
+    if event_type == "planned_step_succeeded":
+        return f"Planned step {planned_step_id} succeeded"
+    if event_type == "planned_step_skipped":
+        reason = fields.get("reason")
+        if reason:
+            return f"Skipped planned step {planned_step_id}: {reason}"
+        return f"Skipped planned step {planned_step_id}"
+    if event_type == "planned_step_failed":
+        return _join_message(f"Failed planned step {planned_step_id}", error, _sap_message_suffix(fields))
+    if event_type == "planned_step_interrupted":
+        return f"Interrupted planned step {planned_step_id} by user"
     if event_type == "case_failed":
-        return _join_message(f"Failed case {fields.get('case_id')}", error, _sap_message_suffix(fields))
+        return _join_message(f"Failed process case {fields.get('case_id')}", error, _sap_message_suffix(fields))
     if event_type == "home_reset_failed":
-        return _join_message(f"Home reset failed for node {node_id}", error)
+        return _join_message(f"Home reset failed for planned step {planned_step_id}", error)
     if event_type == "state_updated":
-        return f"State updated for node {node_id}"
+        return f"State updated for planned step {planned_step_id}"
     return event_type.replace("_", " ")
 
 
@@ -163,8 +166,8 @@ def _join_message(prefix: str, *parts: str) -> str:
     return f"{prefix}: {'; '.join(suffixes)}"
 
 
-def _node_suffix(node_id: object) -> str:
-    return f"node {node_id}" if node_id else ""
+def _planned_step_suffix(planned_step_id: object) -> str:
+    return f"planned step {planned_step_id}" if planned_step_id else ""
 
 
 def _sap_message_suffix(fields: dict[str, Any]) -> str:

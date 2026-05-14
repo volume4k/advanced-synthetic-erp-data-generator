@@ -16,10 +16,10 @@ class CanonicalModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class CanonicalSession(CanonicalModel):
-    session_id: str
-    virtual_actor_id: str
-    technical_user_id: str
+class CanonicalActorSession(CanonicalModel):
+    actor_session_id: str
+    synthetic_actor_id: str
+    technical_sap_user_id: str
     username_env_var: str
     password_env_var: str
     login_url_env_var: str
@@ -32,57 +32,56 @@ class CanonicalSession(CanonicalModel):
 class CanonicalCase(CanonicalModel):
     case_id: str
     process_type: str
-    scenario_id: str
-    case_label: str
+    case_scenario_type: str
     line_items: list[dict[str, Any]] = Field(default_factory=list)
 
 
-class CanonicalTargetTime(CanonicalModel):
+class CanonicalPlannedSyntheticTime(CanonicalModel):
     start: str
     end: str
 
 
-class CanonicalNode(CanonicalModel):
-    node_id: str
+class CanonicalPlannedStep(CanonicalModel):
+    planned_step_id: str
     case_id: str
     step_type: str
     tool_name: str
-    virtual_actor_id: str
-    technical_sap_user: str
-    session_id: str
+    synthetic_actor_id: str
+    technical_sap_user_id: str
+    actor_session_id: str
     inputs: dict[str, Any]
-    expected_outputs: list[str]
-    business_dates: dict[str, str]
-    target_synthetic_time: CanonicalTargetTime
+    required_sap_object_keys: list[str]
+    planned_date_inputs: dict[str, str]
+    planned_synthetic_time: CanonicalPlannedSyntheticTime
     labels: dict[str, str] = Field(default_factory=dict)
 
 
 class CanonicalEdge(CanonicalModel):
-    from_: str = Field(alias="from")
-    to: str
+    from_planned_step_id: str
+    to_planned_step_id: str
     type: str
     reason: str
 
 
 class CanonicalDependencyGraph(CanonicalModel):
-    nodes: list[CanonicalNode]
-    edges: list[CanonicalEdge]
+    planned_steps: list[CanonicalPlannedStep]
+    dependencies: list[CanonicalEdge]
 
 
-class CanonicalScheduledNode(CanonicalModel):
-    node_id: str
+class CanonicalScheduledPlannedStep(CanonicalModel):
+    planned_step_id: str
     startup_order: int = Field(ge=1)
 
 
 class CanonicalWave(CanonicalModel):
     wave_id: str
     sequence_no: int = Field(ge=1)
-    nodes: list[CanonicalScheduledNode]
+    planned_steps: list[CanonicalScheduledPlannedStep]
 
 
 class CanonicalExecutionSchedule(CanonicalModel):
     mode: Literal["waves"]
-    max_parallel_sessions: int = Field(ge=1)
+    max_parallel_actor_sessions: int = Field(ge=1)
     waves: list[CanonicalWave]
 
 
@@ -98,7 +97,7 @@ class CanonicalTrace(CanonicalModel):
     tool_catalog_hash: str
     trace_generator_version: str
     llm_metadata: dict[str, Any]
-    sessions: list[CanonicalSession] = Field(min_length=1)
+    actor_sessions: list[CanonicalActorSession] = Field(min_length=1)
     cases: list[CanonicalCase]
     dependency_graph: CanonicalDependencyGraph
     execution_schedule: CanonicalExecutionSchedule
@@ -120,24 +119,29 @@ def load_canonical_trace(path: str | Path) -> CanonicalTrace:
     except ValidationError as exc:
         raise TraceParseError(f"Invalid canonical trace '{trace_path}': {exc}") from exc
 
+    if trace.trace_version != "0.2":
+        raise TraceParseError(
+            f"Unsupported canonical trace version '{trace.trace_version}' in '{trace_path}'; expected '0.2'"
+        )
     _validate_canonical_refs(trace)
     return trace
 
 
-def build_init_from_sessions(trace: CanonicalTrace, env_values: dict[str, str]) -> SessionInitRecord:
+def build_init_from_actor_sessions(trace: CanonicalTrace, env_values: dict[str, str]) -> SessionInitRecord:
     users: list[SessionInitUser] = []
-    for session in trace.sessions:
+    for session in trace.actor_sessions:
         username = env_values.get(session.username_env_var)
         if username is None:
             raise TraceParseError(
-                f"Session '{session.session_id}' references missing username env var '{session.username_env_var}'"
+                f"Actor session '{session.actor_session_id}' references missing username env var "
+                f"'{session.username_env_var}'"
             )
         password = env_values.get(session.password_env_var)
         login_url = env_values.get(session.login_url_env_var)
         users.append(
             SessionInitUser(
-                session_id=session.session_id,
-                user_id=session.virtual_actor_id,
+                actor_session_id=session.actor_session_id,
+                synthetic_actor_id=session.synthetic_actor_id,
                 username=username,
                 password=password,
                 login_url=login_url,
@@ -151,35 +155,44 @@ def build_init_from_sessions(trace: CanonicalTrace, env_values: dict[str, str]) 
 
 
 def _validate_canonical_refs(trace: CanonicalTrace) -> None:
-    node_ids = {node.node_id for node in trace.dependency_graph.nodes}
+    planned_step_ids = {planned_step.planned_step_id for planned_step in trace.dependency_graph.planned_steps}
     case_ids = {case.case_id for case in trace.cases}
-    session_ids = {session.session_id for session in trace.sessions}
+    session_ids = {session.actor_session_id for session in trace.actor_sessions}
     scheduled_ids: list[str] = []
 
-    for node in trace.dependency_graph.nodes:
-        if node.case_id not in case_ids:
-            raise TraceParseError(f"Canonical node '{node.node_id}' references unknown case '{node.case_id}'")
-        if node.session_id not in session_ids:
-            raise TraceParseError(f"Canonical node '{node.node_id}' references unknown session '{node.session_id}'")
+    for planned_step in trace.dependency_graph.planned_steps:
+        if planned_step.case_id not in case_ids:
+            raise TraceParseError(
+                f"Canonical planned step '{planned_step.planned_step_id}' references unknown case '{planned_step.case_id}'"
+            )
+        if planned_step.actor_session_id not in session_ids:
+            raise TraceParseError(
+                f"Canonical planned step '{planned_step.planned_step_id}' references unknown actor session "
+                f"'{planned_step.actor_session_id}'"
+            )
 
-    for edge in trace.dependency_graph.edges:
-        if edge.from_ not in node_ids:
-            raise TraceParseError(f"Canonical edge references unknown from node '{edge.from_}'")
-        if edge.to not in node_ids:
-            raise TraceParseError(f"Canonical edge references unknown to node '{edge.to}'")
+    for dependency in trace.dependency_graph.dependencies:
+        if dependency.from_planned_step_id not in planned_step_ids:
+            raise TraceParseError(
+                f"Canonical dependency references unknown from planned step '{dependency.from_planned_step_id}'"
+            )
+        if dependency.to_planned_step_id not in planned_step_ids:
+            raise TraceParseError(
+                f"Canonical dependency references unknown to planned step '{dependency.to_planned_step_id}'"
+            )
 
     for wave in trace.execution_schedule.waves:
-        for scheduled_node in wave.nodes:
-            if scheduled_node.node_id not in node_ids:
+        for scheduled_step in wave.planned_steps:
+            if scheduled_step.planned_step_id not in planned_step_ids:
                 raise TraceParseError(
-                    f"Canonical wave '{wave.wave_id}' references unknown node '{scheduled_node.node_id}'"
+                    f"Canonical wave '{wave.wave_id}' references unknown planned step '{scheduled_step.planned_step_id}'"
                 )
-            scheduled_ids.append(scheduled_node.node_id)
+            scheduled_ids.append(scheduled_step.planned_step_id)
 
-    duplicates = sorted({node_id for node_id in scheduled_ids if scheduled_ids.count(node_id) > 1})
+    duplicates = sorted({planned_step_id for planned_step_id in scheduled_ids if scheduled_ids.count(planned_step_id) > 1})
     if duplicates:
-        raise TraceParseError(f"Canonical schedule contains duplicate node ids: {duplicates}")
+        raise TraceParseError(f"Canonical schedule contains duplicate planned step ids: {duplicates}")
 
-    unscheduled = sorted(node_ids - set(scheduled_ids))
+    unscheduled = sorted(planned_step_ids - set(scheduled_ids))
     if unscheduled:
-        raise TraceParseError(f"Canonical schedule omits node ids: {unscheduled}")
+        raise TraceParseError(f"Canonical schedule omits planned step ids: {unscheduled}")

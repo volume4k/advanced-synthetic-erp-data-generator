@@ -17,7 +17,7 @@ class ToolRequirement {
   inputProperties: Listing<ToolInputProperty>
 }
 
-/// Human-behavior profile for a virtual actor.
+/// Human-behavior profile for a synthetic actor.
 class RealismProfile {
   workerType: String(this.length > 0)
   workingHoursDeviation: Float
@@ -57,7 +57,7 @@ class ToolInputBinding {
     this == "literal"
       || this == "master_data"
       || this == "case"
-      || this == "business_date"
+      || this == "planned_date"
       || this == "prior_output"
       || this == "derived",
   )
@@ -83,7 +83,7 @@ class ActorCapability {
 }
 
 /// Synthetic business actor used by the trace generator.
-class VirtualActor {
+class SyntheticActor {
   id: String(this.length > 0)
   displayName: String(this.length > 0)
   role: String(this.length > 0)
@@ -101,13 +101,13 @@ class TechnicalUser {
   usernameEnvVar: String(this.length > 0)
   passwordEnvVar: String(this.length > 0)
   loginUrlEnvVar: String(this.length > 0)
-  maxConcurrentSessions: Int(this >= 1) = 1
+  maxConcurrentActorSessions: Int(this >= 1) = 1
 }
 
 /// Mapping between synthetic actor and real technical SAP user.
 class IdentityMapping {
-  virtualActorId: String(this.length > 0)
-  technicalUserId: String(this.length > 0)
+  syntheticActorId: String(this.length > 0)
+  technicalSapUserId: String(this.length > 0)
 }
 
 /// One configured process step. Assignment to a generator tool happens in Pkl.
@@ -116,8 +116,8 @@ class ProcessStep {
   stepType: String(this.length > 0)
   tool: ToolRequirement?
   inputBindings: Listing<ToolInputBinding> = new Listing {}
-  businessDateBindings: Listing<ToolInputBinding> = new Listing {}
-  expectedOutputs: Listing<String> = new Listing {}
+  plannedDateInputBindings: Listing<ToolInputBinding> = new Listing {}
+  requiredSapObjectKeys: Listing<String> = new Listing {}
 }
 
 /// Directed dependency between two configured process step types.
@@ -165,7 +165,7 @@ class FraudScenario {
 /// Top-level generation run settings.
 class RunSettings {
   caseCount: Int(this >= 1)
-  maxParallelSessions: Int(this >= 1)
+  maxParallelActorSessions: Int(this >= 1)
   targetTimezone: String(this.length > 0)
   activeProcessTypes: Listing<String>
   schedulerSeed: Int = 1

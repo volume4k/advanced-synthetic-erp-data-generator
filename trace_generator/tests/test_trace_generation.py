@@ -10,14 +10,14 @@ import yaml
 
 from erp_trace_generator.artifact_models import ExecutionTraceArtifact, PostProcessingManifestArtifact
 from erp_trace_generator.artifacts import _session_records
-from erp_trace_generator.bindings import business_dates_for_step, resolve_step_inputs
+from erp_trace_generator.bindings import planned_date_inputs_for_step, resolve_step_inputs
 from erp_trace_generator.cli import main
 from erp_trace_generator.config import load_generation_config
 from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.fraud import FRAUD_TRANSFORMERS, register_fraud_transformer
 from erp_trace_generator.generator import generate_trace_artifacts
-from erp_trace_generator.models import CasePlan, FraudScenario, InputBinding, MasterDataEntry, MinuteRange, PlannedNode, ProcessStep
-from erp_trace_generator.planning import plan_cases, plan_nodes, plan_waves
+from erp_trace_generator.models import CasePlan, FraudScenario, InputBinding, MasterDataEntry, MinuteRange, PlannedStep, ProcessStep
+from erp_trace_generator.planning import plan_cases, plan_steps, plan_waves
 from erp_trace_generator.schema_export import schema_output_paths
 from erp_trace_generator.timeline import TimelinePlanner
 
@@ -41,9 +41,9 @@ def _base_config() -> dict:
             _technical_user("GBGEN_P03", "SAP_USER_3"),
         ],
         "identityMappings": [
-            {"virtualActorId": "procurement_01", "technicalUserId": "GBGEN_P01"},
-            {"virtualActorId": "warehouse_01", "technicalUserId": "GBGEN_P02"},
-            {"virtualActorId": "accounts_payable_01", "technicalUserId": "GBGEN_P03"},
+            {"syntheticActorId": "procurement_01", "technicalSapUserId": "GBGEN_P01"},
+            {"syntheticActorId": "warehouse_01", "technicalSapUserId": "GBGEN_P02"},
+            {"syntheticActorId": "accounts_payable_01", "technicalSapUserId": "GBGEN_P03"},
         ],
         "masterData": [
             {
@@ -85,7 +85,7 @@ def _base_config() -> dict:
         ],
         "runSettings": {
             "caseCount": 2,
-            "maxParallelSessions": 2,
+            "maxParallelActorSessions": 2,
             "targetTimezone": "Europe/Berlin",
             "activeProcessTypes": ["procure_to_pay"],
             "schedulerSeed": 17,
@@ -183,13 +183,13 @@ def _actor(actor_id: str, role: str, user_prefix: str) -> dict:
     }
 
 
-def _technical_user(user_id: str, env_prefix: str) -> dict:
+def _technical_user(technical_user_id: str, env_prefix: str) -> dict:
     return {
-        "id": user_id,
+        "id": technical_user_id,
         "usernameEnvVar": f"{env_prefix}_UN",
         "passwordEnvVar": f"{env_prefix}_PW",
         "loginUrlEnvVar": "SAP_URL",
-        "maxConcurrentSessions": 1,
+        "maxConcurrentActorSessions": 1,
     }
 
 
@@ -209,8 +209,8 @@ def _step(step_id: str, step_type: str, tool_name: str) -> dict:
         "stepType": step_type,
         "tool": {"toolName": tool_name, "title": tool_name, "inputModel": "Input", "requiredInputFields": [], "inputProperties": []},
         "inputBindings": _input_bindings(step_type),
-        "businessDateBindings": _business_date_bindings(step_type),
-        "expectedOutputs": _expected_outputs(step_type),
+        "plannedDateInputBindings": _planned_date_input_bindings(step_type),
+        "requiredSapObjectKeys": _required_sap_object_keys(step_type),
     }
 
 
@@ -267,7 +267,7 @@ def _input_bindings(step_type: str) -> list[dict]:
     }[step_type]
 
 
-def _business_date_bindings(step_type: str) -> list[dict]:
+def _planned_date_input_bindings(step_type: str) -> list[dict]:
     return {
         "create_purchase_requisition": [_binding("delivery_date", "derived", "fiori_delivery_date")],
         "create_purchase_order": [],
@@ -287,7 +287,7 @@ def _binding(field: str, source: str, value: str, value_type: str = "string") ->
     return {"field": field, "source": source, "value": value, "valueType": value_type}
 
 
-def _expected_outputs(step_type: str) -> list[str]:
+def _required_sap_object_keys(step_type: str) -> list[str]:
     return {
         "create_purchase_requisition": ["purchase_requisition.pr_number"],
         "create_purchase_order": ["purchase_order.po_number"],
@@ -362,7 +362,7 @@ def test_config_loader_rejects_actor_capability_for_unknown_step(tmp_path: Path)
 def test_config_loader_rejects_capable_actor_without_identity_mapping(tmp_path: Path) -> None:
     payload = _base_config()
     payload["identityMappings"] = [
-        mapping for mapping in payload["identityMappings"] if mapping["virtualActorId"] != "warehouse_01"
+        mapping for mapping in payload["identityMappings"] if mapping["syntheticActorId"] != "warehouse_01"
     ]
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, payload)
@@ -441,18 +441,18 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
         input_bindings=(
             InputBinding("sample_step", "material", "master_data", "materialId"),
             InputBinding("sample_step", "quantity", "case", "quantity"),
-            InputBinding("sample_step", "posting_date", "business_date", "delivery_date"),
+            InputBinding("sample_step", "posting_date", "planned_date", "delivery_date"),
             InputBinding("sample_step", "purchase_order", "prior_output", "purchase_order.po_number"),
             InputBinding("sample_step", "price_unit", "literal", "1", "int"),
             InputBinding("sample_step", "amount", "derived", "gross_amount"),
             InputBinding("sample_step", "document_date", "derived", "fiori_delivery_date"),
             InputBinding("sample_step", "storage_location", "derived", "storage_location_label"),
         ),
-        business_date_bindings=(
+        planned_date_input_bindings=(
             InputBinding("sample_step", "document_date", "derived", "fiori_delivery_date"),
             InputBinding("sample_step", "posting_date", "derived", "fiori_payment_posting_date"),
         ),
-        expected_outputs=("sample.output",),
+        required_sap_object_keys=("sample.output",),
     )
 
     assert resolve_step_inputs(step, case) == {
@@ -465,7 +465,7 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
         "document_date": "05/18/2026",
         "storage_location": "Trading Goods",
     }
-    assert business_dates_for_step(step, case) == {
+    assert planned_date_inputs_for_step(step, case) == {
         "document_date": "2026-05-18",
         "posting_date": "2026-05-19",
     }
@@ -502,16 +502,16 @@ def test_session_records_reject_same_session_for_multiple_actors(tmp_path: Path)
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, _base_config())
     config = load_generation_config(config_path)
-    node_kwargs = {
+    planned_step_kwargs = {
         "case_id": "C001",
         "step_id": "A1",
         "step_type": "create_purchase_requisition",
         "tool_name": "fiori.create_purchase_requisition",
-        "technical_user_id": "GBGEN_P01",
-        "session_id": "shared-session",
+        "technical_sap_user_id": "GBGEN_P01",
+        "actor_session_id": "shared-session",
         "inputs": {},
-        "expected_outputs": [],
-        "business_dates": {},
+        "required_sap_object_keys": [],
+        "planned_date_inputs": {},
         "target_start": datetime(2026, 5, 18, 8, 0),
         "target_end": datetime(2026, 5, 18, 8, 1),
     }
@@ -520,8 +520,8 @@ def test_session_records_reject_same_session_for_multiple_actors(tmp_path: Path)
         _session_records(
             config,
             [
-                PlannedNode(node_id="C001_A1", virtual_actor_id="procurement_01", **node_kwargs),
-                PlannedNode(node_id="C001_A3", virtual_actor_id="warehouse_01", **node_kwargs),
+                PlannedStep(planned_step_id="C001_A1", synthetic_actor_id="procurement_01", **planned_step_kwargs),
+                PlannedStep(planned_step_id="C001_A3", synthetic_actor_id="warehouse_01", **planned_step_kwargs),
             ],
         )
 
@@ -531,13 +531,13 @@ def test_scheduler_assigns_configured_multi_step_actor_without_overlap(tmp_path:
     _write_yaml(config_path, _base_config())
     config = load_generation_config(config_path)
 
-    nodes = plan_nodes(config, plan_cases(config, Random(17)), Random(17))
+    planned_steps = plan_steps(config, plan_cases(config, Random(17)), Random(17))
     procurement_nodes = [
-        node for node in nodes
-        if node.virtual_actor_id == "procurement_01"
+        planned_step for planned_step in planned_steps
+        if planned_step.synthetic_actor_id == "procurement_01"
     ]
 
-    assert {node.step_type for node in procurement_nodes} == {
+    assert {planned_step.step_type for planned_step in procurement_nodes} == {
         "create_purchase_requisition",
         "create_purchase_order",
     }
@@ -554,16 +554,16 @@ def test_scheduler_uses_second_capable_actor_when_first_is_busy(tmp_path: Path) 
         },
     )
     payload["technicalUsers"].append(_technical_user("GBGEN_P04", "SAP_USER_4"))
-    payload["identityMappings"].append({"virtualActorId": "procurement_02", "technicalUserId": "GBGEN_P04"})
+    payload["identityMappings"].append({"syntheticActorId": "procurement_02", "technicalSapUserId": "GBGEN_P04"})
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, payload)
     config = load_generation_config(config_path)
 
-    nodes = plan_nodes(config, plan_cases(config, Random(17)), Random(17))
+    planned_steps = plan_steps(config, plan_cases(config, Random(17)), Random(17))
     requisition_actors = {
-        node.virtual_actor_id
-        for node in nodes
-        if node.step_type == "create_purchase_requisition"
+        planned_step.synthetic_actor_id
+        for planned_step in planned_steps
+        if planned_step.step_type == "create_purchase_requisition"
     }
 
     assert requisition_actors == {"procurement_01", "procurement_02"}
@@ -572,14 +572,14 @@ def test_scheduler_uses_second_capable_actor_when_first_is_busy(tmp_path: Path) 
 def test_scheduler_respects_shared_technical_user_availability(tmp_path: Path) -> None:
     payload = _base_config()
     for mapping in payload["identityMappings"]:
-        mapping["technicalUserId"] = "GBGEN_P01"
+        mapping["technicalSapUserId"] = "GBGEN_P01"
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, payload)
     config = load_generation_config(config_path)
 
-    nodes = plan_nodes(config, plan_cases(config, Random(17)), Random(17))
+    planned_steps = plan_steps(config, plan_cases(config, Random(17)), Random(17))
 
-    _assert_no_resource_overlap(nodes)
+    _assert_no_resource_overlap(planned_steps)
 
 
 def test_wave_scheduler_prevents_shared_technical_user_in_same_wave(tmp_path: Path) -> None:
@@ -591,25 +591,25 @@ def test_wave_scheduler_prevents_shared_technical_user_in_same_wave(tmp_path: Pa
             "speedFactor": 1.0,
         },
     )
-    payload["identityMappings"].append({"virtualActorId": "procurement_02", "technicalUserId": "GBGEN_P01"})
+    payload["identityMappings"].append({"syntheticActorId": "procurement_02", "technicalSapUserId": "GBGEN_P01"})
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, payload)
     config = load_generation_config(config_path)
-    nodes = plan_nodes(config, plan_cases(config, Random(17)), Random(17))
-    nodes_by_id = {node.node_id: node for node in nodes}
+    planned_steps = plan_steps(config, plan_cases(config, Random(17)), Random(17))
+    planned_steps_by_id = {planned_step.planned_step_id: planned_step for planned_step in planned_steps}
 
-    for wave in plan_waves(config, nodes):
+    for wave in plan_waves(config, planned_steps):
         technical_user_ids = [
-            nodes_by_id[item["node_id"]].technical_user_id
-            for item in wave["nodes"]
+            planned_steps_by_id[item["planned_step_id"]].technical_sap_user_id
+            for item in wave["planned_steps"]
         ]
         assert len(technical_user_ids) == len(set(technical_user_ids))
 
 
-def _assert_no_resource_overlap(nodes: list[PlannedNode]) -> None:
+def _assert_no_resource_overlap(planned_steps: list[PlannedStep]) -> None:
     for first, second in zip(
-        sorted(nodes, key=lambda node: node.target_start),
-        sorted(nodes, key=lambda node: node.target_start)[1:],
+        sorted(planned_steps, key=lambda planned_step: planned_step.target_start),
+        sorted(planned_steps, key=lambda planned_step: planned_step.target_start)[1:],
     ):
         assert first.target_end <= second.target_start
 
@@ -711,43 +711,43 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
     assert not (out_dir / "RUN_TEST_001.executor.trace.jsonl").exists()
 
     execution_trace = yaml.safe_load(artifacts.execution_trace_path.read_text(encoding="utf-8"))
-    assert execution_trace["trace_version"] == "0.1"
+    assert execution_trace["trace_version"] == "0.2"
     assert execution_trace["run_id"] == "RUN_TEST_001"
-    assert execution_trace["sessions"] == [
+    assert execution_trace["actor_sessions"] == [
         {
-            "session_id": "procurement_01-session",
-            "virtual_actor_id": "procurement_01",
-            "technical_user_id": "GBGEN_P01",
+            "actor_session_id": "procurement_01-session",
+            "synthetic_actor_id": "procurement_01",
+            "technical_sap_user_id": "GBGEN_P01",
             "username_env_var": "SAP_USER_1_UN",
             "password_env_var": "SAP_USER_1_PW",
             "login_url_env_var": "SAP_URL",
         },
         {
-            "session_id": "warehouse_01-session",
-            "virtual_actor_id": "warehouse_01",
-            "technical_user_id": "GBGEN_P02",
+            "actor_session_id": "warehouse_01-session",
+            "synthetic_actor_id": "warehouse_01",
+            "technical_sap_user_id": "GBGEN_P02",
             "username_env_var": "SAP_USER_2_UN",
             "password_env_var": "SAP_USER_2_PW",
             "login_url_env_var": "SAP_URL",
         },
         {
-            "session_id": "accounts_payable_01-session",
-            "virtual_actor_id": "accounts_payable_01",
-            "technical_user_id": "GBGEN_P03",
+            "actor_session_id": "accounts_payable_01-session",
+            "synthetic_actor_id": "accounts_payable_01",
+            "technical_sap_user_id": "GBGEN_P03",
             "username_env_var": "SAP_USER_3_UN",
             "password_env_var": "SAP_USER_3_PW",
             "login_url_env_var": "SAP_URL",
         },
     ]
     assert "secret" not in json.dumps(execution_trace)
-    assert [step["step_type"] for step in execution_trace["dependency_graph"]["nodes"][:5]] == [
+    assert [step["step_type"] for step in execution_trace["dependency_graph"]["planned_steps"][:5]] == [
         "create_purchase_requisition",
         "create_purchase_order",
         "post_goods_receipt",
         "enter_incoming_invoice",
         "post_outgoing_payment",
     ]
-    purchase_order_node = execution_trace["dependency_graph"]["nodes"][1]
+    purchase_order_node = execution_trace["dependency_graph"]["planned_steps"][1]
     assert purchase_order_node["inputs"] == {
         "purchase_requisition": "$purchase_requisition.pr_number",
         "storage_location": "0002",
@@ -755,24 +755,24 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
         "quantity": 10,
         "net_price": execution_trace["cases"][0]["line_items"][0]["target_price"],
     }
-    goods_receipt_node = execution_trace["dependency_graph"]["nodes"][2]
+    goods_receipt_node = execution_trace["dependency_graph"]["planned_steps"][2]
     assert goods_receipt_node["inputs"] == {
         "purchase_order": "$purchase_order.po_number",
         "storage_location": "Trading Goods",
     }
-    assert goods_receipt_node["business_dates"] == {
+    assert goods_receipt_node["planned_date_inputs"] == {
         "document_date": "2026-05-23",
         "posting_date": "2026-05-23",
     }
     assert execution_trace["execution_schedule"]["mode"] == "waves"
-    assert execution_trace["execution_schedule"]["waves"][0]["nodes"][0]["node_id"] == "C001_A1"
+    assert execution_trace["execution_schedule"]["waves"][0]["planned_steps"][0]["planned_step_id"] == "C001_A1"
     assert execution_trace["validation_report"]["errors"] == []
 
     manifest = yaml.safe_load(artifacts.post_processing_manifest_path.read_text(encoding="utf-8"))
     ExecutionTraceArtifact.model_validate(execution_trace)
     PostProcessingManifestArtifact.model_validate(manifest)
     assert manifest["run_id"] == "RUN_TEST_001"
-    assert manifest["timestamp_policy"]["source"] == "planned_target_synthetic_time"
+    assert manifest["timestamp_policy"]["source"] == "planned_synthetic_time"
     assert [item["id"] for item in manifest["post_processing_exports"]] == [
         "change_documents",
         "purchase_orders",
@@ -781,9 +781,9 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
         "accounting_documents",
     ]
     assert manifest["actor_projection"][0] == {
-        "virtual_actor_id": "procurement_01",
-        "technical_user_id": "GBGEN_P01",
-        "session_id": "procurement_01-session",
+        "synthetic_actor_id": "procurement_01",
+        "technical_sap_user_id": "GBGEN_P01",
+        "actor_session_id": "procurement_01-session",
         "expose_as": "procurement_01",
     }
     assert manifest["object_lineage"][0]["chain"] == [
@@ -794,18 +794,18 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
         "payment_document",
     ]
     assert {
-        (item["node_id"], item["field"], item["planned_value"], item["runtime_value_policy"])
-        for item in manifest["date_overrides"]
+        (item["planned_step_id"], item["field"], item["planned_value"], item["runtime_value_policy"])
+        for item in manifest["planned_date_input_overrides"]
     } == {
         ("C001_A3", "document_date", "2026-05-23", "sap_current_date"),
         ("C001_A3", "posting_date", "2026-05-23", "sap_current_date"),
         ("C002_A3", "document_date", "2026-05-23", "sap_current_date"),
         ("C002_A3", "posting_date", "2026-05-23", "sap_current_date"),
     }
-    assert {item["step_type"] for item in manifest["date_overrides"]} == {"post_goods_receipt"}
+    assert {item["step_type"] for item in manifest["planned_date_input_overrides"]} == {"post_goods_receipt"}
 
-    first_start = datetime.fromisoformat(execution_trace["dependency_graph"]["nodes"][0]["target_synthetic_time"]["start"])
-    second_start = datetime.fromisoformat(execution_trace["dependency_graph"]["nodes"][1]["target_synthetic_time"]["start"])
+    first_start = datetime.fromisoformat(execution_trace["dependency_graph"]["planned_steps"][0]["planned_synthetic_time"]["start"])
+    second_start = datetime.fromisoformat(execution_trace["dependency_graph"]["planned_steps"][1]["planned_synthetic_time"]["start"])
     assert (second_start - first_start).total_seconds() >= 30 * 60
 
 

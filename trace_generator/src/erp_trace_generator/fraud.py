@@ -12,14 +12,14 @@ FraudTransformer = Callable[[object], object]
 FRAUD_TRANSFORMERS: dict[str, FraudTransformer] = {}
 
 
-def register_fraud_transformer(scenario_id: str) -> Callable[[FraudTransformer], FraudTransformer]:
-    if not scenario_id:
+def register_fraud_transformer(case_scenario_type: str) -> Callable[[FraudTransformer], FraudTransformer]:
+    if not case_scenario_type:
         raise TraceGenerationError("Fraud transformer scenario id must not be empty")
 
     def decorator(transformer: FraudTransformer) -> FraudTransformer:
-        if scenario_id in FRAUD_TRANSFORMERS:
-            raise TraceGenerationError(f"Fraud transformer '{scenario_id}' is already registered")
-        FRAUD_TRANSFORMERS[scenario_id] = transformer
+        if case_scenario_type in FRAUD_TRANSFORMERS:
+            raise TraceGenerationError(f"Fraud transformer '{case_scenario_type}' is already registered")
+        FRAUD_TRANSFORMERS[case_scenario_type] = transformer
         return transformer
 
     return decorator

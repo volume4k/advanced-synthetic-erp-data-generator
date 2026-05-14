@@ -30,15 +30,14 @@ class TraceLineItem(ArtifactModel):
 class TraceCase(ArtifactModel):
     case_id: str
     process_type: str
-    scenario_id: str
-    case_label: str
+    case_scenario_type: str
     line_items: list[TraceLineItem]
 
 
-class TraceSession(ArtifactModel):
-    session_id: str
-    virtual_actor_id: str
-    technical_user_id: str
+class TraceActorSession(ArtifactModel):
+    actor_session_id: str
+    synthetic_actor_id: str
+    technical_sap_user_id: str
     username_env_var: str
     password_env_var: str
     login_url_env_var: str
@@ -48,52 +47,52 @@ class TraceSession(ArtifactModel):
     success_selector: str | None = None
 
 
-class TargetSyntheticTime(ArtifactModel):
+class PlannedSyntheticTime(ArtifactModel):
     start: str
     end: str
 
 
-class TraceNode(ArtifactModel):
-    node_id: str
+class TracePlannedStep(ArtifactModel):
+    planned_step_id: str
     case_id: str
     step_type: str
     tool_name: str
-    virtual_actor_id: str
-    technical_sap_user: str
-    session_id: str
+    synthetic_actor_id: str
+    technical_sap_user_id: str
+    actor_session_id: str
     inputs: dict[str, Any]
-    expected_outputs: list[str]
-    business_dates: dict[str, str]
-    target_synthetic_time: TargetSyntheticTime
+    required_sap_object_keys: list[str]
+    planned_date_inputs: dict[str, str]
+    planned_synthetic_time: PlannedSyntheticTime
     labels: dict[str, str]
 
 
-class TraceEdge(ArtifactModel):
-    from_: str = Field(alias="from")
-    to: str
+class TraceDependency(ArtifactModel):
+    from_planned_step_id: str
+    to_planned_step_id: str
     type: str
     reason: str
 
 
 class DependencyGraph(ArtifactModel):
-    nodes: list[TraceNode]
-    edges: list[TraceEdge]
+    planned_steps: list[TracePlannedStep]
+    dependencies: list[TraceDependency]
 
 
-class ScheduledNode(ArtifactModel):
-    node_id: str
+class ScheduledPlannedStep(ArtifactModel):
+    planned_step_id: str
     startup_order: int = Field(ge=1)
 
 
 class ExecutionWave(ArtifactModel):
     wave_id: str
     sequence_no: int = Field(ge=1)
-    nodes: list[ScheduledNode]
+    planned_steps: list[ScheduledPlannedStep]
 
 
 class ExecutionSchedule(ArtifactModel):
     mode: Literal["waves"]
-    max_parallel_sessions: int = Field(ge=1)
+    max_parallel_actor_sessions: int = Field(ge=1)
     waves: list[ExecutionWave]
 
 
@@ -109,7 +108,7 @@ class ExecutionTraceArtifact(ArtifactModel):
     tool_catalog_hash: str
     trace_generator_version: str
     llm_metadata: dict[str, Any]
-    sessions: list[TraceSession]
+    actor_sessions: list[TraceActorSession]
     cases: list[TraceCase]
     dependency_graph: DependencyGraph
     execution_schedule: ExecutionSchedule
@@ -123,31 +122,30 @@ class TimestampPolicy(ArtifactModel):
 
 
 class ActorProjection(ArtifactModel):
-    virtual_actor_id: str
-    technical_user_id: str
-    session_id: str
+    synthetic_actor_id: str
+    technical_sap_user_id: str
+    actor_session_id: str
     expose_as: str
 
 
-class CaseLabel(ArtifactModel):
+class CaseScenarioType(ArtifactModel):
     case_id: str
-    scenario_id: str
-    case_label: str
+    case_scenario_type: str
 
 
-class NodeTimestamp(ArtifactModel):
-    node_id: str
+class PlannedStepTimestamp(ArtifactModel):
+    planned_step_id: str
     case_id: str
     step_type: str
-    target_synthetic_start: str
-    target_synthetic_end: str
-    business_dates: dict[str, str]
+    planned_synthetic_start: str
+    planned_synthetic_end: str
+    planned_date_inputs: dict[str, str]
 
 
-class ExpectedObjectKeys(ArtifactModel):
-    node_id: str
+class RequiredSapObjectKeys(ArtifactModel):
+    planned_step_id: str
     case_id: str
-    expected_outputs: list[str]
+    required_sap_object_keys: list[str]
 
 
 class ObjectLineage(ArtifactModel):
@@ -155,7 +153,7 @@ class ObjectLineage(ArtifactModel):
     chain: list[str]
 
 
-class FailedCasePolicy(ArtifactModel):
+class FailedProcessCasePolicy(ArtifactModel):
     exclude_failed_cases: bool
     source_artifacts: list[str]
 
@@ -165,15 +163,15 @@ class PostProcessingExport(ArtifactModel):
     description: str
 
 
-class DateOverride(ArtifactModel):
-    node_id: str
+class PlannedDateInputOverride(ArtifactModel):
+    planned_step_id: str
     case_id: str
     step_type: str
     object_type: str
     field: str
     planned_value: str
     runtime_value_policy: Literal["sap_current_date"]
-    source: Literal["business_dates"]
+    source: Literal["planned_date_inputs"]
     reason: str
 
 
@@ -183,10 +181,10 @@ class PostProcessingManifestArtifact(ArtifactModel):
     config_hash: str
     timestamp_policy: TimestampPolicy
     actor_projection: list[ActorProjection]
-    case_labels: list[CaseLabel]
-    node_timestamps: list[NodeTimestamp]
-    expected_object_keys: list[ExpectedObjectKeys]
+    case_scenario_types: list[CaseScenarioType]
+    planned_step_timestamps: list[PlannedStepTimestamp]
+    required_sap_object_keys: list[RequiredSapObjectKeys]
     object_lineage: list[ObjectLineage]
     post_processing_exports: list[PostProcessingExport]
-    date_overrides: list[DateOverride]
-    failed_case_policy: FailedCasePolicy
+    planned_date_input_overrides: list[PlannedDateInputOverride]
+    failed_process_case_policy: FailedProcessCasePolicy

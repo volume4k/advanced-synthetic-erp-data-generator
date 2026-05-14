@@ -11,23 +11,23 @@ from erp_trace_executor.errors import SessionUserMismatchError
 
 @dataclass
 class BrowserSession:
-    """Active browser session for one trace session id."""
+    """Active browser session for one actor_session_id."""
 
-    session_id: str
-    user_id: str
+    actor_session_id: str
+    synthetic_actor_id: str
     context: BrowserContext
     page: Page
     fiori_messages: list[dict[str, str]] = field(default_factory=list)
 
 
 class BrowserSessionManager:
-    """Owns browser lifecycle and browser contexts per session id."""
+    """Owns browser lifecycle and browser contexts per actor_session_id."""
 
     def __init__(self, *, headless: bool = True) -> None:
         self._headless = headless
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
-        self._sessions: dict[str, BrowserSession] = {}
+        self._actor_sessions: dict[str, BrowserSession] = {}
 
     def __enter__(self) -> "BrowserSessionManager":
         return self
@@ -35,12 +35,13 @@ class BrowserSessionManager:
     def __exit__(self, *_args: object) -> None:
         self.close()
 
-    def get_session(self, *, session_id: str, user_id: str) -> BrowserSession:
-        existing = self._sessions.get(session_id)
+    def get_session(self, *, actor_session_id: str, synthetic_actor_id: str) -> BrowserSession:
+        existing = self._actor_sessions.get(actor_session_id)
         if existing is not None:
-            if existing.user_id != user_id:
+            if existing.synthetic_actor_id != synthetic_actor_id:
                 raise SessionUserMismatchError(
-                    f"Session '{session_id}' is already bound to user '{existing.user_id}', not '{user_id}'"
+                    f"Actor session '{actor_session_id}' is already bound to synthetic actor "
+                    f"'{existing.synthetic_actor_id}', not '{synthetic_actor_id}'"
                 )
             return existing
 
@@ -51,21 +52,21 @@ class BrowserSessionManager:
         context = self._browser.new_context()
         page = context.new_page()
         session = BrowserSession(
-            session_id=session_id,
-            user_id=user_id,
+            actor_session_id=actor_session_id,
+            synthetic_actor_id=synthetic_actor_id,
             context=context,
             page=page,
         )
-        self._sessions[session_id] = session
+        self._actor_sessions[actor_session_id] = session
         return session
 
     def active_session_count(self) -> int:
-        return len(self._sessions)
+        return len(self._actor_sessions)
 
     def close(self) -> None:
-        for session in self._sessions.values():
+        for session in self._actor_sessions.values():
             session.context.close()
-        self._sessions.clear()
+        self._actor_sessions.clear()
 
         if self._browser is not None:
             self._browser.close()

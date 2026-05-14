@@ -6,20 +6,20 @@ Start with `recording-tools.md` if you are converting a manually recorded SAP fl
 
 ## What A Tool Is
 
-A tool is one executable browser action referenced from a canonical execution-trace node:
+A tool is one executable browser action referenced from a canonical execution-trace planned step:
 
 ```yaml
-node_id: C001_A1
+planned_step_id: C001_A1
 case_id: C001
 tool_name: fiori.create_purchase_requisition
-session_id: buyer-session
-virtual_actor_id: buyer-a
+actor_session_id: buyer-session
+synthetic_actor_id: buyer-a
 inputs:
   material: PUMP1902
   quantity: 20
 ```
 
-The executor validates `input`, reuses the browser session identified by `session_id`, runs the tool, and prints a structured result.
+The executor validates `input`, reuses the actor session identified by `actor_session_id`, runs the tool, and prints a structured result.
 
 ## File Pattern
 

@@ -30,13 +30,13 @@ class TechnicalUser:
     username_env_var: str
     password_env_var: str
     login_url_env_var: str
-    max_concurrent_sessions: int
+    max_concurrent_actor_sessions: int
 
 
 @dataclass(frozen=True)
 class IdentityMapping:
-    virtual_actor_id: str
-    technical_user_id: str
+    synthetic_actor_id: str
+    technical_sap_user_id: str
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,7 @@ class ToolRequirement:
     required_input_fields: tuple[str, ...]
 
 
-BindingSource = Literal["literal", "master_data", "case", "business_date", "prior_output", "derived"]
+BindingSource = Literal["literal", "master_data", "case", "planned_date", "prior_output", "derived"]
 BindingValueType = Literal["string", "int", "float", "bool"]
 
 
@@ -88,8 +88,8 @@ class ProcessStep:
     step_type: str
     tool_name: str
     input_bindings: tuple[InputBinding, ...] = ()
-    business_date_bindings: tuple[InputBinding, ...] = ()
-    expected_outputs: tuple[str, ...] = ()
+    planned_date_input_bindings: tuple[InputBinding, ...] = ()
+    required_sap_object_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -138,7 +138,7 @@ class InterStepDelay:
 @dataclass(frozen=True)
 class RunSettings:
     case_count: int
-    max_parallel_sessions: int
+    max_parallel_actor_sessions: int
     target_timezone: str
     active_process_types: tuple[str, ...]
     scheduler_seed: int
@@ -202,12 +202,12 @@ class GenerationConfig:
         )
 
     def technical_user_for_actor(self, actor_id: str) -> TechnicalUser:
-        mapping = next((item for item in self.identity_mappings if item.virtual_actor_id == actor_id), None)
+        mapping = next((item for item in self.identity_mappings if item.synthetic_actor_id == actor_id), None)
         if mapping is None:
             raise ValueError(f"No identity mapping found for actor_id: {actor_id}")
-        technical_user = next((item for item in self.technical_users if item.id == mapping.technical_user_id), None)
+        technical_user = next((item for item in self.technical_users if item.id == mapping.technical_sap_user_id), None)
         if technical_user is None:
-            raise ValueError(f"No technical user found for technical_user_id: {mapping.technical_user_id}")
+            raise ValueError(f"No technical user found for technical_sap_user_id: {mapping.technical_sap_user_id}")
         return technical_user
 
 
@@ -226,23 +226,22 @@ class CasePlan:
     currency: str
     delivery_date: date
     gross_amount: float
-    scenario_id: str = "NORMAL"
-    case_label: str = "normal"
+    case_scenario_type: str = "NORMAL"
 
 
 @dataclass
-class PlannedNode:
-    node_id: str
+class PlannedStep:
+    planned_step_id: str
     case_id: str
     step_id: str
     step_type: str
     tool_name: str
-    virtual_actor_id: str
-    technical_user_id: str
-    session_id: str
+    synthetic_actor_id: str
+    technical_sap_user_id: str
+    actor_session_id: str
     inputs: dict
-    expected_outputs: list[str]
-    business_dates: dict[str, str]
+    required_sap_object_keys: list[str]
+    planned_date_inputs: dict[str, str]
     target_start: datetime
     target_end: datetime
     labels: dict[str, str] = field(default_factory=lambda: {"step_label": "normal"})

@@ -140,8 +140,8 @@ def run_create_purchase_order(
     order_data = SapPurchaseOrderFlow(page).create(params)
 
     return ToolResult(
-        task_id=context.record.task_id,
-        session_id=context.record.session_id,
+        planned_step_id=context.record.planned_step_id,
+        actor_session_id=context.record.actor_session_id,
         tool=context.record.tool,
         data={
             "status": "created",

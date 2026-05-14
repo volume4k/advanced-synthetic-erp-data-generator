@@ -18,8 +18,8 @@ class ExecutionContext:
 
     def get_browser_session(self) -> BrowserSession:
         return self.session_manager.get_session(
-            session_id=self.record.session_id,
-            user_id=self.record.user_id,
+            actor_session_id=self.record.actor_session_id,
+            synthetic_actor_id=self.record.synthetic_actor_id,
         )
 
     def get_fiori_page(self) -> FioriPage:

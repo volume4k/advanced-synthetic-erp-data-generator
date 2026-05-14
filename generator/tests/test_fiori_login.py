@@ -68,7 +68,7 @@ class FakePage:
 def test_login_waits_for_load_when_no_success_selector_is_configured():
     page = FakePage()
     context = SimpleNamespace(
-        record=SimpleNamespace(task_id="task-1", session_id="session-1", tool="fiori.login"),
+        record=SimpleNamespace(planned_step_id="planned-step-1", actor_session_id="session-1", tool="fiori.login"),
         get_browser_session=lambda: SimpleNamespace(page=page),
     )
     params = LoginInput.model_validate({"username": "buyer-a", "password": "secret"})
@@ -83,7 +83,7 @@ def test_login_rejects_visible_login_form_after_load_without_success_selector():
     page = FakePage()
     page.locators["#LOGIN_LINK"] = FakeLocator(visible=True)
     context = SimpleNamespace(
-        record=SimpleNamespace(task_id="task-1", session_id="session-1", tool="fiori.login"),
+        record=SimpleNamespace(planned_step_id="planned-step-1", actor_session_id="session-1", tool="fiori.login"),
         get_browser_session=lambda: SimpleNamespace(page=page),
     )
     params = LoginInput.model_validate({"username": "buyer-a", "password": "secret"})

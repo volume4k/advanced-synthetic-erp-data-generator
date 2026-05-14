@@ -64,14 +64,14 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           value = "purchasing_org"
         }
       }
-      businessDateBindings {
+      plannedDateInputBindings {
         new objects.ToolInputBinding {
           field = "delivery_date"
           source = "derived"
           value = "fiori_delivery_date"
         }
       }
-      expectedOutputs {
+      requiredSapObjectKeys {
         "purchase_requisition.pr_number"
       }
     }
@@ -106,7 +106,7 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           value = "target_price"
         }
       }
-      expectedOutputs {
+      requiredSapObjectKeys {
         "purchase_order.po_number"
       }
     }
@@ -126,7 +126,7 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           value = "storage_location_label"
         }
       }
-      businessDateBindings {
+      plannedDateInputBindings {
         new objects.ToolInputBinding {
           field = "document_date"
           source = "derived"
@@ -138,7 +138,7 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           value = "fiori_delivery_date"
         }
       }
-      expectedOutputs {
+      requiredSapObjectKeys {
         "material_document.material_document_number"
       }
     }
@@ -173,14 +173,14 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           value = "XI"
         }
       }
-      businessDateBindings {
+      plannedDateInputBindings {
         new objects.ToolInputBinding {
           field = "invoice_date"
           source = "derived"
           value = "fiori_delivery_date"
         }
       }
-      expectedOutputs {
+      requiredSapObjectKeys {
         "supplier_invoice.invoice_number"
         "supplier_invoice.fiscal_year"
       }
@@ -231,7 +231,7 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           value = "currency"
         }
       }
-      businessDateBindings {
+      plannedDateInputBindings {
         new objects.ToolInputBinding {
           field = "posting_document_date"
           source = "derived"
@@ -243,13 +243,13 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           value = "fiori_payment_posting_date"
         }
       }
-      expectedOutputs {
+      requiredSapObjectKeys {
         "payment_document.payment_document_number"
       }
     }
   }
 
-  // Dependencies define directed graph edges between process steps.
+  // Dependencies define process-step dependencies between process steps.
   // The trace planner must execute `fromStepType` before `toStepType`.
   // The description explains why the edge exists and which business object/data flows across it.
   dependencies {

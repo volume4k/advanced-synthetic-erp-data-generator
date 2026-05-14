@@ -3,24 +3,24 @@
     "DependencyGraph": {
       "additionalProperties": false,
       "properties": {
-        "edges": {
+        "dependencies": {
           "items": {
-            "$ref": "#/$defs/TraceEdge"
+            "$ref": "#/$defs/TraceDependency"
           },
-          "title": "Edges",
+          "title": "Dependencies",
           "type": "array"
         },
-        "nodes": {
+        "planned_steps": {
           "items": {
-            "$ref": "#/$defs/TraceNode"
+            "$ref": "#/$defs/TracePlannedStep"
           },
-          "title": "Nodes",
+          "title": "Planned Steps",
           "type": "array"
         }
       },
       "required": [
-        "nodes",
-        "edges"
+        "planned_steps",
+        "dependencies"
       ],
       "title": "DependencyGraph",
       "type": "object"
@@ -28,9 +28,9 @@
     "ExecutionSchedule": {
       "additionalProperties": false,
       "properties": {
-        "max_parallel_sessions": {
+        "max_parallel_actor_sessions": {
           "minimum": 1,
-          "title": "Max Parallel Sessions",
+          "title": "Max Parallel Actor Sessions",
           "type": "integer"
         },
         "mode": {
@@ -48,7 +48,7 @@
       },
       "required": [
         "mode",
-        "max_parallel_sessions",
+        "max_parallel_actor_sessions",
         "waves"
       ],
       "title": "ExecutionSchedule",
@@ -57,11 +57,11 @@
     "ExecutionWave": {
       "additionalProperties": false,
       "properties": {
-        "nodes": {
+        "planned_steps": {
           "items": {
-            "$ref": "#/$defs/ScheduledNode"
+            "$ref": "#/$defs/ScheduledPlannedStep"
           },
-          "title": "Nodes",
+          "title": "Planned Steps",
           "type": "array"
         },
         "sequence_no": {
@@ -77,32 +77,12 @@
       "required": [
         "wave_id",
         "sequence_no",
-        "nodes"
+        "planned_steps"
       ],
       "title": "ExecutionWave",
       "type": "object"
     },
-    "ScheduledNode": {
-      "additionalProperties": false,
-      "properties": {
-        "node_id": {
-          "title": "Node Id",
-          "type": "string"
-        },
-        "startup_order": {
-          "minimum": 1,
-          "title": "Startup Order",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "node_id",
-        "startup_order"
-      ],
-      "title": "ScheduledNode",
-      "type": "object"
-    },
-    "TargetSyntheticTime": {
+    "PlannedSyntheticTime": {
       "additionalProperties": false,
       "properties": {
         "end": {
@@ -118,7 +98,114 @@
         "start",
         "end"
       ],
-      "title": "TargetSyntheticTime",
+      "title": "PlannedSyntheticTime",
+      "type": "object"
+    },
+    "ScheduledPlannedStep": {
+      "additionalProperties": false,
+      "properties": {
+        "planned_step_id": {
+          "title": "Planned Step Id",
+          "type": "string"
+        },
+        "startup_order": {
+          "minimum": 1,
+          "title": "Startup Order",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "planned_step_id",
+        "startup_order"
+      ],
+      "title": "ScheduledPlannedStep",
+      "type": "object"
+    },
+    "TraceActorSession": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_session_id": {
+          "title": "Actor Session Id",
+          "type": "string"
+        },
+        "login_url_env_var": {
+          "title": "Login Url Env Var",
+          "type": "string"
+        },
+        "password_env_var": {
+          "title": "Password Env Var",
+          "type": "string"
+        },
+        "password_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Password Selector"
+        },
+        "submit_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Submit Selector"
+        },
+        "success_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Success Selector"
+        },
+        "synthetic_actor_id": {
+          "title": "Synthetic Actor Id",
+          "type": "string"
+        },
+        "technical_sap_user_id": {
+          "title": "Technical Sap User Id",
+          "type": "string"
+        },
+        "username_env_var": {
+          "title": "Username Env Var",
+          "type": "string"
+        },
+        "username_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username Selector"
+        }
+      },
+      "required": [
+        "actor_session_id",
+        "synthetic_actor_id",
+        "technical_sap_user_id",
+        "username_env_var",
+        "password_env_var",
+        "login_url_env_var"
+      ],
+      "title": "TraceActorSession",
       "type": "object"
     },
     "TraceCase": {
@@ -128,8 +215,8 @@
           "title": "Case Id",
           "type": "string"
         },
-        "case_label": {
-          "title": "Case Label",
+        "case_scenario_type": {
+          "title": "Case Scenario Type",
           "type": "string"
         },
         "line_items": {
@@ -142,35 +229,30 @@
         "process_type": {
           "title": "Process Type",
           "type": "string"
-        },
-        "scenario_id": {
-          "title": "Scenario Id",
-          "type": "string"
         }
       },
       "required": [
         "case_id",
         "process_type",
-        "scenario_id",
-        "case_label",
+        "case_scenario_type",
         "line_items"
       ],
       "title": "TraceCase",
       "type": "object"
     },
-    "TraceEdge": {
+    "TraceDependency": {
       "additionalProperties": false,
       "properties": {
-        "from": {
-          "title": "From",
+        "from_planned_step_id": {
+          "title": "From Planned Step Id",
           "type": "string"
         },
         "reason": {
           "title": "Reason",
           "type": "string"
         },
-        "to": {
-          "title": "To",
+        "to_planned_step_id": {
+          "title": "To Planned Step Id",
           "type": "string"
         },
         "type": {
@@ -179,12 +261,12 @@
         }
       },
       "required": [
-        "from",
-        "to",
+        "from_planned_step_id",
+        "to_planned_step_id",
         "type",
         "reason"
       ],
-      "title": "TraceEdge",
+      "title": "TraceDependency",
       "type": "object"
     },
     "TraceLineItem": {
@@ -246,26 +328,16 @@
       "title": "TraceLineItem",
       "type": "object"
     },
-    "TraceNode": {
+    "TracePlannedStep": {
       "additionalProperties": false,
       "properties": {
-        "business_dates": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "title": "Business Dates",
-          "type": "object"
+        "actor_session_id": {
+          "title": "Actor Session Id",
+          "type": "string"
         },
         "case_id": {
           "title": "Case Id",
           "type": "string"
-        },
-        "expected_outputs": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Expected Outputs",
-          "type": "array"
         },
         "inputs": {
           "additionalProperties": true,
@@ -279,136 +351,59 @@
           "title": "Labels",
           "type": "object"
         },
-        "node_id": {
-          "title": "Node Id",
+        "planned_date_inputs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Planned Date Inputs",
+          "type": "object"
+        },
+        "planned_step_id": {
+          "title": "Planned Step Id",
           "type": "string"
         },
-        "session_id": {
-          "title": "Session Id",
-          "type": "string"
+        "planned_synthetic_time": {
+          "$ref": "#/$defs/PlannedSyntheticTime"
+        },
+        "required_sap_object_keys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Sap Object Keys",
+          "type": "array"
         },
         "step_type": {
           "title": "Step Type",
           "type": "string"
         },
-        "target_synthetic_time": {
-          "$ref": "#/$defs/TargetSyntheticTime"
+        "synthetic_actor_id": {
+          "title": "Synthetic Actor Id",
+          "type": "string"
         },
-        "technical_sap_user": {
-          "title": "Technical Sap User",
+        "technical_sap_user_id": {
+          "title": "Technical Sap User Id",
           "type": "string"
         },
         "tool_name": {
           "title": "Tool Name",
           "type": "string"
-        },
-        "virtual_actor_id": {
-          "title": "Virtual Actor Id",
-          "type": "string"
         }
       },
       "required": [
-        "node_id",
+        "planned_step_id",
         "case_id",
         "step_type",
         "tool_name",
-        "virtual_actor_id",
-        "technical_sap_user",
-        "session_id",
+        "synthetic_actor_id",
+        "technical_sap_user_id",
+        "actor_session_id",
         "inputs",
-        "expected_outputs",
-        "business_dates",
-        "target_synthetic_time",
+        "required_sap_object_keys",
+        "planned_date_inputs",
+        "planned_synthetic_time",
         "labels"
       ],
-      "title": "TraceNode",
-      "type": "object"
-    },
-    "TraceSession": {
-      "additionalProperties": false,
-      "properties": {
-        "login_url_env_var": {
-          "title": "Login Url Env Var",
-          "type": "string"
-        },
-        "password_env_var": {
-          "title": "Password Env Var",
-          "type": "string"
-        },
-        "password_selector": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Password Selector"
-        },
-        "session_id": {
-          "title": "Session Id",
-          "type": "string"
-        },
-        "submit_selector": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Submit Selector"
-        },
-        "success_selector": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Success Selector"
-        },
-        "technical_user_id": {
-          "title": "Technical User Id",
-          "type": "string"
-        },
-        "username_env_var": {
-          "title": "Username Env Var",
-          "type": "string"
-        },
-        "username_selector": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Username Selector"
-        },
-        "virtual_actor_id": {
-          "title": "Virtual Actor Id",
-          "type": "string"
-        }
-      },
-      "required": [
-        "session_id",
-        "virtual_actor_id",
-        "technical_user_id",
-        "username_env_var",
-        "password_env_var",
-        "login_url_env_var"
-      ],
-      "title": "TraceSession",
+      "title": "TracePlannedStep",
       "type": "object"
     },
     "ValidationReport": {
@@ -439,6 +434,13 @@
   },
   "additionalProperties": false,
   "properties": {
+    "actor_sessions": {
+      "items": {
+        "$ref": "#/$defs/TraceActorSession"
+      },
+      "title": "Actor Sessions",
+      "type": "array"
+    },
     "cases": {
       "items": {
         "$ref": "#/$defs/TraceCase"
@@ -465,13 +467,6 @@
       "title": "Run Id",
       "type": "string"
     },
-    "sessions": {
-      "items": {
-        "$ref": "#/$defs/TraceSession"
-      },
-      "title": "Sessions",
-      "type": "array"
-    },
     "tool_catalog_hash": {
       "title": "Tool Catalog Hash",
       "type": "string"
@@ -495,7 +490,7 @@
     "tool_catalog_hash",
     "trace_generator_version",
     "llm_metadata",
-    "sessions",
+    "actor_sessions",
     "cases",
     "dependency_graph",
     "execution_schedule",

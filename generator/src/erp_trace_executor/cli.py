@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 
 from erp_trace_executor.browser.session import BrowserSessionManager
-from erp_trace_executor.canonical import build_init_from_sessions, load_canonical_trace
+from erp_trace_executor.canonical import build_init_from_actor_sessions, load_canonical_trace
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.credentials import load_env_credentials, read_env_values
 from erp_trace_executor.evidence import ExecutionEvidenceWriter
@@ -66,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
         session_manager = BrowserSessionManager(headless=not args.headed)
         trace = load_canonical_trace(args.trace_path)
         env_values = read_env_values(args.env_file)
-        init = build_init_from_sessions(trace, env_values)
+        init = build_init_from_actor_sessions(trace, env_values)
         artifact_dir = args.artifact_dir or args.trace_path.parent
         results = executor.execute_canonical(
             trace,

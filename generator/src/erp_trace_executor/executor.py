@@ -7,7 +7,7 @@ from typing import Any
 from playwright.sync_api import Error as PlaywrightError
 from pydantic import ValidationError
 
-from erp_trace_executor.canonical import CanonicalNode, CanonicalTrace
+from erp_trace_executor.canonical import CanonicalPlannedStep, CanonicalTrace
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.credentials import EnvCredentialStore
 from erp_trace_executor.evidence import ExecutionEvidenceWriter
@@ -26,7 +26,7 @@ SAP_HOME_NAVIGATION_TIMEOUT_MS = 1_000
 
 
 class TraceExecutor:
-    """Executes canonical trace nodes in scheduled wave order."""
+    """Executes canonical planned steps in scheduled wave order."""
 
     def __init__(
         self,
@@ -50,7 +50,10 @@ class TraceExecutor:
     ) -> list[ToolResult]:
         results: list[ToolResult] = []
         failed_cases: set[str] = set()
-        nodes_by_id = {node.node_id: node for node in trace.dependency_graph.nodes}
+        planned_steps_by_id = {
+            planned_step.planned_step_id: planned_step
+            for planned_step in trace.dependency_graph.planned_steps
+        }
         cases_by_id = {case.case_id: case for case in trace.cases}
 
         evidence_writer.log_event("run_started")
@@ -59,8 +62,8 @@ class TraceExecutor:
                 login_record = self._build_init_login_record(init_user, line_number=init.line_number)
                 evidence_writer.log_event(
                     "login_started",
-                    session_id=login_record.session_id,
-                    virtual_actor_id=login_record.user_id,
+                    actor_session_id=login_record.actor_session_id,
+                    synthetic_actor_id=login_record.synthetic_actor_id,
                 )
                 try:
                     login_context = context_factory(login_record)
@@ -68,20 +71,20 @@ class TraceExecutor:
                 except KeyboardInterrupt:
                     evidence_writer.log_event(
                         "login_interrupted",
-                        session_id=login_record.session_id,
-                        virtual_actor_id=login_record.user_id,
+                        actor_session_id=login_record.actor_session_id,
+                        synthetic_actor_id=login_record.synthetic_actor_id,
                     )
                     evidence_writer.log_event(
                         "run_interrupted",
-                        session_id=login_record.session_id,
-                        virtual_actor_id=login_record.user_id,
+                        actor_session_id=login_record.actor_session_id,
+                        synthetic_actor_id=login_record.synthetic_actor_id,
                     )
                     raise
                 except Exception as exc:
                     evidence_writer.log_event(
                         "login_failed",
-                        session_id=login_record.session_id,
-                        virtual_actor_id=login_record.user_id,
+                        actor_session_id=login_record.actor_session_id,
+                        synthetic_actor_id=login_record.synthetic_actor_id,
                         error=str(exc),
                     )
                     evidence_writer.log_event("run_failed", error=str(exc))
@@ -90,44 +93,44 @@ class TraceExecutor:
                 self._remember_home_url(login_record, login_result)
                 evidence_writer.log_event(
                     "login_succeeded",
-                    session_id=login_record.session_id,
-                    virtual_actor_id=login_record.user_id,
+                    actor_session_id=login_record.actor_session_id,
+                    synthetic_actor_id=login_record.synthetic_actor_id,
                 )
 
             for wave in trace.execution_schedule.waves:
                 evidence_writer.log_event("wave_started", wave_id=wave.wave_id, wave_sequence_no=wave.sequence_no)
-                for scheduled_node in sorted(wave.nodes, key=lambda item: item.startup_order):
-                    node = nodes_by_id[scheduled_node.node_id]
-                    case = cases_by_id[node.case_id]
+                for scheduled_step in sorted(wave.planned_steps, key=lambda item: item.startup_order):
+                    planned_step = planned_steps_by_id[scheduled_step.planned_step_id]
+                    case = cases_by_id[planned_step.case_id]
                     event_meta = _canonical_event_meta(
                         trace=trace,
-                        node=node,
-                        scenario_id=case.scenario_id,
+                        node=planned_step,
+                        case_scenario_type=case.case_scenario_type,
                         wave_id=wave.wave_id,
                         wave_sequence_no=wave.sequence_no,
-                        startup_order=scheduled_node.startup_order,
+                        startup_order=scheduled_step.startup_order,
                     )
-                    if node.case_id in failed_cases:
-                        evidence_writer.log_event("node_skipped", reason="case_failed", **event_meta)
+                    if planned_step.case_id in failed_cases:
+                        evidence_writer.log_event("planned_step_skipped", reason="case_failed", **event_meta)
                         continue
 
-                    evidence_writer.log_event("node_started", **event_meta)
-                    record = _canonical_node_to_record(node, event_meta)
+                    evidence_writer.log_event("planned_step_started", **event_meta)
+                    record = _canonical_planned_step_to_record(planned_step, event_meta)
                     context = None
                     try:
                         spec, params, parent_references, context = self._prepare_canonical_node(record, context_factory)
                         result = spec.run(context, params)
                         self._attach_fiori_messages(context, result)
-                        _validate_expected_outputs(node, result)
+                        _validate_required_sap_object_keys(planned_step, result)
                     except KeyboardInterrupt:
-                        evidence_writer.log_event("node_interrupted", **event_meta)
+                        evidence_writer.log_event("planned_step_interrupted", **event_meta)
                         evidence_writer.log_event("run_interrupted", **event_meta)
                         raise
                     except Exception as exc:
-                        failed_cases.add(node.case_id)
+                        failed_cases.add(planned_step.case_id)
                         sap_messages = self._capture_fiori_messages(context)
                         evidence_writer.log_event(
-                            "node_failed",
+                            "planned_step_failed",
                             error=_safe_error_text(exc),
                             sap_messages=sap_messages,
                             **event_meta,
@@ -161,14 +164,14 @@ class TraceExecutor:
                     )
                     _write_object_registry_entries(
                         evidence_writer=evidence_writer,
-                        node=node,
-                        scenario_id=case.scenario_id,
+                        node=planned_step,
+                        case_scenario_type=case.case_scenario_type,
                         result=result,
                         parent_references=parent_references,
                     )
                     self._remember_home_url(record, result)
                     self._return_home_after_tool(record, context, result)
-                    evidence_writer.log_event("node_succeeded", **event_meta)
+                    evidence_writer.log_event("planned_step_succeeded", **event_meta)
                 evidence_writer.log_event("wave_completed", wave_id=wave.wave_id, wave_sequence_no=wave.sequence_no)
 
             evidence_writer.log_event("run_completed", failed_case_count=len(failed_cases))
@@ -182,9 +185,9 @@ class TraceExecutor:
 
     def _build_init_login_record(self, init_user: SessionInitUser, *, line_number: int) -> ExecutionTaskRecord:
         return ExecutionTaskRecord(
-            task_id=f"init-login-{init_user.session_id}",
-            session_id=init_user.session_id,
-            user_id=init_user.user_id,
+            planned_step_id=f"init-login-{init_user.actor_session_id}",
+            actor_session_id=init_user.actor_session_id,
+            synthetic_actor_id=init_user.synthetic_actor_id,
             tool="fiori.login",
             input={},
             meta={"kind": "init"},
@@ -206,15 +209,15 @@ class TraceExecutor:
 
     def _resolve_input(self, record: ExecutionTaskRecord) -> dict[str, Any]:
         case_id = self._case_id(record)
-        return self._resolve_value(record.input, case_id=case_id, task_id=record.task_id)
+        return self._resolve_value(record.input, case_id=case_id, planned_step_id=record.planned_step_id)
 
-    def _resolve_value(self, value: Any, *, case_id: str | None, task_id: str) -> Any:
+    def _resolve_value(self, value: Any, *, case_id: str | None, planned_step_id: str) -> Any:
         if isinstance(value, str) and value.startswith("$"):
-            return self._state_store.resolve(case_id, value, task_id=task_id)
+            return self._state_store.resolve(case_id, value, planned_step_id=planned_step_id)
         if isinstance(value, dict):
-            return {key: self._resolve_value(item, case_id=case_id, task_id=task_id) for key, item in value.items()}
+            return {key: self._resolve_value(item, case_id=case_id, planned_step_id=planned_step_id) for key, item in value.items()}
         if isinstance(value, list):
-            return [self._resolve_value(item, case_id=case_id, task_id=task_id) for item in value]
+            return [self._resolve_value(item, case_id=case_id, planned_step_id=planned_step_id) for item in value]
         return value
 
     def _record_state_if_needed(self, record: ExecutionTaskRecord, result: ToolResult) -> None:
@@ -227,7 +230,7 @@ class TraceExecutor:
         if case_id is None:
             return
 
-        self._state_store.record_tool_result(case_id, record.task_id, result)
+        self._state_store.record_tool_result(case_id, record.planned_step_id, result)
 
     def _attach_fiori_messages(self, context: Any, result: ToolResult) -> None:
         if not hasattr(context, "get_browser_session"):
@@ -297,7 +300,7 @@ class TraceExecutor:
 
         home_url = result.data.get("current_url") or result.data.get("url")
         if isinstance(home_url, str) and home_url:
-            self._home_urls[record.session_id] = home_url
+            self._home_urls[record.actor_session_id] = home_url
 
     def _return_home_after_tool(self, record: ExecutionTaskRecord, context: Any, result: ToolResult) -> None:
         if record.tool == "fiori.login" or not record.tool.startswith("fiori."):
@@ -321,10 +324,11 @@ class TraceExecutor:
         if logo_clicked:
             return
 
-        home_url = self._home_urls.get(record.session_id)
+        home_url = self._home_urls.get(record.actor_session_id)
         if home_url is None:
             raise ToolExecutionError(
-                f"Could not return session '{record.session_id}' to SAP home after task '{record.task_id}': "
+                f"Could not return actor session '{record.actor_session_id}' to SAP home after planned step "
+                f"'{record.planned_step_id}': "
                 "SAP logo click failed and no home URL is known"
             )
 
@@ -363,11 +367,11 @@ class TraceExecutor:
         return spec, params, parent_references, context
 
 
-def _canonical_node_to_record(node: CanonicalNode, meta: dict[str, Any]) -> ExecutionTaskRecord:
+def _canonical_planned_step_to_record(node: CanonicalPlannedStep, meta: dict[str, Any]) -> ExecutionTaskRecord:
     return ExecutionTaskRecord(
-        task_id=node.node_id,
-        session_id=node.session_id,
-        user_id=node.virtual_actor_id,
+        planned_step_id=node.planned_step_id,
+        actor_session_id=node.actor_session_id,
+        synthetic_actor_id=node.synthetic_actor_id,
         tool=node.tool_name,
         input=node.inputs,
         meta=meta,
@@ -378,8 +382,8 @@ def _canonical_node_to_record(node: CanonicalNode, meta: dict[str, Any]) -> Exec
 def _canonical_event_meta(
     *,
     trace: CanonicalTrace,
-    node: CanonicalNode,
-    scenario_id: str,
+    node: CanonicalPlannedStep,
+    case_scenario_type: str,
     wave_id: str,
     wave_sequence_no: int,
     startup_order: int,
@@ -390,32 +394,36 @@ def _canonical_event_meta(
         "wave_sequence_no": wave_sequence_no,
         "startup_order": startup_order,
         "case_id": node.case_id,
-        "node_id": node.node_id,
+        "planned_step_id": node.planned_step_id,
         "step_type": node.step_type,
-        "scenario_id": scenario_id,
-        "virtual_actor_id": node.virtual_actor_id,
-        "technical_user_id": node.technical_sap_user,
-        "session_id": node.session_id,
+        "case_scenario_type": case_scenario_type,
+        "synthetic_actor_id": node.synthetic_actor_id,
+        "technical_sap_user_id": node.technical_sap_user_id,
+        "actor_session_id": node.actor_session_id,
         "tool": node.tool_name,
-        "target_synthetic_start": node.target_synthetic_time.start,
-        "target_synthetic_end": node.target_synthetic_time.end,
-        "expected_outputs": node.expected_outputs,
+        "planned_synthetic_start": node.planned_synthetic_time.start,
+        "planned_synthetic_end": node.planned_synthetic_time.end,
+        "required_sap_object_keys": node.required_sap_object_keys,
     }
 
 
-def _validate_expected_outputs(node: CanonicalNode, result: ToolResult) -> None:
+def _validate_required_sap_object_keys(node: CanonicalPlannedStep, result: ToolResult) -> None:
     returned = {
         (item.get("object_type"), key)
         for item in result.data.get("returned_objects", [])
         if isinstance(item, dict)
         for key in (item.get("keys") or {}).keys()
     }
-    for expected_output in node.expected_outputs:
-        parts = expected_output.split(".")
+    for required_sap_object_key in node.required_sap_object_keys:
+        parts = required_sap_object_key.split(".")
         if len(parts) != 2 or not all(parts):
-            raise ToolExecutionError(f"Invalid expected output '{expected_output}' for node '{node.node_id}'")
+            raise ToolExecutionError(
+                f"Invalid required SAP object key '{required_sap_object_key}' for planned step '{node.planned_step_id}'"
+            )
         if (parts[0], parts[1]) not in returned:
-            raise ToolExecutionError(f"Missing expected output '{expected_output}' for node '{node.node_id}'")
+            raise ToolExecutionError(
+                f"Missing required SAP object key '{required_sap_object_key}' for planned step '{node.planned_step_id}'"
+            )
 
 
 def _safe_error_text(exc: Exception) -> str:
@@ -425,8 +433,8 @@ def _safe_error_text(exc: Exception) -> str:
 def _write_object_registry_entries(
     *,
     evidence_writer: ExecutionEvidenceWriter,
-    node: CanonicalNode,
-    scenario_id: str,
+    node: CanonicalPlannedStep,
+    case_scenario_type: str,
     result: ToolResult,
     parent_references: list[dict[str, Any]],
 ) -> None:
@@ -435,10 +443,11 @@ def _write_object_registry_entries(
             continue
         evidence_writer.record_object(
             case_id=node.case_id,
-            node_id=node.node_id,
-            scenario_id=scenario_id,
-            virtual_actor_id=node.virtual_actor_id,
-            technical_user_id=node.technical_sap_user,
+            planned_step_id=node.planned_step_id,
+            actor_session_id=node.actor_session_id,
+            case_scenario_type=case_scenario_type,
+            synthetic_actor_id=node.synthetic_actor_id,
+            technical_sap_user_id=node.technical_sap_user_id,
             tool=node.tool_name,
             object_type=returned_object.get("object_type"),
             keys=returned_object.get("keys", {}),

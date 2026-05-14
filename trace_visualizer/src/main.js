@@ -5,7 +5,7 @@ import "./styles.css";
 const views = [
   ["timeline", "Timeline"],
   ["graph", "Graph"],
-  ["sessions", "Sessions"],
+  ["sessions", "Actor Sessions"],
   ["cases", "Cases"],
   ["manifest", "Manifest"],
   ["raw", "Raw"],
@@ -80,10 +80,10 @@ function renderSummary(model) {
     <section class="summary-grid" aria-label="Run summary">
       ${metric("Run", model.runId)}
       ${metric("Cases", model.cases.length)}
-      ${metric("Nodes", model.nodes.length)}
-      ${metric("Edges", model.edges.length)}
+      ${metric("Planned Steps", model.nodes.length)}
+      ${metric("Dependencies", model.edges.length)}
       ${metric("Waves", model.waves.length)}
-      ${metric("Sessions", model.sessions.length)}
+      ${metric("Actor Sessions", model.sessions.length)}
     </section>
   `;
 }
@@ -218,7 +218,7 @@ function renderTimeline(model) {
 
   const rows = model.caseRows.filter((row) => row.caseMatches || row.nodes.some((node) => matchesNode(node, model)));
   if (rows.length === 0) {
-    return renderBlank("No matching nodes", "Search did not match loaded trace data.");
+    return renderBlank("No matching planned steps", "Search did not match loaded trace data.");
   }
 
   return `
@@ -234,8 +234,8 @@ function renderTimeline(model) {
             <section class="timeline-row">
               <div class="case-rail">
                 <strong>${escapeHtml(row.caseId)}</strong>
-                <span>${escapeHtml(row.caseLabel || row.processType || "case")}</span>
-                <small>${escapeHtml(row.scenarioId || "")}</small>
+                <span>${escapeHtml(row.processType || "case")}</span>
+                <small>${escapeHtml(row.caseScenarioType || "")}</small>
               </div>
               <div class="step-track">
                 ${visibleNodes.map((node) => renderStepCard(node, model)).join("")}
@@ -249,19 +249,19 @@ function renderTimeline(model) {
 }
 
 function renderStepCard(node, model) {
-  const schedule = model.scheduleByNode.get(node.node_id);
-  const selected = node.node_id === state.selectedNodeId ? "selected" : "";
-  const manifestTimestamp = model.timestampByNode.get(node.node_id);
+  const schedule = model.scheduleByNode.get(node.planned_step_id);
+  const selected = node.planned_step_id === state.selectedNodeId ? "selected" : "";
+  const manifestTimestamp = model.timestampByNode.get(node.planned_step_id);
   return `
-    <button type="button" class="step-card ${selected}" data-node-id="${escapeAttr(node.node_id)}">
+    <button type="button" class="step-card ${selected}" data-node-id="${escapeAttr(node.planned_step_id)}">
       <span class="step-card-top">
-        <strong>${breakable(node.node_id)}</strong>
+        <strong>${breakable(node.planned_step_id)}</strong>
         <em>${escapeHtml(schedule?.wave_id || "unscheduled")}</em>
       </span>
       <span class="step-type">${breakable(node.step_type)}</span>
       <span class="step-meta">${breakable(node.tool_name)}</span>
-      <span class="step-meta">${breakable(node.virtual_actor_id)} / ${breakable(node.session_id)}</span>
-      <span class="step-time">${escapeHtml(formatRange(manifestTimestamp?.target_synthetic_start || node.target_synthetic_time?.start, manifestTimestamp?.target_synthetic_end || node.target_synthetic_time?.end))}</span>
+      <span class="step-meta">${breakable(node.synthetic_actor_id)} / ${breakable(node.actor_session_id)}</span>
+      <span class="step-time">${escapeHtml(formatRange(manifestTimestamp?.planned_synthetic_start || node.planned_synthetic_time?.start, manifestTimestamp?.planned_synthetic_end || node.planned_synthetic_time?.end))}</span>
     </button>
   `;
 }
@@ -274,7 +274,7 @@ function renderGraphView(model) {
   return `
     <div class="section-title">
       <h2>Dependency Graph</h2>
-      <span>${model.visibleNodes.length} visible nodes</span>
+      <span>${model.visibleNodes.length} visible planned steps</span>
     </div>
     <div id="graphCanvas" class="graph-canvas" aria-label="Dependency graph"></div>
   `;
@@ -287,14 +287,14 @@ function renderGraph(model) {
     return;
   }
 
-  const visibleIds = new Set(model.visibleNodes.map((node) => node.node_id));
+  const visibleIds = new Set(model.visibleNodes.map((node) => node.planned_step_id));
   const elements = [
     ...model.visibleNodes.map((node) => ({
       data: {
-        id: node.node_id,
-        label: `${node.node_id}\n${node.step_type}`,
+        id: node.planned_step_id,
+        label: `${node.planned_step_id}\n${node.step_type}`,
         caseId: node.case_id,
-        selected: node.node_id === state.selectedNodeId,
+        selected: node.planned_step_id === state.selectedNodeId,
       },
     })),
     ...model.edges
@@ -373,20 +373,20 @@ function renderGraph(model) {
 
 function renderSessions(model) {
   if (!model.execution) {
-    return renderBlank("No sessions", "Load an execution trace to inspect sessions.");
+    return renderBlank("No actor sessions", "Load an execution trace to inspect actor sessions.");
   }
 
   return `
     <div class="section-title">
-      <h2>Sessions</h2>
+      <h2>Actor Sessions</h2>
       <span>${model.sessions.length} records</span>
     </div>
     ${renderTable(
-      ["session_id", "virtual_actor_id", "technical_user_id", "username_env_var", "login_url_env_var"],
+      ["actor_session_id", "synthetic_actor_id", "technical_sap_user_id", "username_env_var", "login_url_env_var"],
       model.sessions.map((session) => [
-        session.session_id,
-        session.virtual_actor_id,
-        session.technical_user_id,
+        session.actor_session_id,
+        session.synthetic_actor_id,
+        session.technical_sap_user_id,
         session.username_env_var,
         session.login_url_env_var,
       ]),
@@ -404,8 +404,7 @@ function renderCases(model) {
     return lineItems.map((lineItem) => [
       item.case_id,
       item.process_type,
-      item.scenario_id,
-      item.case_label,
+      item.case_scenario_type,
       lineItem.line_id,
       lineItem.material_id,
       lineItem.vendor_id,
@@ -426,8 +425,7 @@ function renderCases(model) {
       [
         "case_id",
         "process",
-        "scenario",
-        "label",
+        "case_scenario_type",
         "line_id",
         "material",
         "vendor",
@@ -461,37 +459,37 @@ function renderManifest(model) {
       ${renderDataSection(
         "Actor Projection",
         renderTable(
-          ["virtual_actor_id", "technical_user_id", "session_id", "expose_as"],
+          ["synthetic_actor_id", "technical_sap_user_id", "actor_session_id", "expose_as"],
           (manifest.actor_projection || []).map((item) => [
-            item.virtual_actor_id,
-            item.technical_user_id,
-            item.session_id,
+            item.synthetic_actor_id,
+            item.technical_sap_user_id,
+            item.actor_session_id,
             item.expose_as,
           ]),
         ),
       )}
       ${renderDataSection(
-        "Node Timestamps",
+        "Planned Step Timestamps",
         renderTable(
-          ["node_id", "case_id", "step_type", "start", "end", "business_dates"],
-          (manifest.node_timestamps || []).map((item) => [
-            item.node_id,
+          ["planned_step_id", "case_id", "step_type", "start", "end", "planned_date_inputs"],
+          (manifest.planned_step_timestamps || []).map((item) => [
+            item.planned_step_id,
             item.case_id,
             item.step_type,
-            item.target_synthetic_start,
-            item.target_synthetic_end,
-            item.business_dates,
+            item.planned_synthetic_start,
+            item.planned_synthetic_end,
+            item.planned_date_inputs,
           ]),
         ),
       )}
       ${renderDataSection(
-        "Expected Object Keys",
+        "Required SAP Object Keys",
         renderTable(
-          ["node_id", "case_id", "expected_outputs"],
-          (manifest.expected_object_keys || []).map((item) => [
-            item.node_id,
+          ["planned_step_id", "case_id", "required_sap_object_keys"],
+          (manifest.required_sap_object_keys || []).map((item) => [
+            item.planned_step_id,
             item.case_id,
-            item.expected_outputs,
+            item.required_sap_object_keys,
           ]),
         ),
       )}
@@ -503,11 +501,11 @@ function renderManifest(model) {
         ),
       )}
       ${renderDataSection(
-        "Date Overrides",
+        "Planned Date Input Overrides",
         renderTable(
-          ["node_id", "case_id", "step_type", "object_type", "field", "planned_value", "runtime_policy", "reason"],
-          (manifest.date_overrides || []).map((item) => [
-            item.node_id,
+          ["planned_step_id", "case_id", "step_type", "object_type", "field", "planned_value", "runtime_policy", "reason"],
+          (manifest.planned_date_input_overrides || []).map((item) => [
+            item.planned_step_id,
             item.case_id,
             item.step_type,
             item.object_type,
@@ -526,8 +524,8 @@ function renderManifest(model) {
         ),
       )}
       ${renderDataSection(
-        "Failed Case Policy",
-        renderKeyValueRows(manifest.failed_case_policy || {}),
+        "Failed Process Case Policy",
+        renderKeyValueRows(manifest.failed_process_case_policy || {}),
       )}
     </div>
   `;
@@ -563,20 +561,20 @@ function renderDetail(model) {
 
   const node = model.nodeById.get(state.selectedNodeId) || model.nodes[0];
   if (!node) {
-    return renderBlank("No node selected", "Trace has no dependency graph nodes.");
+    return renderBlank("No planned step selected", "Trace has no dependency graph planned steps.");
   }
 
-  const schedule = model.scheduleByNode.get(node.node_id);
-  const timestamp = model.timestampByNode.get(node.node_id);
-  const expectedKeys = model.expectedKeysByNode.get(node.node_id) || [];
-  const dateOverrides = model.dateOverridesByNode.get(node.node_id) || [];
-  const incoming = model.edges.filter((edge) => edge.to === node.node_id);
-  const outgoing = model.edges.filter((edge) => edge.from === node.node_id);
+  const schedule = model.scheduleByNode.get(node.planned_step_id);
+  const timestamp = model.timestampByNode.get(node.planned_step_id);
+  const expectedKeys = model.expectedKeysByNode.get(node.planned_step_id) || [];
+  const dateOverrides = model.dateOverridesByNode.get(node.planned_step_id) || [];
+  const incoming = model.edges.filter((edge) => edge.to === node.planned_step_id);
+  const outgoing = model.edges.filter((edge) => edge.from === node.planned_step_id);
 
   return `
     <div class="detail-header">
       <div>
-        <h2>${escapeHtml(node.node_id)}</h2>
+        <h2>${escapeHtml(node.planned_step_id)}</h2>
         <span>${escapeHtml(node.step_type)}</span>
       </div>
       <button type="button" class="ghost compact" data-clear-selection>Clear</button>
@@ -586,25 +584,25 @@ function renderDetail(model) {
       renderKeyValueRows({
         case_id: node.case_id,
         tool_name: node.tool_name,
-        virtual_actor_id: node.virtual_actor_id,
-        technical_sap_user: node.technical_sap_user,
-        session_id: node.session_id,
+        synthetic_actor_id: node.synthetic_actor_id,
+        technical_sap_user_id: node.technical_sap_user_id,
+        actor_session_id: node.actor_session_id,
         wave_id: schedule?.wave_id || "",
         startup_order: schedule?.startup_order || "",
-        target_start: node.target_synthetic_time?.start,
-        target_end: node.target_synthetic_time?.end,
+        planned_start: node.planned_synthetic_time?.start,
+        planned_end: node.planned_synthetic_time?.end,
       }),
     )}
     ${renderDataSection("Inputs", renderJsonBlock(node.inputs || {}))}
-    ${renderDataSection("Expected Outputs", renderJsonBlock(node.expected_outputs || []))}
-    ${renderDataSection("Business Dates", renderJsonBlock(node.business_dates || {}))}
+    ${renderDataSection("Required SAP Object Keys", renderJsonBlock(node.required_sap_object_keys || []))}
+    ${renderDataSection("Planned Date Inputs", renderJsonBlock(node.planned_date_inputs || {}))}
     ${renderDataSection("Labels", renderJsonBlock(node.labels || {}))}
-    ${renderDataSection("Incoming Edges", renderJsonBlock(incoming))}
-    ${renderDataSection("Outgoing Edges", renderJsonBlock(outgoing))}
+    ${renderDataSection("Incoming Dependencies", renderJsonBlock(incoming))}
+    ${renderDataSection("Outgoing Dependencies", renderJsonBlock(outgoing))}
     ${renderDataSection("Manifest Timestamp", renderJsonBlock(timestamp || null))}
-    ${renderDataSection("Manifest Expected Keys", renderJsonBlock(expectedKeys))}
-    ${renderDataSection("Manifest Date Overrides", renderJsonBlock(dateOverrides))}
-    ${renderDataSection("Full Node Object", renderJsonBlock(node))}
+    ${renderDataSection("Manifest Required SAP Object Keys", renderJsonBlock(expectedKeys))}
+    ${renderDataSection("Manifest Planned Date Input Overrides", renderJsonBlock(dateOverrides))}
+    ${renderDataSection("Full Planned Step Object", renderJsonBlock(node))}
   `;
 }
 
@@ -853,7 +851,7 @@ function classifyArtifact(value) {
   if (value.dependency_graph && value.execution_schedule) {
     return "execution";
   }
-  if (value.timestamp_policy && Array.isArray(value.node_timestamps)) {
+  if (value.timestamp_policy && Array.isArray(value.planned_step_timestamps)) {
     return "manifest";
   }
   return "";
@@ -874,29 +872,29 @@ function getActiveModel() {
 
   const execution = run.execution;
   const manifest = run.manifest;
-  const nodes = execution?.dependency_graph?.nodes || [];
-  const edges = (execution?.dependency_graph?.edges || []).map((edge) => ({
+  const nodes = execution?.dependency_graph?.planned_steps || [];
+  const edges = (execution?.dependency_graph?.dependencies || []).map((edge) => ({
     ...edge,
-    from: edge.from || edge.from_,
+    from: edge.from_planned_step_id,
+    to: edge.to_planned_step_id,
   }));
   const missingEdgeSourceCount = edges.filter((edge) => !edge.from).length;
   if (missingEdgeSourceCount > 0) {
     warnMissingEdgeSources(run.runId, missingEdgeSourceCount);
   }
-  const sessions = execution?.sessions || [];
+  const sessions = execution?.actor_sessions || [];
   const cases = execution?.cases || [];
   const waves = execution?.execution_schedule?.waves || [];
 
-  const nodeById = new Map(nodes.map((node) => [node.node_id, node]));
+  const nodeById = new Map(nodes.map((node) => [node.planned_step_id, node]));
   const caseById = new Map(cases.map((item) => [item.case_id, item]));
   const scheduleByNode = buildScheduleIndex(waves);
-  const timestampByNode = indexByFirst(manifest?.node_timestamps || [], "node_id");
-  const expectedKeysByNode = groupBy(manifest?.expected_object_keys || [], "node_id");
-  const dateOverridesByNode = groupBy(manifest?.date_overrides || [], "node_id");
-  const labelsByCase = indexByFirst(manifest?.case_labels || [], "case_id");
+  const timestampByNode = indexByFirst(manifest?.planned_step_timestamps || [], "planned_step_id");
+  const expectedKeysByNode = groupBy(manifest?.required_sap_object_keys || [], "planned_step_id");
+  const dateOverridesByNode = groupBy(manifest?.planned_date_input_overrides || [], "planned_step_id");
   const lineageByCase = indexByFirst(manifest?.object_lineage || [], "case_id");
 
-  const caseRows = buildCaseRows({ nodes, cases, caseById, labelsByCase });
+  const caseRows = buildCaseRows({ nodes, cases, caseById });
   const visibleNodes = nodes.filter((node) => isVisibleNode(node, caseById.get(node.case_id)));
 
   return {
@@ -914,7 +912,6 @@ function getActiveModel() {
     timestampByNode,
     expectedKeysByNode,
     dateOverridesByNode,
-    labelsByCase,
     lineageByCase,
     caseRows,
     visibleNodes,
@@ -928,7 +925,7 @@ function ensureValidNodeSelection(model) {
     return;
   }
   if (!model.nodeById.has(state.selectedNodeId)) {
-    state.selectedNodeId = model.nodes[0]?.node_id || "";
+    state.selectedNodeId = model.nodes[0]?.planned_step_id || "";
   }
 }
 
@@ -944,8 +941,8 @@ function warnMissingEdgeSources(runId, count) {
 function buildScheduleIndex(waves) {
   const byNode = new Map();
   waves.forEach((wave) => {
-    (wave.nodes || []).forEach((node) => {
-      byNode.set(node.node_id, {
+    (wave.planned_steps || []).forEach((node) => {
+      byNode.set(node.planned_step_id, {
         wave_id: wave.wave_id,
         sequence_no: wave.sequence_no,
         startup_order: node.startup_order,
@@ -955,20 +952,18 @@ function buildScheduleIndex(waves) {
   return byNode;
 }
 
-function buildCaseRows({ nodes, cases, caseById, labelsByCase }) {
+function buildCaseRows({ nodes, cases, caseById }) {
   const grouped = groupBy(nodes, "case_id");
   const caseIds = new Set([...cases.map((item) => item.case_id), ...grouped.keys()]);
 
   return [...caseIds].map((caseId) => {
     const caseRecord = caseById.get(caseId) || {};
-    const labelRecord = labelsByCase.get(caseId) || {};
     const rowNodes = [...(grouped.get(caseId) || [])].sort(compareNodesByTime);
     return {
       caseId,
-      caseLabel: caseRecord.case_label || labelRecord.case_label || "",
       processType: caseRecord.process_type || "",
-      scenarioId: caseRecord.scenario_id || labelRecord.scenario_id || "",
-      caseMatches: matchesText([caseId, caseRecord, labelRecord], state.query),
+      caseScenarioType: caseRecord.case_scenario_type || "",
+      caseMatches: matchesText([caseId, caseRecord], state.query),
       nodes: rowNodes,
     };
   });
@@ -986,12 +981,12 @@ function buildRunWarnings(run, execution, manifest) {
 }
 
 function compareNodesByTime(left, right) {
-  const leftTime = Date.parse(left.target_synthetic_time?.start || "");
-  const rightTime = Date.parse(right.target_synthetic_time?.start || "");
+  const leftTime = Date.parse(left.planned_synthetic_time?.start || "");
+  const rightTime = Date.parse(right.planned_synthetic_time?.start || "");
   if (!Number.isNaN(leftTime) && !Number.isNaN(rightTime) && leftTime !== rightTime) {
     return leftTime - rightTime;
   }
-  return String(left.node_id).localeCompare(String(right.node_id));
+  return String(left.planned_step_id).localeCompare(String(right.planned_step_id));
 }
 
 function isVisibleNode(node, caseRecord) {

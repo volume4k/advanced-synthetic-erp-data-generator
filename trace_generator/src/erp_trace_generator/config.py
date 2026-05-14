@@ -96,14 +96,14 @@ def _technical_user(item: dict[str, Any]) -> TechnicalUser:
         username_env_var=str(item["usernameEnvVar"]),
         password_env_var=str(item["passwordEnvVar"]),
         login_url_env_var=str(item.get("loginUrlEnvVar", "SAP_URL")),
-        max_concurrent_sessions=int(item.get("maxConcurrentSessions", 1)),
+        max_concurrent_actor_sessions=int(item["maxConcurrentActorSessions"]),
     )
 
 
 def _identity_mapping(item: dict[str, Any]) -> IdentityMapping:
     return IdentityMapping(
-        virtual_actor_id=str(item["virtualActorId"]),
-        technical_user_id=str(item["technicalUserId"]),
+        synthetic_actor_id=str(item["syntheticActorId"]),
+        technical_sap_user_id=str(item["technicalSapUserId"]),
     )
 
 
@@ -144,10 +144,10 @@ def _process(item: dict[str, Any], tool_requirements: dict[str, Any]) -> Process
                 step_type=step_type,
                 tool_name=tool_name,
                 input_bindings=tuple(_input_binding(binding, step_type) for binding in step.get("inputBindings", [])),
-                business_date_bindings=tuple(
-                    _input_binding(binding, step_type) for binding in step.get("businessDateBindings", [])
+                planned_date_input_bindings=tuple(
+                    _input_binding(binding, step_type) for binding in step.get("plannedDateInputBindings", [])
                 ),
-                expected_outputs=tuple(str(value) for value in step.get("expectedOutputs", [])),
+                required_sap_object_keys=tuple(str(value) for value in step.get("requiredSapObjectKeys", [])),
             )
         )
 
@@ -189,7 +189,7 @@ def _input_binding(item: dict[str, Any], step_type: str) -> InputBinding:
 
 def _binding_source(value: object) -> BindingSource:
     source = str(value)
-    if source not in {"literal", "master_data", "case", "business_date", "prior_output", "derived"}:
+    if source not in {"literal", "master_data", "case", "planned_date", "prior_output", "derived"}:
         raise TraceGenerationError(f"unsupported binding source '{source}'")
     return source  # type: ignore[return-value]
 
@@ -218,7 +218,7 @@ def _run_settings(item: dict[str, Any]) -> RunSettings:
     }
     return RunSettings(
         case_count=int(item["caseCount"]),
-        max_parallel_sessions=int(item["maxParallelSessions"]),
+        max_parallel_actor_sessions=int(item["maxParallelActorSessions"]),
         target_timezone=str(item["targetTimezone"]),
         active_process_types=tuple(str(value) for value in item["activeProcessTypes"]),
         scheduler_seed=int(item.get("schedulerSeed", 1)),
@@ -262,13 +262,13 @@ def _validate(config: GenerationConfig) -> None:
     actor_ids = {actor.id for actor in config.actors}
     technical_user_ids = {user.id for user in config.technical_users}
     for mapping in config.identity_mappings:
-        if mapping.virtual_actor_id not in actor_ids:
-            raise TraceGenerationError(f"Identity mapping references unknown actor '{mapping.virtual_actor_id}'")
-        if mapping.technical_user_id not in technical_user_ids:
-            raise TraceGenerationError(f"Identity mapping references unknown technical user '{mapping.technical_user_id}'")
+        if mapping.synthetic_actor_id not in actor_ids:
+            raise TraceGenerationError(f"Identity mapping references unknown actor '{mapping.synthetic_actor_id}'")
+        if mapping.technical_sap_user_id not in technical_user_ids:
+            raise TraceGenerationError(f"Identity mapping references unknown technical user '{mapping.technical_sap_user_id}'")
 
     active_process = config.active_process()
-    mapped_actor_ids = {mapping.virtual_actor_id for mapping in config.identity_mappings}
+    mapped_actor_ids = {mapping.synthetic_actor_id for mapping in config.identity_mappings}
     _validate_actor_capabilities(config)
     for step in active_process.steps:
         capable_actors = config.actors_capable_of(active_process.process_type, step.step_type)
@@ -281,15 +281,15 @@ def _validate(config: GenerationConfig) -> None:
             )
         if step.step_type not in config.run_settings.step_duration_minutes:
             raise TraceGenerationError(f"Step '{step.step_type}' has no step duration range")
-        if not step.expected_outputs:
-            raise TraceGenerationError(f"Step '{step.step_type}' has no expected outputs")
+        if not step.required_sap_object_keys:
+            raise TraceGenerationError(f"Step '{step.step_type}' has no required SAP object keys")
         required_fields = set(config.tool_requirements[step.tool_name].required_input_fields)
         bound_fields = {binding.field for binding in step.input_bindings}
         missing_bindings = sorted(required_fields - bound_fields)
         if missing_bindings:
             missing = ", ".join(missing_bindings)
             raise TraceGenerationError(f"Step '{step.step_type}' missing bindings for required fields: {missing}")
-        all_bindings = step.input_bindings + step.business_date_bindings
+        all_bindings = step.input_bindings + step.planned_date_input_bindings
         unknown_binding_steps = {binding.step_type for binding in all_bindings if binding.step_type != step.step_type}
         if unknown_binding_steps:
             raise TraceGenerationError(f"Step '{step.step_type}' has binding with mismatched stepType")
@@ -324,9 +324,9 @@ def _validate_actor_capabilities(config: GenerationConfig) -> None:
 
 
 def _validate_acyclic(process: ProcessDefinition) -> None:
-    edges: dict[str, list[str]] = {step.step_type: [] for step in process.steps}
+    dependencies: dict[str, list[str]] = {step.step_type: [] for step in process.steps}
     for dep in process.dependencies:
-        edges[dep.from_step_type].append(dep.to_step_type)
+        dependencies[dep.from_step_type].append(dep.to_step_type)
 
     visiting: set[str] = set()
     visited: set[str] = set()
@@ -337,10 +337,10 @@ def _validate_acyclic(process: ProcessDefinition) -> None:
         if step_type in visited:
             return
         visiting.add(step_type)
-        for child in edges[step_type]:
+        for child in dependencies[step_type]:
             visit(child)
         visiting.remove(step_type)
         visited.add(step_type)
 
-    for step in edges:
+    for step in dependencies:
         visit(step)

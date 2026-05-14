@@ -51,16 +51,16 @@ def test_registered_business_tools_have_valid_example_trace_inputs():
 
     for trace_path in trace_paths:
         trace = load_canonical_trace(trace_path)
-        for session in trace.sessions:
+        for session in trace.actor_sessions:
             assert session.password_env_var, f"{trace_path} must reference a password env var"
 
-        for node in trace.dependency_graph.nodes:
+        for node in trace.dependency_graph.planned_steps:
             assert "password" not in node.inputs, f"{trace_path} must not embed passwords in node inputs"
             try:
                 spec = registry.get(node.tool_name)
             except Exception as exc:
                 raise AssertionError(
-                    f"{trace_path} node '{node.node_id}' references unregistered tool '{node.tool_name}'"
+                    f"{trace_path} node '{node.planned_step_id}' references unregistered tool '{node.tool_name}'"
                 ) from exc
             spec.input_model.model_validate(node.inputs)
             seen_tools.add(node.tool_name)

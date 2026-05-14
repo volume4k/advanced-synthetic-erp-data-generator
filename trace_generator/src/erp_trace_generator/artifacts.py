@@ -9,14 +9,14 @@ import yaml
 
 from erp_trace_generator.artifact_models import ExecutionTraceArtifact, PostProcessingManifestArtifact
 from erp_trace_generator.errors import TraceGenerationError
-from erp_trace_generator.models import CasePlan, GenerationConfig, GeneratedArtifacts, PlannedNode
+from erp_trace_generator.models import CasePlan, GenerationConfig, GeneratedArtifacts, PlannedStep
 
 
 def write_artifacts(
     *,
     config: GenerationConfig,
     cases: list[CasePlan],
-    nodes: list[PlannedNode],
+    planned_steps: list[PlannedStep],
     waves: list[dict],
     out_dir: str | Path,
     run_id: str,
@@ -30,9 +30,9 @@ def write_artifacts(
     post_processing_manifest_path = output_dir / f"{run_id}.post-processing-manifest.yaml"
 
     execution_trace = _validated_execution_trace(
-        _execution_trace(config, cases, nodes, waves, run_id, seed, config_hash, tool_catalog_hash)
+        _execution_trace(config, cases, planned_steps, waves, run_id, seed, config_hash, tool_catalog_hash)
     )
-    manifest = _validated_manifest(_post_processing_manifest(config, cases, nodes, run_id, config_hash))
+    manifest = _validated_manifest(_post_processing_manifest(config, cases, planned_steps, run_id, config_hash))
 
     execution_trace_path.write_text(yaml.safe_dump(execution_trace, sort_keys=False), encoding="utf-8")
     post_processing_manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
@@ -53,24 +53,28 @@ def _validated_manifest(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_manifest_links(payload: dict[str, Any]) -> None:
-    node_ids = {item["node_id"] for item in payload["node_timestamps"]}
-    case_ids = {item["case_id"] for item in payload["case_labels"]}
-    for item in payload["expected_object_keys"]:
-        if item["node_id"] not in node_ids:
-            raise TraceGenerationError(f"Manifest expected object keys reference unknown node '{item['node_id']}'")
+    planned_step_ids = {item["planned_step_id"] for item in payload["planned_step_timestamps"]}
+    case_ids = {item["case_id"] for item in payload["case_scenario_types"]}
+    for item in payload["required_sap_object_keys"]:
+        if item["planned_step_id"] not in planned_step_ids:
+            raise TraceGenerationError(
+                f"Manifest required SAP object keys reference unknown planned step '{item['planned_step_id']}'"
+            )
         if item["case_id"] not in case_ids:
-            raise TraceGenerationError(f"Manifest expected object keys reference unknown case '{item['case_id']}'")
-    for item in payload["date_overrides"]:
-        if item["node_id"] not in node_ids:
-            raise TraceGenerationError(f"Manifest date override references unknown node '{item['node_id']}'")
+            raise TraceGenerationError(f"Manifest required SAP object keys reference unknown case '{item['case_id']}'")
+    for item in payload["planned_date_input_overrides"]:
+        if item["planned_step_id"] not in planned_step_ids:
+            raise TraceGenerationError(
+                f"Manifest planned date input override references unknown planned step '{item['planned_step_id']}'"
+            )
         if item["case_id"] not in case_ids:
-            raise TraceGenerationError(f"Manifest date override references unknown case '{item['case_id']}'")
+            raise TraceGenerationError(f"Manifest planned date input override references unknown case '{item['case_id']}'")
 
 
 def _execution_trace(
     config: GenerationConfig,
     cases: list[CasePlan],
-    nodes: list[PlannedNode],
+    planned_steps: list[PlannedStep],
     waves: list[dict],
     run_id: str,
     seed: int,
@@ -79,25 +83,30 @@ def _execution_trace(
 ) -> dict[str, Any]:
     process = config.active_process()
     return {
-        "trace_version": "0.1",
+        "trace_version": "0.2",
         "run_id": run_id,
         "config_hash": config_hash,
         "tool_catalog_hash": tool_catalog_hash,
         "trace_generator_version": "0.1.0",
         "llm_metadata": {"used": False, "seed": seed},
-        "sessions": _session_records(config, nodes),
+        "actor_sessions": _session_records(config, planned_steps),
         "cases": [_case_record(case) for case in cases],
         "dependency_graph": {
-            "nodes": [_node_record(node) for node in nodes],
-            "edges": [
-                {"from": f"{case.case_id}_{_step_id(process, dep.from_step_type)}", "to": f"{case.case_id}_{_step_id(process, dep.to_step_type)}", "type": "data_dependency", "reason": dep.description}
+            "planned_steps": [_planned_step_record(planned_step) for planned_step in planned_steps],
+            "dependencies": [
+                {
+                    "from_planned_step_id": f"{case.case_id}_{_step_id(process, dep.from_step_type)}",
+                    "to_planned_step_id": f"{case.case_id}_{_step_id(process, dep.to_step_type)}",
+                    "type": "data_dependency",
+                    "reason": dep.description,
+                }
                 for case in cases
                 for dep in process.dependencies
             ],
         },
         "execution_schedule": {
             "mode": "waves",
-            "max_parallel_sessions": config.run_settings.max_parallel_sessions,
+            "max_parallel_actor_sessions": config.run_settings.max_parallel_actor_sessions,
             "waves": waves,
         },
         "validation_report": {"errors": [], "warnings": []},
@@ -107,7 +116,7 @@ def _execution_trace(
 def _post_processing_manifest(
     config: GenerationConfig,
     cases: list[CasePlan],
-    nodes: list[PlannedNode],
+    planned_steps: list[PlannedStep],
     run_id: str,
     config_hash: str,
 ) -> dict[str, Any]:
@@ -116,45 +125,45 @@ def _post_processing_manifest(
         technical_user = config.technical_user_for_actor(actor.id)
         actor_projection.append(
             {
-                "virtual_actor_id": actor.id,
-                "technical_user_id": technical_user.id,
-                "session_id": f"{actor.id}-session",
+                "synthetic_actor_id": actor.id,
+                "technical_sap_user_id": technical_user.id,
+                "actor_session_id": f"{actor.id}-session",
                 "expose_as": actor.expose_as,
             }
         )
 
     return {
-        "manifest_version": "0.1",
+        "manifest_version": "0.2",
         "run_id": run_id,
         "config_hash": config_hash,
         "timestamp_policy": {
-            "source": "planned_target_synthetic_time",
+            "source": "planned_synthetic_time",
             "preserve_process_order": True,
             "generator_real_time_is_not_synthetic_time": True,
         },
         "actor_projection": actor_projection,
-        "case_labels": [
-            {"case_id": case.case_id, "scenario_id": case.scenario_id, "case_label": case.case_label}
+        "case_scenario_types": [
+            {"case_id": case.case_id, "case_scenario_type": case.case_scenario_type}
             for case in cases
         ],
-        "node_timestamps": [
+        "planned_step_timestamps": [
             {
-                "node_id": node.node_id,
+                "planned_step_id": node.planned_step_id,
                 "case_id": node.case_id,
                 "step_type": node.step_type,
-                "target_synthetic_start": node.target_start.isoformat(),
-                "target_synthetic_end": node.target_end.isoformat(),
-                "business_dates": node.business_dates,
+                "planned_synthetic_start": node.target_start.isoformat(),
+                "planned_synthetic_end": node.target_end.isoformat(),
+                "planned_date_inputs": node.planned_date_inputs,
             }
-            for node in nodes
+            for node in planned_steps
         ],
-        "expected_object_keys": [
+        "required_sap_object_keys": [
             {
-                "node_id": node.node_id,
+                "planned_step_id": node.planned_step_id,
                 "case_id": node.case_id,
-                "expected_outputs": node.expected_outputs,
+                "required_sap_object_keys": node.required_sap_object_keys,
             }
-            for node in nodes
+            for node in planned_steps
         ],
         "object_lineage": [
             {
@@ -167,8 +176,8 @@ def _post_processing_manifest(
             {"id": export.id, "description": export.description}
             for export in config.run_settings.post_processing_export_groups
         ],
-        "date_overrides": _date_overrides(nodes),
-        "failed_case_policy": {
+        "planned_date_input_overrides": _planned_date_input_overrides(planned_steps),
+        "failed_process_case_policy": {
             "exclude_failed_cases": True,
             "source_artifacts": ["execution_log", "object_registry"],
         },
@@ -179,8 +188,7 @@ def _case_record(case: CasePlan) -> dict[str, Any]:
     return {
         "case_id": case.case_id,
         "process_type": case.process_type,
-        "scenario_id": case.scenario_id,
-        "case_label": case.case_label,
+        "case_scenario_type": case.case_scenario_type,
         "line_items": [
             {
                 "line_id": f"{case.case_id}_L1",
@@ -196,51 +204,52 @@ def _case_record(case: CasePlan) -> dict[str, Any]:
     }
 
 
-def _date_overrides(nodes: list[PlannedNode]) -> list[dict[str, str]]:
+def _planned_date_input_overrides(planned_steps: list[PlannedStep]) -> list[dict[str, str]]:
     overrides: list[dict[str, str]] = []
-    for node in nodes:
+    for node in planned_steps:
         if node.step_type != "post_goods_receipt":
             continue
         for field in ("document_date", "posting_date"):
-            planned_value = node.business_dates.get(field)
+            planned_value = node.planned_date_inputs.get(field)
             if planned_value is None:
                 continue
             overrides.append(
                 {
-                    "node_id": node.node_id,
+                    "planned_step_id": node.planned_step_id,
                     "case_id": node.case_id,
                     "step_type": node.step_type,
                     "object_type": "material_document",
                     "field": field,
                     "planned_value": planned_value,
                     "runtime_value_policy": "sap_current_date",
-                    "source": "business_dates",
+                    "source": "planned_date_inputs",
                     "reason": "sap_runtime_forces_current_date",
                 }
             )
     return overrides
 
 
-def _session_records(config: GenerationConfig, nodes: list[PlannedNode]) -> list[dict[str, Any]]:
+def _session_records(config: GenerationConfig, planned_steps: list[PlannedStep]) -> list[dict[str, Any]]:
     actor_ids_by_session: dict[str, str] = {}
-    source_nodes_by_session: dict[str, str] = {}
-    for node in sorted(nodes, key=lambda item: item.node_id):
-        actor_id = actor_ids_by_session.get(node.session_id)
-        if actor_id is not None and actor_id != node.virtual_actor_id:
+    source_steps_by_session: dict[str, str] = {}
+    for node in sorted(planned_steps, key=lambda item: item.planned_step_id):
+        actor_id = actor_ids_by_session.get(node.actor_session_id)
+        if actor_id is not None and actor_id != node.synthetic_actor_id:
             raise TraceGenerationError(
-                f"Session '{node.session_id}' is used by actors '{actor_id}' and "
-                f"'{node.virtual_actor_id}' on nodes '{source_nodes_by_session[node.session_id]}' and '{node.node_id}'"
+                f"Actor session '{node.actor_session_id}' is used by actors '{actor_id}' and "
+                f"'{node.synthetic_actor_id}' on planned steps '{source_steps_by_session[node.actor_session_id]}' and "
+                f"'{node.planned_step_id}'"
             )
-        actor_ids_by_session[node.session_id] = node.virtual_actor_id
-        source_nodes_by_session.setdefault(node.session_id, node.node_id)
+        actor_ids_by_session[node.actor_session_id] = node.synthetic_actor_id
+        source_steps_by_session.setdefault(node.actor_session_id, node.planned_step_id)
     records: list[dict[str, Any]] = []
-    for session_id, actor_id in actor_ids_by_session.items():
+    for actor_session_id, actor_id in actor_ids_by_session.items():
         technical_user = config.technical_user_for_actor(actor_id)
         records.append(
             {
-                "session_id": session_id,
-                "virtual_actor_id": actor_id,
-                "technical_user_id": technical_user.id,
+                "actor_session_id": actor_session_id,
+                "synthetic_actor_id": actor_id,
+                "technical_sap_user_id": technical_user.id,
                 "username_env_var": technical_user.username_env_var,
                 "password_env_var": technical_user.password_env_var,
                 "login_url_env_var": technical_user.login_url_env_var,
@@ -249,19 +258,19 @@ def _session_records(config: GenerationConfig, nodes: list[PlannedNode]) -> list
     return records
 
 
-def _node_record(node: PlannedNode) -> dict[str, Any]:
+def _planned_step_record(node: PlannedStep) -> dict[str, Any]:
     return {
-        "node_id": node.node_id,
+        "planned_step_id": node.planned_step_id,
         "case_id": node.case_id,
         "step_type": node.step_type,
         "tool_name": node.tool_name,
-        "virtual_actor_id": node.virtual_actor_id,
-        "technical_sap_user": node.technical_user_id,
-        "session_id": node.session_id,
+        "synthetic_actor_id": node.synthetic_actor_id,
+        "technical_sap_user_id": node.technical_sap_user_id,
+        "actor_session_id": node.actor_session_id,
         "inputs": node.inputs,
-        "expected_outputs": node.expected_outputs,
-        "business_dates": node.business_dates,
-        "target_synthetic_time": {
+        "required_sap_object_keys": node.required_sap_object_keys,
+        "planned_date_inputs": node.planned_date_inputs,
+        "planned_synthetic_time": {
             "start": node.target_start.isoformat(),
             "end": node.target_end.isoformat(),
         },
@@ -283,10 +292,10 @@ def _object_lineage_chain(config: GenerationConfig, process_type: str) -> list[s
 
     chain: list[str] = []
     for step in process.steps:
-        for output in step.expected_outputs:
+        for output in step.required_sap_object_keys:
             object_type = output.split(".", maxsplit=1)[0]
             if object_type and object_type not in chain:
                 chain.append(object_type)
     if not chain:
-        raise TraceGenerationError(f"Process '{process_type}' has no expected outputs for object lineage")
+        raise TraceGenerationError(f"Process '{process_type}' has no required SAP object keys for object lineage")
     return chain

@@ -33,7 +33,7 @@ class FakeExecutor:
         if self.should_fail:
             raise RuntimeError("tool exploded")
         if self.write_state_update_log:
-            evidence_writer.log_event("state_updated", node_id="C001_A1", object_count=1)
+            evidence_writer.log_event("state_updated", planned_step_id="C001_A1", object_count=1)
         self.canonical_calls.append(
             {
                 "trace": trace,
@@ -43,8 +43,8 @@ class FakeExecutor:
         )
         return [
             ToolResult(
-                task_id="canonical-task",
-                session_id="session-1",
+                planned_step_id="canonical-planned-step",
+                actor_session_id="session-1",
                 tool="fiori.fake",
                 data={"status": "canonical-ok"},
             )
@@ -68,7 +68,7 @@ def test_cli_yaml_success_closes_browser(capsys, tmp_path, monkeypatch):
     trace = SimpleNamespace(trace_path=trace_path, run_id="RUN_TEST")
     monkeypatch.setattr(cli, "load_canonical_trace", lambda path: trace)
     monkeypatch.setattr(cli, "read_env_values", lambda _path: {"SAP_USER_1_UN": "BUYER1"})
-    monkeypatch.setattr(cli, "build_init_from_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
+    monkeypatch.setattr(cli, "build_init_from_actor_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
 
     exit_code = cli.main([str(trace_path)])
 
@@ -94,7 +94,7 @@ def test_cli_yaml_path_writes_canonical_artifacts(capsys, tmp_path, monkeypatch)
     trace = SimpleNamespace(trace_path=trace_path, run_id="RUN_TEST")
     monkeypatch.setattr(cli, "load_canonical_trace", lambda path: trace)
     monkeypatch.setattr(cli, "read_env_values", lambda _path: {"SAP_USER_1_UN": "BUYER1"})
-    monkeypatch.setattr(cli, "build_init_from_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
+    monkeypatch.setattr(cli, "build_init_from_actor_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
 
     exit_code = cli.main([str(trace_path), "--artifact-dir", str(artifact_dir)])
 
@@ -117,7 +117,7 @@ def test_cli_headless_failure_closes_browser_without_waiting(capsys, tmp_path, m
     trace = SimpleNamespace(trace_path=trace_path, run_id="RUN_TEST")
     monkeypatch.setattr(cli, "load_canonical_trace", lambda path: trace)
     monkeypatch.setattr(cli, "read_env_values", lambda _path: {"SAP_USER_1_UN": "BUYER1"})
-    monkeypatch.setattr(cli, "build_init_from_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
+    monkeypatch.setattr(cli, "build_init_from_actor_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
     input_called = False
 
     def fake_input(_prompt: str) -> str:
@@ -142,7 +142,7 @@ def test_cli_headed_failure_waits_before_closing_browser(capsys, tmp_path, monke
     trace = SimpleNamespace(trace_path=trace_path, run_id="RUN_TEST")
     monkeypatch.setattr(cli, "load_canonical_trace", lambda path: trace)
     monkeypatch.setattr(cli, "read_env_values", lambda _path: {"SAP_USER_1_UN": "BUYER1"})
-    monkeypatch.setattr(cli, "build_init_from_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
+    monkeypatch.setattr(cli, "build_init_from_actor_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
     prompts: list[str] = []
 
     def fake_input(prompt: str) -> str:
@@ -169,7 +169,7 @@ def test_cli_headed_failure_closes_browser_when_prompt_hits_eof(capsys, tmp_path
     trace = SimpleNamespace(trace_path=trace_path, run_id="RUN_TEST")
     monkeypatch.setattr(cli, "load_canonical_trace", lambda path: trace)
     monkeypatch.setattr(cli, "read_env_values", lambda _path: {"SAP_USER_1_UN": "BUYER1"})
-    monkeypatch.setattr(cli, "build_init_from_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
+    monkeypatch.setattr(cli, "build_init_from_actor_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
 
     def fake_input(_prompt: str) -> str:
         assert FakeSessionManager.instances[0].closed is False
@@ -191,7 +191,7 @@ def test_cli_keyboard_interrupt_returns_130_without_traceback(capsys, tmp_path, 
     trace = SimpleNamespace(trace_path=trace_path, run_id="RUN_TEST")
     monkeypatch.setattr(cli, "load_canonical_trace", lambda path: trace)
     monkeypatch.setattr(cli, "read_env_values", lambda _path: {"SAP_USER_1_UN": "BUYER1"})
-    monkeypatch.setattr(cli, "build_init_from_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
+    monkeypatch.setattr(cli, "build_init_from_actor_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
 
     exit_code = cli.main([str(trace_path)])
 
@@ -210,13 +210,13 @@ def test_cli_default_log_level_suppresses_debug_events(capsys, tmp_path, monkeyp
     trace = SimpleNamespace(trace_path=trace_path, run_id="RUN_TEST")
     monkeypatch.setattr(cli, "load_canonical_trace", lambda path: trace)
     monkeypatch.setattr(cli, "read_env_values", lambda _path: {"SAP_USER_1_UN": "BUYER1"})
-    monkeypatch.setattr(cli, "build_init_from_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
+    monkeypatch.setattr(cli, "build_init_from_actor_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
 
     exit_code = cli.main([str(trace_path)])
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "State updated for node C001_A1" not in captured.err
+    assert "State updated for planned step C001_A1" not in captured.err
 
 
 def test_cli_debug_log_level_emits_debug_events(capsys, tmp_path, monkeypatch):
@@ -226,10 +226,10 @@ def test_cli_debug_log_level_emits_debug_events(capsys, tmp_path, monkeypatch):
     trace = SimpleNamespace(trace_path=trace_path, run_id="RUN_TEST")
     monkeypatch.setattr(cli, "load_canonical_trace", lambda path: trace)
     monkeypatch.setattr(cli, "read_env_values", lambda _path: {"SAP_USER_1_UN": "BUYER1"})
-    monkeypatch.setattr(cli, "build_init_from_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
+    monkeypatch.setattr(cli, "build_init_from_actor_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
 
     exit_code = cli.main([str(trace_path), "--log-level", "DEBUG"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "DEBUG State updated for node C001_A1" in captured.err
+    assert "DEBUG State updated for planned step C001_A1" in captured.err
