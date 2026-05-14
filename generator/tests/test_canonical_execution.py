@@ -218,6 +218,36 @@ def test_evidence_writer_logs_payload_metadata_without_values(
     assert "event_type" in caplog.text
 
 
+def test_evidence_writer_adds_message_and_severity_and_mirrors_to_logger(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    writer = ExecutionEvidenceWriter(tmp_path, run_id="RUN_TEST")
+
+    with caplog.at_level(logging.DEBUG, logger="erp_trace_executor.evidence"):
+        writer.log_event("run_started")
+        writer.log_event("state_updated", node_id="C001_A1", object_count=1)
+        writer.log_event("node_skipped", node_id="C001_A2", reason="case_failed")
+        writer.log_event("node_failed", node_id="C001_A3", error="tool exploded")
+
+    events = _read_jsonl(tmp_path / "RUN_TEST.execution-log.jsonl")
+    assert [(event["event_type"], event["severity"]) for event in events] == [
+        ("run_started", "INFO"),
+        ("state_updated", "DEBUG"),
+        ("node_skipped", "WARNING"),
+        ("node_failed", "ERROR"),
+    ]
+    assert events[0]["message"] == "Executor run started"
+    assert events[1]["message"] == "State updated for node C001_A1"
+    assert events[2]["message"] == "Skipped node C001_A2: case_failed"
+    assert events[3]["message"] == "Failed node C001_A3: tool exploded"
+    assert [(record.levelname, record.getMessage()) for record in caplog.records] == [
+        ("INFO", "Executor run started"),
+        ("DEBUG", "State updated for node C001_A1"),
+        ("WARNING", "Skipped node C001_A2: case_failed"),
+        ("ERROR", "Failed node C001_A3: tool exploded"),
+    ]
+
+
 def test_canonical_executor_logs_registry_and_skips_failed_case(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     trace_path = tmp_path / "trace.execution-trace.yaml"
     _write_yaml(trace_path, _canonical_payload())

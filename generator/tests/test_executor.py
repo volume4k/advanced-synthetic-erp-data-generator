@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from types import SimpleNamespace
 from typing import Callable
 
@@ -473,7 +474,7 @@ def test_executor_falls_back_to_current_login_url_when_home_logo_clicks_fail(tmp
 
 
 def test_executor_logs_failed_fiori_node_resets_home_and_continues_other_cases(
-    tmp_path, monkeypatch, capsys
+    tmp_path, monkeypatch, caplog
 ):
     page = FakeHomeResetPage(logo_click_succeeds=True)
     records = [
@@ -481,21 +482,20 @@ def test_executor_logs_failed_fiori_node_resets_home_and_continues_other_cases(
         _record("C002_A1", tool="fiori.fake_tool", case_id="P2P_C002"),
     ]
 
-    results = _run_canonical_records(
-        executor=TraceExecutor(registry=_home_reset_failure_registry()),
-        records=records,
-        tmp_path=tmp_path,
-        monkeypatch=monkeypatch,
-        context_factory=lambda item: FakeHomeResetContext(item, page),
-    )
+    with caplog.at_level(logging.ERROR, logger="erp_trace_executor.evidence"):
+        results = _run_canonical_records(
+            executor=TraceExecutor(registry=_home_reset_failure_registry()),
+            records=records,
+            tmp_path=tmp_path,
+            monkeypatch=monkeypatch,
+            context_factory=lambda item: FakeHomeResetContext(item, page),
+        )
 
     assert [result.task_id for result in results] == ["init-login-buyer-session", "C002_A1"]
     assert page.logo_click_count == 4
-    stderr = capsys.readouterr().err
-    assert "event=node_failed" in stderr
-    assert "C001_A1" in stderr
-    assert "planned tool failure" in stderr
-    assert "SAP says no" in stderr
+    assert "Failed node C001_A1" in caplog.text
+    assert "planned tool failure" in caplog.text
+    assert "SAP says no" in caplog.text
     events = _read_events(tmp_path)
     failed = next(event for event in events if event["event_type"] == "node_failed")
     assert failed["node_id"] == "C001_A1"
@@ -503,7 +503,7 @@ def test_executor_logs_failed_fiori_node_resets_home_and_continues_other_cases(
     assert any(event["event_type"] == "node_succeeded" and event["node_id"] == "C002_A1" for event in events)
 
 
-def test_executor_fails_run_when_home_reset_after_node_failure_fails(tmp_path, monkeypatch, capsys):
+def test_executor_fails_run_when_home_reset_after_node_failure_fails(tmp_path, monkeypatch, caplog):
     page = FakeHomeResetPage(logo_click_succeeds=False, goto_raises=True)
     record = _record("C001_A1", tool="fiori.fail_tool", case_id="P2P_C001")
 
@@ -516,8 +516,6 @@ def test_executor_fails_run_when_home_reset_after_node_failure_fails(tmp_path, m
             context_factory=lambda item: FakeHomeResetContext(item, page),
         )
 
-    stderr = capsys.readouterr().err
-    assert "event=home_reset_failed" in stderr
     events = _read_events(tmp_path)
     assert any(event["event_type"] == "home_reset_failed" for event in events)
     assert any(event["event_type"] == "run_failed" for event in events)

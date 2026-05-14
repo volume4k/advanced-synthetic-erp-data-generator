@@ -12,6 +12,15 @@ from erp_trace_executor.errors import TraceExecutorError
 
 LOGGER = logging.getLogger(__name__)
 UNSAFE_RUN_ID_CHARS = {"/", "\\", ":", "*", "?", "<", ">", "|"}
+SENSITIVE_FIELD_NAMES = {"password", "password_value", "input", "inputs"}
+
+EVENT_SEVERITY_BY_TYPE = {
+    "state_updated": "DEBUG",
+    "node_skipped": "WARNING",
+    "login_interrupted": "WARNING",
+    "node_interrupted": "WARNING",
+    "run_interrupted": "WARNING",
+}
 
 
 class ExecutionEvidenceWriter:
@@ -24,15 +33,21 @@ class ExecutionEvidenceWriter:
         self.object_registry_path = _artifact_path(artifact_root, self.run_id, ".object-registry.jsonl")
 
     def log_event(self, event_type: str, **fields: Any) -> None:
+        clean_fields = _clean(fields)
+        severity = _severity_for(event_type)
+        message = _message_for(event_type, clean_fields)
         self._append(
             self.execution_log_path,
             {
                 "event_type": event_type,
                 "timestamp": datetime.now(UTC).isoformat(),
                 "run_id": self.run_id,
-                **_clean(fields),
+                "severity": severity,
+                "message": message,
+                **clean_fields,
             },
         )
+        LOGGER.log(getattr(logging, severity), message)
 
     def record_object(self, **fields: Any) -> None:
         self._append(
@@ -80,4 +95,93 @@ def _artifact_path(artifact_root: Path, run_id: str, suffix: str) -> Path:
 
 
 def _clean(fields: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in fields.items() if value is not None}
+    return {
+        key: value
+        for key, value in fields.items()
+        if value is not None and key.lower() not in SENSITIVE_FIELD_NAMES
+    }
+
+
+def _severity_for(event_type: str) -> str:
+    if event_type in EVENT_SEVERITY_BY_TYPE:
+        return EVENT_SEVERITY_BY_TYPE[event_type]
+    if event_type.endswith("_failed"):
+        return "ERROR"
+    return "INFO"
+
+
+def _message_for(event_type: str, fields: dict[str, Any]) -> str:
+    node_id = fields.get("node_id")
+    session_id = fields.get("session_id")
+    wave_id = fields.get("wave_id")
+    error = _compact_text(fields.get("error"))
+
+    if event_type == "run_started":
+        return "Executor run started"
+    if event_type == "run_completed":
+        failed_case_count = fields.get("failed_case_count")
+        return f"Executor run completed with {failed_case_count} failed cases"
+    if event_type == "run_failed":
+        return _join_message("Executor run failed", error)
+    if event_type == "run_interrupted":
+        return _join_message("Executor run interrupted by user", _node_suffix(node_id))
+    if event_type == "login_started":
+        return f"Login started for session {session_id}"
+    if event_type == "login_succeeded":
+        return f"Login succeeded for session {session_id}"
+    if event_type == "login_failed":
+        return _join_message(f"Login failed for session {session_id}", error)
+    if event_type == "login_interrupted":
+        return f"Login interrupted by user for session {session_id}"
+    if event_type == "wave_started":
+        return f"Wave {wave_id} started"
+    if event_type == "wave_completed":
+        return f"Wave {wave_id} completed"
+    if event_type == "node_started":
+        return f"Node {node_id} started"
+    if event_type == "node_succeeded":
+        return f"Node {node_id} succeeded"
+    if event_type == "node_skipped":
+        return f"Skipped node {node_id}: {fields.get('reason')}"
+    if event_type == "node_failed":
+        return _join_message(f"Failed node {node_id}", error, _sap_message_suffix(fields))
+    if event_type == "node_interrupted":
+        return f"Interrupted node {node_id} by user"
+    if event_type == "case_failed":
+        return _join_message(f"Failed case {fields.get('case_id')}", error, _sap_message_suffix(fields))
+    if event_type == "home_reset_failed":
+        return _join_message(f"Home reset failed for node {node_id}", error)
+    if event_type == "state_updated":
+        return f"State updated for node {node_id}"
+    return event_type.replace("_", " ")
+
+
+def _join_message(prefix: str, *parts: str) -> str:
+    suffixes = [part for part in parts if part]
+    if not suffixes:
+        return prefix
+    return f"{prefix}: {'; '.join(suffixes)}"
+
+
+def _node_suffix(node_id: object) -> str:
+    return f"node {node_id}" if node_id else ""
+
+
+def _sap_message_suffix(fields: dict[str, Any]) -> str:
+    messages = fields.get("sap_messages")
+    if not isinstance(messages, list):
+        return ""
+    texts = [
+        _compact_text(message.get("text"))
+        for message in messages
+        if isinstance(message, dict) and message.get("text")
+    ]
+    if not texts:
+        return ""
+    return f"SAP messages: {', '.join(texts)}"
+
+
+def _compact_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return " ".join(str(value).split())[:2_000]

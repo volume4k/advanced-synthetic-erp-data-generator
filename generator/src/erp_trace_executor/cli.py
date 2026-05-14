@@ -5,8 +5,7 @@ from __future__ import annotations
 import argparse
 from builtins import input as console_input
 import json
-import sys
-import traceback
+import logging
 from pathlib import Path
 
 from erp_trace_executor.browser.session import BrowserSessionManager
@@ -16,6 +15,9 @@ from erp_trace_executor.credentials import load_env_credentials, read_env_values
 from erp_trace_executor.evidence import ExecutionEvidenceWriter
 from erp_trace_executor.errors import TraceParseError
 from erp_trace_executor.executor import TraceExecutor
+from erp_trace_executor.logging_config import LOG_LEVEL_NAMES, configure_logging
+
+LOGGER = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,11 +40,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Directory for execution evidence artifacts. Defaults to the trace file directory.",
     )
+    parser.add_argument(
+        "--log-level",
+        choices=LOG_LEVEL_NAMES,
+        default="INFO",
+        help="Minimum terminal log level. Defaults to INFO.",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    configure_logging(args.log_level)
     session_manager: BrowserSessionManager | None = None
 
     try:
@@ -68,17 +77,17 @@ def main(argv: list[str] | None = None) -> int:
             ),
             evidence_writer=ExecutionEvidenceWriter(artifact_dir, run_id=trace.run_id),
         )
-    except Exception:
-        traceback.print_exc(file=sys.stderr)
+    except KeyboardInterrupt:
+        LOGGER.warning("Execution interrupted by user.")
         if session_manager is not None and args.headed:
-            print(
-                "Execution failed. Browser remains open for manual SAP cleanup.",
-                file=sys.stderr,
-            )
-            try:
-                console_input("Press Enter after cleanup to close browser and exit...")
-            except (EOFError, KeyboardInterrupt):
-                pass
+            LOGGER.error("Execution interrupted. Browser remains open for manual SAP cleanup.")
+            _wait_for_cleanup_prompt()
+        return 130
+    except Exception:
+        LOGGER.exception("Execution failed.")
+        if session_manager is not None and args.headed:
+            LOGGER.error("Execution failed. Browser remains open for manual SAP cleanup.")
+            _wait_for_cleanup_prompt()
         return 1
     finally:
         if session_manager is not None:
@@ -86,3 +95,10 @@ def main(argv: list[str] | None = None) -> int:
 
     print(json.dumps([result.to_dict() for result in results], indent=2))
     return 0
+
+
+def _wait_for_cleanup_prompt() -> None:
+    try:
+        console_input("Press Enter after cleanup to close browser and exit...")
+    except (EOFError, KeyboardInterrupt):
+        pass

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 from playwright.sync_api import Error as PlaywrightError
@@ -111,7 +110,6 @@ class TraceExecutor:
                     except Exception as exc:
                         failed_cases.add(node.case_id)
                         sap_messages = self._capture_fiori_messages(context)
-                        _print_node_failure(event_meta, exc, sap_messages)
                         evidence_writer.log_event(
                             "node_failed",
                             error=_safe_error_text(exc),
@@ -128,7 +126,6 @@ class TraceExecutor:
                             try:
                                 self._return_home(record, context)
                             except Exception as reset_exc:
-                                _print_home_reset_failure(event_meta, reset_exc)
                                 evidence_writer.log_event(
                                     "home_reset_failed",
                                     error=_safe_error_text(reset_exc),
@@ -403,50 +400,6 @@ def _validate_expected_outputs(node: CanonicalNode, result: ToolResult) -> None:
             raise ToolExecutionError(f"Invalid expected output '{expected_output}' for node '{node.node_id}'")
         if (parts[0], parts[1]) not in returned:
             raise ToolExecutionError(f"Missing expected output '{expected_output}' for node '{node.node_id}'")
-
-
-def _print_node_failure(event_meta: dict[str, Any], exc: Exception, sap_messages: list[dict[str, str]]) -> None:
-    print(
-        _json_like_summary(
-            "node_failed",
-            {
-                "run_id": event_meta.get("run_id"),
-                "wave_id": event_meta.get("wave_id"),
-                "case_id": event_meta.get("case_id"),
-                "node_id": event_meta.get("node_id"),
-                "tool": event_meta.get("tool"),
-                "error": _safe_error_text(exc),
-                "sap_messages": sap_messages,
-            },
-        ),
-        file=sys.stderr,
-    )
-
-
-def _print_home_reset_failure(event_meta: dict[str, Any], exc: Exception) -> None:
-    print(
-        _json_like_summary(
-            "home_reset_failed",
-            {
-                "run_id": event_meta.get("run_id"),
-                "wave_id": event_meta.get("wave_id"),
-                "case_id": event_meta.get("case_id"),
-                "node_id": event_meta.get("node_id"),
-                "tool": event_meta.get("tool"),
-                "error": _safe_error_text(exc),
-            },
-        ),
-        file=sys.stderr,
-    )
-
-
-def _json_like_summary(event_type: str, payload: dict[str, Any]) -> str:
-    parts = [f"event={event_type}"]
-    for key, value in payload.items():
-        if value in (None, "", []):
-            continue
-        parts.append(f"{key}={value!r}")
-    return " ".join(parts)
 
 
 def _safe_error_text(exc: Exception) -> str:

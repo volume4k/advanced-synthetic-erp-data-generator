@@ -20,14 +20,20 @@ class FakeSessionManager:
 
 class FakeExecutor:
     should_fail = False
+    should_interrupt = False
+    write_state_update_log = False
     canonical_calls: list[dict] = []
 
     def __init__(self, *, credential_store) -> None:
         self.credential_store = credential_store
 
     def execute_canonical(self, trace, *, init, context_factory, evidence_writer):
+        if self.should_interrupt:
+            raise KeyboardInterrupt
         if self.should_fail:
             raise RuntimeError("tool exploded")
+        if self.write_state_update_log:
+            evidence_writer.log_event("state_updated", node_id="C001_A1", object_count=1)
         self.canonical_calls.append(
             {
                 "trace": trace,
@@ -48,6 +54,8 @@ class FakeExecutor:
 def _patch_cli(monkeypatch) -> None:
     FakeSessionManager.instances = []
     FakeExecutor.should_fail = False
+    FakeExecutor.should_interrupt = False
+    FakeExecutor.write_state_update_log = False
     FakeExecutor.canonical_calls = []
     monkeypatch.setattr(cli, "BrowserSessionManager", FakeSessionManager)
     monkeypatch.setattr(cli, "TraceExecutor", FakeExecutor)
@@ -174,3 +182,54 @@ def test_cli_headed_failure_closes_browser_when_prompt_hits_eof(capsys, tmp_path
     assert exit_code == 1
     assert FakeSessionManager.instances[0].closed is True
     assert "RuntimeError: tool exploded" in capsys.readouterr().err
+
+
+def test_cli_keyboard_interrupt_returns_130_without_traceback(capsys, tmp_path, monkeypatch):
+    _patch_cli(monkeypatch)
+    FakeExecutor.should_interrupt = True
+    trace_path = tmp_path / "RUN_TEST.execution-trace.yaml"
+    trace = SimpleNamespace(trace_path=trace_path, run_id="RUN_TEST")
+    monkeypatch.setattr(cli, "load_canonical_trace", lambda path: trace)
+    monkeypatch.setattr(cli, "read_env_values", lambda _path: {"SAP_USER_1_UN": "BUYER1"})
+    monkeypatch.setattr(cli, "build_init_from_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
+
+    exit_code = cli.main([str(trace_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 130
+    assert captured.out == ""
+    assert "Execution interrupted by user." in captured.err
+    assert "Traceback" not in captured.err
+    assert FakeSessionManager.instances[0].closed is True
+
+
+def test_cli_default_log_level_suppresses_debug_events(capsys, tmp_path, monkeypatch):
+    _patch_cli(monkeypatch)
+    FakeExecutor.write_state_update_log = True
+    trace_path = tmp_path / "RUN_TEST.execution-trace.yaml"
+    trace = SimpleNamespace(trace_path=trace_path, run_id="RUN_TEST")
+    monkeypatch.setattr(cli, "load_canonical_trace", lambda path: trace)
+    monkeypatch.setattr(cli, "read_env_values", lambda _path: {"SAP_USER_1_UN": "BUYER1"})
+    monkeypatch.setattr(cli, "build_init_from_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
+
+    exit_code = cli.main([str(trace_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "State updated for node C001_A1" not in captured.err
+
+
+def test_cli_debug_log_level_emits_debug_events(capsys, tmp_path, monkeypatch):
+    _patch_cli(monkeypatch)
+    FakeExecutor.write_state_update_log = True
+    trace_path = tmp_path / "RUN_TEST.execution-trace.yaml"
+    trace = SimpleNamespace(trace_path=trace_path, run_id="RUN_TEST")
+    monkeypatch.setattr(cli, "load_canonical_trace", lambda path: trace)
+    monkeypatch.setattr(cli, "read_env_values", lambda _path: {"SAP_USER_1_UN": "BUYER1"})
+    monkeypatch.setattr(cli, "build_init_from_sessions", lambda trace, env_values: {"trace": trace, "env": env_values})
+
+    exit_code = cli.main([str(trace_path), "--log-level", "DEBUG"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "DEBUG State updated for node C001_A1" in captured.err
