@@ -41,6 +41,8 @@ class FakeLocator:
         self.filled_value = value
 
     def click(self) -> None:
+        if self.events is not None:
+            self.events.append(("click", self.selector))
         self.clicked = True
 
     def wait_for(self, *, state: str) -> None:
@@ -48,6 +50,9 @@ class FakeLocator:
 
     def is_visible(self) -> bool:
         return self.visible
+
+    def input_value(self) -> str:
+        return self.filled_value or ""
 
 
 class FakePage:
@@ -98,13 +103,45 @@ def test_login_pauses_between_username_and_password_entry():
 
     run_login(context, params)
 
-    assert page.events[:5] == [
-        ("locator", "#USERNAME_FIELD-inner"),
-        ("fill", "#USERNAME_FIELD-inner", "buyer-a"),
-        ("wait_for_timeout", 50),
-        ("locator", "#PASSWORD_FIELD-inner"),
-        ("fill", "#PASSWORD_FIELD-inner", "secret"),
-    ]
+    username_fill = ("fill", "#USERNAME_FIELD-inner", "buyer-a")
+    password_click = ("click", "#PASSWORD_FIELD-inner")
+    password_fill = ("fill", "#PASSWORD_FIELD-inner", "secret")
+    assert ("wait_for_timeout", 50) in page.events
+    assert username_fill in page.events
+    assert password_click in page.events
+    assert password_fill in page.events
+    assert page.events.index(username_fill) < page.events.index(password_click)
+    assert page.events.index(password_click) < page.events.index(password_fill)
+
+
+def test_login_retries_when_password_prefix_lands_in_username_field():
+    page = FakePage()
+    username = page.locator("#USERNAME_FIELD-inner")
+    password = page.locator("#PASSWORD_FIELD-inner")
+    original_password_fill = password.fill
+    password_fill_count = 0
+
+    def leaky_password_fill(value: str) -> None:
+        nonlocal password_fill_count
+        password_fill_count += 1
+        if password_fill_count == 1:
+            username.filled_value = f"{username.input_value()}{value[:3]}"
+            page.events.append(("leak", "#PASSWORD_FIELD-inner", value[:3]))
+            return
+        original_password_fill(value)
+
+    password.fill = leaky_password_fill
+    context = SimpleNamespace(
+        record=SimpleNamespace(planned_step_id="planned-step-1", actor_session_id="session-1", tool="fiori.login"),
+        get_browser_session=lambda: SimpleNamespace(page=page),
+    )
+    params = LoginInput.model_validate({"username": "LEARN-902", "password": "aU4fake"})
+
+    run_login(context, params)
+
+    assert page.locator("#USERNAME_FIELD-inner").input_value() == "LEARN-902"
+    assert page.locator("#PASSWORD_FIELD-inner").input_value() == "aU4fake"
+    assert password_fill_count == 2
 
 
 def test_login_rejects_visible_login_form_after_load_without_success_selector():
