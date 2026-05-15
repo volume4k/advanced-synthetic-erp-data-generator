@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
+import threading
 from types import SimpleNamespace
 from typing import Callable
 
@@ -313,6 +315,146 @@ def _interrupt_registry() -> ToolRegistry:
 
     registry.register(ToolSpec(name="fiori.interrupt_tool", input_model=NoInput, run=run_tool))
     return registry
+
+
+def _noop_registry(calls: list[str] | None = None) -> ToolRegistry:
+    registry = ToolRegistry()
+
+    def run_tool(context, _params: NoInput) -> ToolResult:
+        if calls is not None:
+            calls.append(context.record.planned_step_id)
+        return ToolResult(
+            planned_step_id=context.record.planned_step_id,
+            actor_session_id=context.record.actor_session_id,
+            tool=context.record.tool,
+            data={"success": True, "status": "done"},
+        )
+
+    registry.register(ToolSpec(name="test.noop", input_model=NoInput, run=run_tool))
+    return registry
+
+
+class ThreadedFakeContext:
+    def __init__(self, record: ExecutionTaskRecord, pool: ThreadPoolExecutor) -> None:
+        self.record = record
+        self.planned_step_id = record.planned_step_id
+        self.actor_session_id = record.actor_session_id
+        self.tool = record.tool
+        self._pool = pool
+
+    def submit_in_actor_session(self, operation):
+        return self._pool.submit(operation, self)
+
+    def run_in_actor_session(self, operation):
+        return self.submit_in_actor_session(operation).result()
+
+
+def test_executor_starts_actor_session_logins_in_parallel(tmp_path, monkeypatch):
+    records = [
+        _record(
+            "C001_A1",
+            tool="test.noop",
+            synthetic_actor_id="buyer-a",
+            actor_session_id="buyer-a-session",
+            case_id="P2P_C001",
+        ),
+        _record(
+            "C002_A1",
+            tool="test.noop",
+            synthetic_actor_id="buyer-b",
+            actor_session_id="buyer-b-session",
+            case_id="P2P_C002",
+        ),
+    ]
+    trace = _trace_from_records(records)
+    writer = ExecutionEvidenceWriter(tmp_path, run_id=trace.run_id)
+    barrier = threading.Barrier(2)
+    events: list[tuple[str, str]] = []
+    event_lock = threading.Lock()
+
+    def parallel_login(context, params) -> ToolResult:
+        with event_lock:
+            events.append(("started", params.username))
+        try:
+            barrier.wait(timeout=1)
+        except threading.BrokenBarrierError as exc:
+            raise AssertionError("all logins were not started before waiting for completion") from exc
+        with event_lock:
+            events.append(("finished", params.username))
+        return ToolResult(
+            planned_step_id=context.record.planned_step_id,
+            actor_session_id=context.record.actor_session_id,
+            tool=context.record.tool,
+            data={"success": True, "current_url": f"https://sap.example.test/{params.username}"},
+        )
+
+    monkeypatch.setattr(executor_module, "run_login", parallel_login)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        TraceExecutor(registry=_noop_registry()).execute_canonical(
+            trace,
+            init=_init_from_records(records),
+            context_factory=lambda record: ThreadedFakeContext(record, pool),
+            evidence_writer=writer,
+        )
+
+    assert [event[0] for event in events[:2]] == ["started", "started"]
+
+
+def test_executor_collects_parallel_login_failures_before_failing_run(tmp_path, monkeypatch):
+    records = [
+        _record(
+            "C001_A1",
+            tool="test.noop",
+            synthetic_actor_id="buyer-a",
+            actor_session_id="buyer-a-session",
+            case_id="P2P_C001",
+        ),
+        _record(
+            "C002_A1",
+            tool="test.noop",
+            synthetic_actor_id="buyer-b",
+            actor_session_id="buyer-b-session",
+            case_id="P2P_C002",
+        ),
+    ]
+    trace = _trace_from_records(records)
+    writer = ExecutionEvidenceWriter(tmp_path, run_id=trace.run_id)
+    started: list[str] = []
+    planned_step_calls: list[str] = []
+
+    def mixed_login(context, params) -> ToolResult:
+        started.append(params.username)
+        if params.username == "buyer-a":
+            raise RuntimeError("bad login")
+        return ToolResult(
+            planned_step_id=context.record.planned_step_id,
+            actor_session_id=context.record.actor_session_id,
+            tool=context.record.tool,
+            data={"success": True, "current_url": "https://sap.example.test/home"},
+        )
+
+    monkeypatch.setattr(executor_module, "run_login", mixed_login)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        with pytest.raises(RuntimeError, match="bad login"):
+            TraceExecutor(registry=_noop_registry(planned_step_calls)).execute_canonical(
+                trace,
+                init=_init_from_records(records),
+                context_factory=lambda record: ThreadedFakeContext(record, pool),
+                evidence_writer=writer,
+            )
+
+    assert sorted(started) == ["buyer-a", "buyer-b"]
+    assert planned_step_calls == []
+    events = _read_events(tmp_path)
+    assert [event["event_type"] for event in events if event["event_type"] == "login_started"] == [
+        "login_started",
+        "login_started",
+    ]
+    assert any(event["event_type"] == "login_failed" and event["actor_session_id"] == "buyer-a-session" for event in events)
+    assert any(event["event_type"] == "login_succeeded" and event["actor_session_id"] == "buyer-b-session" for event in events)
+    assert any(event["event_type"] == "run_failed" and "buyer-a-session" in event["error"] for event in events)
 
 
 def test_executor_logs_unknown_tools_as_planned_step_failure(tmp_path, monkeypatch):
@@ -663,21 +805,41 @@ class FakeHomeResetLocator:
 
 def test_browser_session_manager_reuses_session_ids():
     with BrowserSessionManager() as session_manager:
-        first = session_manager.get_session(actor_session_id="session-1", synthetic_actor_id="user-1")
-        second = session_manager.get_session(actor_session_id="session-1", synthetic_actor_id="user-1")
-        other = session_manager.get_session(actor_session_id="session-2", synthetic_actor_id="user-1")
+        first = session_manager.run_for_session(
+            actor_session_id="session-1",
+            synthetic_actor_id="user-1",
+            operation=id,
+        )
+        second = session_manager.run_for_session(
+            actor_session_id="session-1",
+            synthetic_actor_id="user-1",
+            operation=id,
+        )
+        other = session_manager.run_for_session(
+            actor_session_id="session-2",
+            synthetic_actor_id="user-1",
+            operation=id,
+        )
 
-        assert first is second
-        assert other is not first
+        assert first == second
+        assert other != first
         assert session_manager.active_session_count() == 2
 
 
 def test_browser_session_manager_rejects_mixed_users_for_same_session():
     with BrowserSessionManager() as session_manager:
-        session_manager.get_session(actor_session_id="session-1", synthetic_actor_id="user-1")
+        session_manager.run_for_session(
+            actor_session_id="session-1",
+            synthetic_actor_id="user-1",
+            operation=id,
+        )
 
         with pytest.raises(SessionUserMismatchError, match="session-1"):
-            session_manager.get_session(actor_session_id="session-1", synthetic_actor_id="user-2")
+            session_manager.run_for_session(
+                actor_session_id="session-1",
+                synthetic_actor_id="user-2",
+                operation=id,
+            )
 
 
 def test_executor_runs_login_then_purchase_requisition_against_fixture_app(fixture_app_url, tmp_path):

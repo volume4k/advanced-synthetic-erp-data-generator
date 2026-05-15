@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from concurrent.futures import Future
+from dataclasses import dataclass
 from typing import Any
 
 from playwright.sync_api import Error as PlaywrightError
@@ -58,44 +61,13 @@ class TraceExecutor:
 
         evidence_writer.log_event("run_started")
         try:
-            for init_user in init.users:
-                login_record = self._build_init_login_record(init_user, line_number=init.line_number)
-                evidence_writer.log_event(
-                    "login_started",
-                    actor_session_id=login_record.actor_session_id,
-                    synthetic_actor_id=login_record.synthetic_actor_id,
+            results.extend(
+                self._run_initial_logins(
+                    init=init,
+                    context_factory=context_factory,
+                    evidence_writer=evidence_writer,
                 )
-                try:
-                    login_context = context_factory(login_record)
-                    login_result = run_login(login_context, self._build_init_login_input(init_user))
-                except KeyboardInterrupt:
-                    evidence_writer.log_event(
-                        "login_interrupted",
-                        actor_session_id=login_record.actor_session_id,
-                        synthetic_actor_id=login_record.synthetic_actor_id,
-                    )
-                    evidence_writer.log_event(
-                        "run_interrupted",
-                        actor_session_id=login_record.actor_session_id,
-                        synthetic_actor_id=login_record.synthetic_actor_id,
-                    )
-                    raise
-                except Exception as exc:
-                    evidence_writer.log_event(
-                        "login_failed",
-                        actor_session_id=login_record.actor_session_id,
-                        synthetic_actor_id=login_record.synthetic_actor_id,
-                        error=str(exc),
-                    )
-                    evidence_writer.log_event("run_failed", error=str(exc))
-                    raise
-                results.append(login_result)
-                self._remember_home_url(login_record, login_result)
-                evidence_writer.log_event(
-                    "login_succeeded",
-                    actor_session_id=login_record.actor_session_id,
-                    synthetic_actor_id=login_record.synthetic_actor_id,
-                )
+            )
 
             for wave in trace.execution_schedule.waves:
                 evidence_writer.log_event("wave_started", wave_id=wave.wave_id, wave_sequence_no=wave.sequence_no)
@@ -119,8 +91,10 @@ class TraceExecutor:
                     context = None
                     try:
                         spec, params, parent_references, context = self._prepare_canonical_node(record, context_factory)
-                        result = spec.run(context, params)
-                        self._attach_fiori_messages(context, result)
+                        result = _run_context_operation(
+                            context,
+                            lambda active_context: self._run_tool_with_message_capture(active_context, spec, params),
+                        )
                         _validate_required_sap_object_keys(planned_step, result)
                     except KeyboardInterrupt:
                         evidence_writer.log_event("planned_step_interrupted", **event_meta)
@@ -128,27 +102,32 @@ class TraceExecutor:
                         raise
                     except Exception as exc:
                         failed_cases.add(planned_step.case_id)
-                        sap_messages = self._capture_fiori_messages(context)
+                        if isinstance(exc, _ToolOperationError):
+                            original_exc = exc.original
+                            sap_messages = exc.sap_messages
+                        else:
+                            original_exc = exc
+                            sap_messages = self._capture_fiori_messages_from_context(context)
                         evidence_writer.log_event(
                             "planned_step_failed",
-                            error=_safe_error_text(exc),
+                            error=_safe_error_text(original_exc),
                             sap_messages=sap_messages,
                             **event_meta,
                         )
                         evidence_writer.log_event(
                             "case_failed",
-                            error=_safe_error_text(exc),
+                            error=_safe_error_text(original_exc),
                             sap_messages=sap_messages,
                             **event_meta,
                         )
-                        if self._can_reset_home_after_failure(record, context):
+                        if self._can_reset_home_after_failure_from_context(record, context):
                             try:
-                                self._return_home(record, context)
+                                _run_context_operation(context, lambda active_context: self._return_home(record, active_context))
                             except Exception as reset_exc:
                                 evidence_writer.log_event(
                                     "home_reset_failed",
                                     error=_safe_error_text(reset_exc),
-                                    failed_error=_safe_error_text(exc),
+                                    failed_error=_safe_error_text(original_exc),
                                     **event_meta,
                                 )
                                 evidence_writer.log_event("run_failed", error=_safe_error_text(reset_exc), **event_meta)
@@ -170,7 +149,10 @@ class TraceExecutor:
                         parent_references=parent_references,
                     )
                     self._remember_home_url(record, result)
-                    self._return_home_after_tool(record, context, result)
+                    _run_context_operation(
+                        context,
+                        lambda active_context: self._return_home_after_tool(record, active_context, result),
+                    )
                     evidence_writer.log_event("planned_step_succeeded", **event_meta)
                 evidence_writer.log_event("wave_completed", wave_id=wave.wave_id, wave_sequence_no=wave.sequence_no)
 
@@ -182,6 +164,78 @@ class TraceExecutor:
     @property
     def registry(self) -> ToolRegistry:
         return self._registry
+
+    def _run_initial_logins(
+        self,
+        *,
+        init: SessionInitRecord,
+        context_factory,
+        evidence_writer: ExecutionEvidenceWriter,
+    ) -> list[ToolResult]:
+        tasks: list[_LoginTask] = []
+        for init_user in init.users:
+            login_record = self._build_init_login_record(init_user, line_number=init.line_number)
+            evidence_writer.log_event(
+                "login_started",
+                actor_session_id=login_record.actor_session_id,
+                synthetic_actor_id=login_record.synthetic_actor_id,
+            )
+            try:
+                login_context = context_factory(login_record)
+                login_input = self._build_init_login_input(init_user)
+                future = _submit_context_operation(
+                    login_context,
+                    lambda active_context, login_input=login_input: run_login(active_context, login_input),
+                )
+            except BaseException as exc:
+                future = Future()
+                future.set_exception(exc)
+            tasks.append(_LoginTask(record=login_record, future=future))
+
+        results: list[ToolResult] = []
+        failures: list[_LoginFailure] = []
+        interrupted: BaseException | None = None
+        run_interrupted_logged = False
+        for task in tasks:
+            try:
+                login_result = task.future.result()
+            except KeyboardInterrupt as exc:
+                evidence_writer.log_event(
+                    "login_interrupted",
+                    actor_session_id=task.record.actor_session_id,
+                    synthetic_actor_id=task.record.synthetic_actor_id,
+                )
+                if not run_interrupted_logged:
+                    evidence_writer.log_event(
+                        "run_interrupted",
+                        actor_session_id=task.record.actor_session_id,
+                        synthetic_actor_id=task.record.synthetic_actor_id,
+                    )
+                    run_interrupted_logged = True
+                interrupted = exc
+            except Exception as exc:
+                evidence_writer.log_event(
+                    "login_failed",
+                    actor_session_id=task.record.actor_session_id,
+                    synthetic_actor_id=task.record.synthetic_actor_id,
+                    error=str(exc),
+                )
+                failures.append(_LoginFailure(record=task.record, exception=exc))
+            else:
+                results.append(login_result)
+                self._remember_home_url(task.record, login_result)
+                evidence_writer.log_event(
+                    "login_succeeded",
+                    actor_session_id=task.record.actor_session_id,
+                    synthetic_actor_id=task.record.synthetic_actor_id,
+                )
+
+        if interrupted is not None:
+            raise interrupted
+        if failures:
+            evidence_writer.log_event("run_failed", error=_login_failure_summary(failures))
+            raise failures[0].exception
+        return results
 
     def _build_init_login_record(self, init_user: SessionInitUser, *, line_number: int) -> ExecutionTaskRecord:
         return ExecutionTaskRecord(
@@ -258,6 +312,17 @@ class TraceExecutor:
             result.data.setdefault("sap_messages", []).extend(unique_messages)
         messages.clear()
 
+    def _run_tool_with_message_capture(self, context: Any, spec: Any, params: Any) -> ToolResult:
+        try:
+            result = spec.run(context, params)
+            self._attach_fiori_messages(context, result)
+            return result
+        except Exception as exc:
+            raise _ToolOperationError(
+                original=exc,
+                sap_messages=self._capture_fiori_messages(context),
+            ) from exc
+
     def _capture_fiori_messages(self, context: Any) -> list[dict[str, str]]:
         if context is None or not hasattr(context, "get_browser_session"):
             return []
@@ -290,6 +355,9 @@ class TraceExecutor:
         messages.clear()
         return unique_messages
 
+    def _capture_fiori_messages_from_context(self, context: Any) -> list[dict[str, str]]:
+        return _run_context_operation(context, self._capture_fiori_messages)
+
     def _case_id(self, record: ExecutionTaskRecord) -> str | None:
         case_id = record.meta.get("case_id")
         return case_id if isinstance(case_id, str) and case_id else None
@@ -311,6 +379,9 @@ class TraceExecutor:
 
     def _can_reset_home_after_failure(self, record: ExecutionTaskRecord, context: Any) -> bool:
         return record.tool != "fiori.login" and record.tool.startswith("fiori.") and context is not None
+
+    def _can_reset_home_after_failure_from_context(self, record: ExecutionTaskRecord, context: Any) -> bool:
+        return _run_context_operation(context, lambda active_context: self._can_reset_home_after_failure(record, active_context))
 
     def _return_home(self, record: ExecutionTaskRecord, context: Any) -> None:
         if not hasattr(context, "get_browser_session"):
@@ -376,6 +447,52 @@ def _canonical_planned_step_to_record(node: CanonicalPlannedStep, meta: dict[str
         input=node.inputs,
         meta=meta,
         line_number=-1,
+    )
+
+
+@dataclass(frozen=True)
+class _LoginTask:
+    record: ExecutionTaskRecord
+    future: Future[ToolResult]
+
+
+@dataclass(frozen=True)
+class _LoginFailure:
+    record: ExecutionTaskRecord
+    exception: Exception
+
+
+class _ToolOperationError(Exception):
+    def __init__(self, *, original: Exception, sap_messages: list[dict[str, str]]) -> None:
+        super().__init__(str(original))
+        self.original = original
+        self.sap_messages = sap_messages
+
+
+def _submit_context_operation(context: Any, operation: Callable[[Any], ToolResult]) -> Future[ToolResult]:
+    submit = getattr(context, "submit_in_actor_session", None)
+    if callable(submit):
+        return submit(operation)
+
+    future: Future[ToolResult] = Future()
+    try:
+        future.set_result(operation(context))
+    except BaseException as exc:
+        future.set_exception(exc)
+    return future
+
+
+def _run_context_operation(context: Any, operation: Callable[[Any], Any]) -> Any:
+    run = getattr(context, "run_in_actor_session", None)
+    if callable(run):
+        return run(operation)
+    return operation(context)
+
+
+def _login_failure_summary(failures: list[_LoginFailure]) -> str:
+    return "; ".join(
+        f"{failure.record.actor_session_id}: {_safe_error_text(failure.exception)}"
+        for failure in failures
     )
 
 
