@@ -265,7 +265,10 @@ class TraceExecutor:
             synthetic_actor_id=init_user.synthetic_actor_id,
             tool="fiori.login",
             input={},
-            meta={"kind": "init"},
+            meta={
+                "kind": "init",
+                **_human_delay_profile_meta(init_user.human_delay_profile),
+            },
             line_number=line_number,
         )
 
@@ -569,6 +572,7 @@ def _canonical_event_meta(
     wave_sequence_no: int,
     startup_order: int,
 ) -> dict[str, Any]:
+    session = next((item for item in trace.actor_sessions if item.actor_session_id == node.actor_session_id), None)
     return {
         "run_id": trace.run_id,
         "wave_id": wave_id,
@@ -585,7 +589,14 @@ def _canonical_event_meta(
         "planned_synthetic_start": node.planned_synthetic_time.start,
         "planned_synthetic_end": node.planned_synthetic_time.end,
         "required_sap_object_keys": node.required_sap_object_keys,
+        **_human_delay_profile_meta(session.human_delay_profile if session is not None else None),
     }
+
+
+def _human_delay_profile_meta(profile: Any) -> dict[str, Any]:
+    if profile is None:
+        return {}
+    return {"human_delay_profile": profile.model_dump(mode="json")}
 
 
 def _validate_required_sap_object_keys(node: CanonicalPlannedStep, result: ToolResult) -> None:

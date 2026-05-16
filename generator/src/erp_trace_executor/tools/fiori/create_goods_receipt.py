@@ -12,6 +12,7 @@ from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
+from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, noop_delay, runtime_delay_callback
 
 MATERIAL_DOCUMENT_LINK_PATTERN = re.compile(r"Materialbeleg\s+(\d+)/?")
 NO_SELECTABLE_POSITION_PATTERN = re.compile(
@@ -34,12 +35,14 @@ class CreateGoodsReceiptInput(BaseModel):
 class SapGoodsReceiptFlow:
     """Recorded SAP Fiori goods receipt flow using a Fiori-aware page."""
 
-    def __init__(self, page) -> None:
+    def __init__(self, page, delay: RuntimeDelay = noop_delay) -> None:
         self._page = page
+        self._delay = delay
 
     def create(self, params: CreateGoodsReceiptInput) -> dict[str, str]:
         page = self._page
 
+        self._delay("app_open_search", 1.5)
         page.get_by_role("button", name="Suche öffnen").click()
         page.get_by_role("searchbox", name="Suchen").fill(
             "Wareneingang zu Einkaufsbeleg buchen"
@@ -50,6 +53,7 @@ class SapGoodsReceiptFlow:
 
         purchase_order = page.get_by_role("textbox", name="Einkaufsbeleg")
         purchase_order.wait_for(state="visible")
+        self._delay("form_section_fill", 1.0)
         purchase_order.click()
         purchase_order.fill(params.purchase_order)
         # SAP can expose this field before it reliably accepts input; retry once before committing.
@@ -69,6 +73,7 @@ class SapGoodsReceiptFlow:
         page.locator(
             STORAGE_LOCATION_OPTION_SELECTOR, has_text=params.storage_location
         ).first.click()
+        self._delay("review_save_post", 1.5)
         page.get_by_role("button", name="Buchen", exact=True).click()
 
         success_dialog = page.locator('[role="dialog"]', has_text="Materialbeleg").first
@@ -99,7 +104,7 @@ def run_create_goods_receipt(
     params: CreateGoodsReceiptInput,
 ) -> ToolResult:
     page = context.get_fiori_page()
-    goods_receipt_data = SapGoodsReceiptFlow(page).create(params)
+    goods_receipt_data = SapGoodsReceiptFlow(page, delay=runtime_delay_callback(context)).create(params)
 
     return ToolResult(
         planned_step_id=context.record.planned_step_id,

@@ -9,7 +9,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from erp_trace_executor.errors import TraceParseError
-from erp_trace_executor.models import SessionInitRecord, SessionInitUser
+from erp_trace_executor.models import HumanDelayProfile, SessionInitRecord, SessionInitUser
 
 
 class CanonicalModel(BaseModel):
@@ -27,6 +27,7 @@ class CanonicalActorSession(CanonicalModel):
     password_selector: str | None = None
     submit_selector: str | None = None
     success_selector: str | None = None
+    human_delay_profile: HumanDelayProfile | None = None
 
 
 class CanonicalCase(CanonicalModel):
@@ -159,6 +160,7 @@ def build_init_from_actor_sessions(trace: CanonicalTrace, env_values: dict[str, 
                 password_selector=session.password_selector,
                 submit_selector=session.submit_selector,
                 success_selector=session.success_selector,
+                human_delay_profile=session.human_delay_profile,
             )
         )
     return SessionInitRecord(line_number=1, users=users)

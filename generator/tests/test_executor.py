@@ -680,6 +680,31 @@ def test_execution_contexts_use_configured_fiori_message_sink_factory():
     assert calls == [(record, session), (record, session)]
 
 
+def test_execution_context_runtime_delay_marker_uses_multiplier_and_cap():
+    record = _record("C001_A1", tool="test.noop")
+    record.meta["human_delay_profile"] = {
+        "delay_multiplier": 2.0,
+        "runtime_delay_cap_seconds": 2.5,
+    }
+    page = SimpleNamespace(waited=[])
+
+    def wait_for_timeout(timeout_ms):
+        page.waited.append(timeout_ms)
+
+    page.wait_for_timeout = wait_for_timeout
+    session = SimpleNamespace(page=page, fiori_messages=[])
+
+    class FakeSessionManager:
+        def get_session(self, *, actor_session_id: str, synthetic_actor_id: str):
+            return session
+
+    context = ExecutionContext(record=record, session_manager=FakeSessionManager())
+
+    context.runtime_delay_marker("review_save", 1.5)
+
+    assert page.waited == [2500]
+
+
 def test_executor_falls_back_to_current_login_url_when_home_logo_clicks_fail(tmp_path, monkeypatch):
     page = FakeHomeResetPage(logo_click_succeeds=False)
     record = _record("planned-step-1", tool="fiori.fake_tool")

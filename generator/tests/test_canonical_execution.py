@@ -207,6 +207,23 @@ def test_build_init_from_sessions_preserves_login_selectors() -> None:
     assert init.users[0].success_selector == "#done"
 
 
+def test_build_init_from_sessions_preserves_human_delay_profile() -> None:
+    payload = _canonical_payload()
+    payload["actor_sessions"][0]["human_delay_profile"] = {
+        "delay_multiplier": 2.0,
+        "runtime_delay_cap_seconds": 2.5,
+    }
+    trace = CanonicalTrace.model_validate(payload)
+
+    init = build_init_from_actor_sessions(
+        trace,
+        {"SAP_USER_1_UN": "BUYER1", "SAP_USER_1_PW": "secret", "SAP_URL": "https://sap.example.test"},
+    )
+
+    assert init.users[0].human_delay_profile.delay_multiplier == 2.0
+    assert init.users[0].human_delay_profile.runtime_delay_cap_seconds == 2.5
+
+
 @pytest.mark.parametrize(
     ("missing_key", "match"),
     [

@@ -13,7 +13,7 @@ from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.fiori_types import FioriDate
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
-from erp_trace_executor.tools.fiori.helpers import format_number
+from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, format_number, noop_delay, runtime_delay_callback
 
 
 INVOICE_LINK_PATTERN = re.compile(r"(\d+)/(\d{4})")
@@ -34,17 +34,20 @@ class CreateSupplierInvoiceInput(BaseModel):
 class SapSupplierInvoiceFlow:
     """Recorded SAP Fiori supplier invoice flow using a Fiori-aware page."""
 
-    def __init__(self, page) -> None:
+    def __init__(self, page, delay: RuntimeDelay = noop_delay) -> None:
         self._page = page
+        self._delay = delay
 
     def create(self, params: CreateSupplierInvoiceInput) -> dict[str, str | float]:
         page = self._page
 
+        self._delay("app_open_search", 1.5)
         page.get_by_role("button", name="Suche öffnen").click()
         page.get_by_role("searchbox", name="Suchen").fill("Lieferantenrechnung anlegen")
         page.get_by_role("gridcell", name="Lieferantenrechnung anlegen", exact=True).locator("b").click()
         self._discard_existing_draft_if_present(page)
 
+        self._delay("form_section_fill", 1.0)
         self._fill_textbox(page, "Rechnungsdatum", params.invoice_date)
         page.get_by_role("textbox", name="Rechnungsdatum").press("Tab")
         page.get_by_role("textbox", name="Buchungsdatum").press("Tab")
@@ -69,6 +72,7 @@ class SapSupplierInvoiceFlow:
         tax_code.press("Enter")
 
         page.get_by_role("button", name="Prüfen").click()
+        self._delay("review_save_post", 1.5)
         page.get_by_role("button", name="Buchen").click()
 
         invoice_link = page.locator("a", has_text=INVOICE_LINK_PATTERN).first
@@ -140,7 +144,7 @@ def run_create_supplier_invoice(
     params: CreateSupplierInvoiceInput,
 ) -> ToolResult:
     page = context.get_fiori_page()
-    invoice_data = SapSupplierInvoiceFlow(page).create(params)
+    invoice_data = SapSupplierInvoiceFlow(page, delay=runtime_delay_callback(context)).create(params)
 
     return ToolResult(
         planned_step_id=context.record.planned_step_id,

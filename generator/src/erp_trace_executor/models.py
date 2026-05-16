@@ -36,6 +36,15 @@ class ExecutionTaskRecord(BaseModel):
     line_number: int
 
 
+class HumanDelayProfile(BaseModel):
+    """Runtime-safe actor delay metadata carried by canonical traces."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    delay_multiplier: float = Field(gt=0)
+    runtime_delay_cap_seconds: float = Field(ge=0)
+
+
 class SessionInitUser(BaseModel):
     """One actor session to log in before planned-step execution."""
 
@@ -50,6 +59,7 @@ class SessionInitUser(BaseModel):
     password_selector: str | None = None
     submit_selector: str | None = None
     success_selector: str | None = None
+    human_delay_profile: HumanDelayProfile | None = None
 
 
 class SessionInitRecord(BaseModel):

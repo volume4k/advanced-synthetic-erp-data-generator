@@ -10,7 +10,7 @@ from typing import TypeVar
 from erp_trace_executor.browser.session import BrowserSession, BrowserSessionManager
 from erp_trace_executor.fiori_messages import FioriMessageSink
 from erp_trace_executor.fiori_page import FioriPage
-from erp_trace_executor.models import ExecutionTaskRecord
+from erp_trace_executor.models import ExecutionTaskRecord, HumanDelayProfile
 
 ResultT = TypeVar("ResultT")
 FioriMessageSinkFactory = Callable[[ExecutionTaskRecord, BrowserSession], FioriMessageSink]
@@ -69,6 +69,9 @@ class ExecutionContext:
         )
         return FioriPage(session.page, message_sink=message_sink)
 
+    def runtime_delay_marker(self, marker: str, base_seconds: float) -> None:
+        _runtime_delay_marker(self, marker, base_seconds)
+
 
 @dataclass(frozen=True)
 class ActorSessionExecutionContext:
@@ -100,3 +103,19 @@ class ActorSessionExecutionContext:
             else self.fiori_message_sink_factory(self.record, self.session)
         )
         return FioriPage(self.session.page, message_sink=message_sink)
+
+    def runtime_delay_marker(self, marker: str, base_seconds: float) -> None:
+        _runtime_delay_marker(self, marker, base_seconds)
+
+
+def _runtime_delay_marker(context: ExecutionContext | ActorSessionExecutionContext, marker: str, base_seconds: float) -> None:
+    if base_seconds <= 0:
+        return
+    profile_payload = context.record.meta.get("human_delay_profile")
+    if not profile_payload:
+        return
+    profile = HumanDelayProfile.model_validate(profile_payload)
+    delay_seconds = min(base_seconds * profile.delay_multiplier, profile.runtime_delay_cap_seconds)
+    if delay_seconds <= 0:
+        return
+    context.get_browser_session().page.wait_for_timeout(round(delay_seconds * 1000))

@@ -10,7 +10,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
-from erp_trace_executor.tools.fiori.helpers import format_number
+from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, format_number, noop_delay, runtime_delay_callback
 
 
 IFRAME_SELECTOR = 'iframe[name="application-PurchaseOrder-create-iframe"]'
@@ -33,12 +33,14 @@ class CreatePurchaseOrderInput(BaseModel):
 class SapPurchaseOrderFlow:
     """Recorded SAP Fiori purchase order flow using a Fiori-aware page."""
 
-    def __init__(self, page) -> None:
+    def __init__(self, page, delay: RuntimeDelay = noop_delay) -> None:
         self._page = page
+        self._delay = delay
 
     def create(self, params: CreatePurchaseOrderInput) -> dict[str, str | int | float]:
         page = self._page
 
+        self._delay("app_open_search", 1.5)
         page.get_by_role("button", name="Suche öffnen").click()
         page.get_by_role("searchbox", name="Suchen").fill("Bestellung")
         page.get_by_text("Bestellung anlegen in Apps").click()
@@ -52,6 +54,7 @@ class SapPurchaseOrderFlow:
         supplier.fill(params.supplier)
         supplier.press("Enter")
 
+        self._delay("form_section_fill", 1.0)
         frame.get_by_role("button", name="Positionen aufklappen Strg+F3").wait_for(state="visible")
         frame.get_by_role("button", name="Positionen aufklappen Strg+F3").click()
 
@@ -66,11 +69,12 @@ class SapPurchaseOrderFlow:
         net_price_input = frame.get_by_role("textbox", name="Nettopreis").first
         net_price_input.wait_for(state="visible")
         self._type_grid_textbox_value(net_price_input, format_number(params.net_price))
-        frame.get_by_role("tablist").get_by_text("Rechnung").click()
+        frame.get_by_role("tablist").get_by_text("Rechnung", exact=True).click()
         tax_code = frame.get_by_role("textbox", name="Steuerkennz.")
         tax_code.click()
         tax_code.fill(params.tax_code)
         tax_code.press("Enter")
+        self._delay("review_save_post", 1.5)
         frame.get_by_role("button", name=re.compile(r"Sichern\s+Hervorgehoben")).click()
 
         success_message = frame.locator(STATUS_BAR_MESSAGE_SELECTOR)
@@ -122,7 +126,7 @@ def run_create_purchase_order(
     params: CreatePurchaseOrderInput,
 ) -> ToolResult:
     page = context.get_fiori_page()
-    order_data = SapPurchaseOrderFlow(page).create(params)
+    order_data = SapPurchaseOrderFlow(page, delay=runtime_delay_callback(context)).create(params)
 
     return ToolResult(
         planned_step_id=context.record.planned_step_id,
