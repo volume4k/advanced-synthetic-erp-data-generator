@@ -52,6 +52,10 @@ class SapGoodsReceiptFlow:
         purchase_order.wait_for(state="visible")
         purchase_order.click()
         purchase_order.fill(params.purchase_order)
+        # SAP can expose this field before it reliably accepts input; retry once before committing.
+        if purchase_order.input_value() != params.purchase_order:
+            page.wait_for_timeout(500)
+            purchase_order.fill(params.purchase_order)
         purchase_order.press("Enter")
         self._raise_if_no_selectable_position(page, params.purchase_order)
 
@@ -71,12 +75,6 @@ class SapGoodsReceiptFlow:
             "purchase_order": params.purchase_order,
             "storage_location": params.storage_location,
         }
-
-    def _fill_textbox(self, page, name: str, value: str) -> None:
-        textbox = page.get_by_role("textbox", name=name)
-        textbox.click()
-        textbox.press("ControlOrMeta+a")
-        textbox.fill(value)
 
     def _raise_if_no_selectable_position(self, page, purchase_order: str) -> None:
         message = page.get_by_text(NO_SELECTABLE_POSITION_PATTERN).first
