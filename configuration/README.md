@@ -35,11 +35,23 @@ new objects.SyntheticActor {
   role = "procurement"
   timezone = "Europe/Berlin"
   workLocation = "HD00"
-  speedFactor = 1.2
+  personaDescription = "Careful procurement clerk who pauses before save actions."
+  delayMultiplier = 1.2
+  runtimeDelayCapSeconds = 4.0
   realismProfile {
     workerType = "relaxed procurement clerk"
     workingHoursDeviation = -2.5
     pauseCharacteristicsIndex = 12
+  }
+  realismGuardrails {
+    delayMultiplierMin = 0.9
+    delayMultiplierMax = 1.8
+    workdayDeviationHoursMin = -2.5
+    workdayDeviationHoursMax = 0.5
+    pauseDurationMinutesMin = 35
+    pauseDurationMinutesMax = 90
+    runtimeDelayCapSecondsMin = 2.0
+    runtimeDelayCapSecondsMax = 6.0
   }
   exposeInFinalDatasetAs = "procurement_01"
   capabilities {
@@ -116,7 +128,17 @@ This means `create_purchase_requisition` must happen before `create_purchase_ord
 
 ## Trace Generator Settings
 
-Keep trace-planning settings in Pkl. `run_settings.pkl` defines FIFO scheduling, core working hours, pause ranges, deterministic step-duration ranges, inter-step waiting-time ranges, storage-location labels, and logical post-processing export groups. Those ranges are sampled by the trace generator today; an LLM can generate or refine the ranges later, but the compiled YAML remains the structured source of truth.
+Keep trace-planning settings in Pkl. `run_settings.pkl` defines FIFO scheduling, core working hours, pause ranges, deterministic step-duration ranges, inter-step waiting-time ranges, storage-location labels, logical post-processing export groups, and optional realism compiler settings.
+
+When `runSettings.realism.enabled` is `true`, `erp-trace-generate` calls an OpenAI-compatible local LLM endpoint before scheduling. Configure it with:
+
+```bash
+REALISM_LLM_BASE_URL=http://localhost:1234
+REALISM_LLM_MODEL=<model-name>
+REALISM_LLM_API_KEY=<optional-token>
+```
+
+Validated compiler output is cached in `configuration/build/realism-criteria.<hash>.json`. The cache is only a performance optimization; generated execution traces and manifests contain the runtime and post-processing fields they need.
 
 ## Build YAML
 

@@ -128,6 +128,26 @@ _Avoid_: Object chain, lineage chain, relationship chain
 A planned business persona that owns synthetic work timing and final dataset identity.
 _Avoid_: User, account, technical user
 
+**Realism Guardrails**:
+Configured hard bounds that constrain LLM-generated timing and behavior values before the **Trace Generator** schedules planned work.
+_Avoid_: Prompt hints, soft preferences, unvalidated realism
+
+**Compiled Realism Criteria**:
+Validated structured realism data produced from natural-language descriptions and **Realism Guardrails** before scheduling.
+_Avoid_: Raw LLM answer, prompt output, schedule
+
+**Demand Release**:
+The planned moment when a **Process Case** becomes available for its first **Planned Step**.
+_Avoid_: Case start, order date, task start
+
+**Human Delay Profile**:
+Runtime-safe actor behavior metadata that lets the **Trace Executor** apply bounded human-like delays without reading planning cache artifacts.
+_Avoid_: Speed factor, runtime prompt, tool input
+
+**Runtime Delay Marker**:
+A named point inside a **Browser Tool** where the **Trace Executor** may pause using the active actor's **Human Delay Profile**.
+_Avoid_: Sleep, artificial wait, SAP wait
+
 **Actor Capability**:
 The set of process steps a synthetic actor is allowed to perform.
 _Avoid_: Role, permission, assignment
@@ -162,6 +182,8 @@ _Avoid_: Actor, business user, persona
 - A **Planned Step** may have one or more **Planned Date Inputs**.
 - An **Execution Trace** contains one or more **Actor Sessions**.
 - A **Synthetic Actor** maps to exactly one **Technical SAP User** during execution.
+- A **Synthetic Actor** may have **Realism Guardrails** that limit its **Compiled Realism Criteria**.
+- A **Process Case** has exactly one **Demand Release**.
 - A **Technical SAP User** may back multiple **Synthetic Actors**.
 - Scheduling prevents one **Technical SAP User** from running multiple **Planned Steps** at the same time.
 - An **Actor Session** belongs to exactly one **Synthetic Actor** and is authenticated through exactly one **Technical SAP User**.
@@ -173,6 +195,7 @@ _Avoid_: Actor, business user, persona
 - **Object Lineage** describes the expected SAP business object chain for one **Process Case**.
 - **Execution Evidence** includes the **Execution Log** and the **Object Registry**.
 - **Execution Evidence** provides runtime input for the **Post-Processing Manifest**.
+- A **Runtime Delay Marker** uses a **Human Delay Profile** from the **Execution Trace**, not the **Compiled Realism Criteria** cache.
 
 ## Example dialogue
 
