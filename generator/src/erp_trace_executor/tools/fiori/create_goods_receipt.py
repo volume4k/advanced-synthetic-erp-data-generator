@@ -56,6 +56,12 @@ class SapGoodsReceiptFlow:
         if purchase_order.input_value() != params.purchase_order:
             page.wait_for_timeout(500)
             purchase_order.fill(params.purchase_order)
+        current_purchase_order = purchase_order.input_value()
+        if current_purchase_order != params.purchase_order:
+            raise ToolExecutionError(
+                f"Failed to fill purchase order field with '{params.purchase_order}'; current value is "
+                f"'{current_purchase_order}'"
+            )
         purchase_order.press("Enter")
         self._raise_if_no_selectable_position(page, params.purchase_order)
 
