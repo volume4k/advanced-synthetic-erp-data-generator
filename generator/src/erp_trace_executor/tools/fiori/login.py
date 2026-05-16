@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from playwright.sync_api import Page
 from pydantic import BaseModel, ConfigDict, HttpUrl
 
 from erp_trace_executor.context import ActorSessionExecutionContext, ExecutionContext
@@ -72,7 +73,7 @@ LOGIN_TOOL = ToolSpec(
 )
 
 
-def _fill_login_fields(page, params: LoginInput) -> None:
+def _fill_login_fields(page: Page, params: LoginInput) -> None:
     for _attempt in range(LOGIN_FIELD_FILL_ATTEMPTS):
         username = page.locator(params.username_selector)
         password = page.locator(params.password_selector)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import suppress
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 import queue
@@ -159,7 +160,7 @@ class _ActorSessionWorker:
                         self._close_resources(browser=browser, playwright=playwright)
                         browser = None
                         playwright = None
-                    except BaseException as exc:
+                    except Exception as exc:
                         request.future.set_exception(exc)
                     else:
                         request.future.set_result(None)
@@ -167,6 +168,7 @@ class _ActorSessionWorker:
 
                 if not request.future.set_running_or_notify_cancel():
                     continue
+                context: BrowserContext | None = None
                 try:
                     if self._session is None:
                         playwright = sync_playwright().start()
@@ -179,11 +181,39 @@ class _ActorSessionWorker:
                             context=context,
                             page=page,
                         )
+                        context = None
                     request.future.set_result(request.operation(self._session))
+                except Exception as exc:
+                    if self._session is None:
+                        self._discard_partial_resources(context=context, browser=browser, playwright=playwright)
+                        context = None
+                        browser = None
+                        playwright = None
+                    request.future.set_exception(exc)
                 except BaseException as exc:
                     request.future.set_exception(exc)
+                    raise
         finally:
             self._close_resources(browser=browser, playwright=playwright)
+
+    def _discard_partial_resources(
+        self,
+        *,
+        context: BrowserContext | None,
+        browser: Browser | None,
+        playwright: Playwright | None,
+    ) -> None:
+        if context is not None:
+            with suppress(Exception):
+                context.close()
+
+        if browser is not None:
+            with suppress(Exception):
+                browser.close()
+
+        if playwright is not None:
+            with suppress(Exception):
+                playwright.stop()
 
     def _close_resources(self, *, browser: Browser | None, playwright: Playwright | None) -> None:
         if self._session is not None:

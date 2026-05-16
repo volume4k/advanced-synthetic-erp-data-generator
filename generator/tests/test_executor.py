@@ -12,6 +12,7 @@ from playwright.sync_api import Error as PlaywrightError
 from pydantic import BaseModel
 
 from erp_trace_executor import executor as executor_module
+from erp_trace_executor.browser import session as session_module
 from erp_trace_executor.browser.session import BrowserSessionManager
 from erp_trace_executor.canonical import CanonicalTrace
 from erp_trace_executor.context import ExecutionContext
@@ -840,6 +841,61 @@ def test_browser_session_manager_rejects_mixed_users_for_same_session():
                 synthetic_actor_id="user-2",
                 operation=id,
             )
+
+
+def test_browser_session_manager_closes_partial_resources_when_initialization_fails(monkeypatch):
+    events: list[str] = []
+
+    class FakePlaywrightBootstrap:
+        def start(self):
+            events.append("playwright_start")
+            return FakePlaywright()
+
+    class FakePlaywright:
+        def __init__(self) -> None:
+            self.chromium = FakeChromium()
+
+        def stop(self) -> None:
+            events.append("playwright_stop")
+
+    class FakeChromium:
+        def launch(self, *, headless: bool):
+            events.append(f"browser_launch_{headless}")
+            return FakeBrowser()
+
+    class FakeBrowser:
+        def new_context(self):
+            events.append("context_open")
+            return FakeBrowserContext()
+
+        def close(self) -> None:
+            events.append("browser_close")
+
+    class FakeBrowserContext:
+        def new_page(self):
+            raise RuntimeError("cannot open page")
+
+        def close(self) -> None:
+            events.append("context_close")
+
+    monkeypatch.setattr(session_module, "sync_playwright", lambda: FakePlaywrightBootstrap())
+
+    with BrowserSessionManager() as session_manager:
+        with pytest.raises(RuntimeError, match="cannot open page"):
+            session_manager.run_for_session(
+                actor_session_id="session-1",
+                synthetic_actor_id="user-1",
+                operation=id,
+            )
+
+    assert events == [
+        "playwright_start",
+        "browser_launch_True",
+        "context_open",
+        "context_close",
+        "browser_close",
+        "playwright_stop",
+    ]
 
 
 def test_executor_runs_login_then_purchase_requisition_against_fixture_app(fixture_app_url, tmp_path):
