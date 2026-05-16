@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from playwright.sync_api import Page
 from pydantic import BaseModel, ConfigDict, HttpUrl
 
-from erp_trace_executor.context import ExecutionContext
+from erp_trace_executor.context import ActorSessionExecutionContext, ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.models import ToolResult
 from erp_trace_executor.tooling import ToolSpec
@@ -14,6 +15,8 @@ SAP_FIORI_LOGIN_URL = "https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-
 DEFAULT_USERNAME_SELECTOR = "#USERNAME_FIELD-inner"
 DEFAULT_PASSWORD_SELECTOR = "#PASSWORD_FIELD-inner"
 DEFAULT_SUBMIT_SELECTOR = "#LOGIN_LINK"
+LOGIN_USERNAME_PASSWORD_PAUSE_MS = 50
+LOGIN_FIELD_FILL_ATTEMPTS = 2
 
 
 class LoginInput(BaseModel):
@@ -32,14 +35,13 @@ class LoginInput(BaseModel):
         return str(self.url or self.base_url or SAP_FIORI_LOGIN_URL)
 
 
-def run_login(context: ExecutionContext, params: LoginInput) -> ToolResult:
+def run_login(context: ExecutionContext | ActorSessionExecutionContext, params: LoginInput) -> ToolResult:
     session = context.get_browser_session()
     page = session.page
     login_url = params.resolved_login_url()
 
     page.goto(login_url)
-    page.locator(params.username_selector).fill(params.username)
-    page.locator(params.password_selector).fill(params.password)
+    _fill_login_fields(page, params)
     page.locator(params.submit_selector).click()
 
     if params.success_selector is not None:
@@ -69,6 +71,22 @@ LOGIN_TOOL = ToolSpec(
     input_model=LoginInput,
     run=run_login,
 )
+
+
+def _fill_login_fields(page: Page, params: LoginInput) -> None:
+    for _attempt in range(LOGIN_FIELD_FILL_ATTEMPTS):
+        username = page.locator(params.username_selector)
+        password = page.locator(params.password_selector)
+
+        username.fill(params.username)
+        page.wait_for_timeout(LOGIN_USERNAME_PASSWORD_PAUSE_MS)
+        password.click()
+        password.fill(params.password)
+
+        if username.input_value() == params.username and password.input_value() == params.password:
+            return
+
+    raise ToolExecutionError("Login form fields did not contain the expected username and password before submit")
 
 
 def _login_form_still_visible(page, params: LoginInput) -> bool:
