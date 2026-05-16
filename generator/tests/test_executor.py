@@ -15,7 +15,7 @@ from erp_trace_executor import executor as executor_module
 from erp_trace_executor.browser import session as session_module
 from erp_trace_executor.browser.session import BrowserSessionManager
 from erp_trace_executor.canonical import CanonicalTrace
-from erp_trace_executor.context import ExecutionContext
+from erp_trace_executor.context import ActorSessionExecutionContext, ExecutionContext
 from erp_trace_executor.credentials import EnvCredentialStore
 from erp_trace_executor.evidence import ExecutionEvidenceWriter
 from erp_trace_executor.errors import SessionUserMismatchError
@@ -611,6 +611,73 @@ def test_executor_attaches_fiori_messages_to_tool_result(tmp_path, monkeypatch):
         }
     ]
     assert context.session.fiori_messages == []
+
+
+def test_executor_logs_fiori_messages_once_per_case_actor(caplog):
+    executor = TraceExecutor()
+    record = _record("C001_A1", tool="fiori.fake_tool", case_id="P2P_C001")
+    other_actor_record = _record(
+        "C001_A2",
+        tool="fiori.fake_tool",
+        synthetic_actor_id="buyer-b",
+        actor_session_id="buyer-b-session",
+        case_id="P2P_C001",
+    )
+    session = SimpleNamespace(fiori_messages=[])
+    other_actor_session = SimpleNamespace(fiori_messages=[])
+    sap_message = {
+        "severity": "error",
+        "text": "Geben Sie ein Rechnungsdatum ein.",
+        "source": "sap-message-popover",
+        "url": "https://sap.example.test/invoice",
+    }
+
+    with caplog.at_level(logging.INFO, logger="erp_trace_executor.executor"):
+        executor.fiori_message_sink_for(record, session).append(sap_message)
+        executor.fiori_message_sink_for(record, session).append(
+            {**sap_message, "url": "https://sap.example.test/other"}
+        )
+        executor.fiori_message_sink_for(other_actor_record, other_actor_session).append(sap_message)
+
+    messages = [item.getMessage() for item in caplog.records if item.name == "erp_trace_executor.executor"]
+    assert messages == [
+        "SAP Fiori error message for case P2P_C001, actor session buyer-session, "
+        "planned step C001_A1: Geben Sie ein Rechnungsdatum ein.",
+        "SAP Fiori error message for case P2P_C001, actor session buyer-b-session, "
+        "planned step C001_A2: Geben Sie ein Rechnungsdatum ein.",
+    ]
+    assert len(session.fiori_messages) == 2
+    assert len(other_actor_session.fiori_messages) == 1
+
+
+def test_execution_contexts_use_configured_fiori_message_sink_factory():
+    record = _record("C001_A1", tool="fiori.fake_tool", case_id="P2P_C001")
+    session = SimpleNamespace(page=object(), fiori_messages=[])
+    sink: list[dict[str, str]] = []
+    calls: list[tuple[ExecutionTaskRecord, object]] = []
+
+    class FakeSessionManager:
+        def get_session(self, *, actor_session_id: str, synthetic_actor_id: str):
+            return session
+
+    def sink_factory(received_record, received_session):
+        calls.append((received_record, received_session))
+        return sink
+
+    execution_context = ExecutionContext(
+        record=record,
+        session_manager=FakeSessionManager(),
+        fiori_message_sink_factory=sink_factory,
+    )
+    actor_context = ActorSessionExecutionContext(
+        record=record,
+        session=session,
+        fiori_message_sink_factory=sink_factory,
+    )
+
+    assert execution_context.get_fiori_page()._message_handler._message_sink is sink
+    assert actor_context.get_fiori_page()._message_handler._message_sink is sink
+    assert calls == [(record, session), (record, session)]
 
 
 def test_executor_falls_back_to_current_login_url_when_home_logo_clicks_fail(tmp_path, monkeypatch):

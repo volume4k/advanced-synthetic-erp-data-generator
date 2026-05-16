@@ -8,10 +8,12 @@ from dataclasses import dataclass
 from typing import TypeVar
 
 from erp_trace_executor.browser.session import BrowserSession, BrowserSessionManager
+from erp_trace_executor.fiori_messages import FioriMessageSink
 from erp_trace_executor.fiori_page import FioriPage
 from erp_trace_executor.models import ExecutionTaskRecord
 
 ResultT = TypeVar("ResultT")
+FioriMessageSinkFactory = Callable[[ExecutionTaskRecord, BrowserSession], FioriMessageSink]
 
 
 @dataclass(frozen=True)
@@ -20,6 +22,7 @@ class ExecutionContext:
 
     record: ExecutionTaskRecord
     session_manager: BrowserSessionManager
+    fiori_message_sink_factory: FioriMessageSinkFactory | None = None
 
     @property
     def planned_step_id(self) -> str:
@@ -37,7 +40,13 @@ class ExecutionContext:
         return self.session_manager.submit_for_session(
             actor_session_id=self.record.actor_session_id,
             synthetic_actor_id=self.record.synthetic_actor_id,
-            operation=lambda session: operation(ActorSessionExecutionContext(record=self.record, session=session)),
+            operation=lambda session: operation(
+                ActorSessionExecutionContext(
+                    record=self.record,
+                    session=session,
+                    fiori_message_sink_factory=self.fiori_message_sink_factory,
+                )
+            ),
         )
 
     def run_in_actor_session(self, operation: Callable[["ActorSessionExecutionContext"], ResultT]) -> ResultT:
@@ -53,7 +62,12 @@ class ExecutionContext:
         """Return current session page wrapped with Fiori-aware settle waits."""
 
         session = self.get_browser_session()
-        return FioriPage(session.page, message_sink=session.fiori_messages)
+        message_sink = (
+            session.fiori_messages
+            if self.fiori_message_sink_factory is None
+            else self.fiori_message_sink_factory(self.record, session)
+        )
+        return FioriPage(session.page, message_sink=message_sink)
 
 
 @dataclass(frozen=True)
@@ -62,6 +76,7 @@ class ActorSessionExecutionContext:
 
     record: ExecutionTaskRecord
     session: BrowserSession
+    fiori_message_sink_factory: FioriMessageSinkFactory | None = None
 
     @property
     def planned_step_id(self) -> str:
@@ -79,4 +94,9 @@ class ActorSessionExecutionContext:
         return self.session
 
     def get_fiori_page(self) -> FioriPage:
-        return FioriPage(self.session.page, message_sink=self.session.fiori_messages)
+        message_sink = (
+            self.session.fiori_messages
+            if self.fiori_message_sink_factory is None
+            else self.fiori_message_sink_factory(self.record, self.session)
+        )
+        return FioriPage(self.session.page, message_sink=message_sink)

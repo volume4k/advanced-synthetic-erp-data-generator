@@ -74,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
             context_factory=lambda record: ExecutionContext(
                 record=record,
                 session_manager=session_manager,
+                fiori_message_sink_factory=executor.fiori_message_sink_for,
             ),
             evidence_writer=ExecutionEvidenceWriter(artifact_dir, run_id=trace.run_id),
         )

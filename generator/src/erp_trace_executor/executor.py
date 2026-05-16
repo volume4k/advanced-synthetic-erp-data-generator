@@ -5,16 +5,20 @@ from __future__ import annotations
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
+import logging
+import threading
 from typing import Any
 
 from playwright.sync_api import Error as PlaywrightError
 from pydantic import ValidationError
 
+from erp_trace_executor.browser.session import BrowserSession
 from erp_trace_executor.canonical import CanonicalPlannedStep, CanonicalTrace
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.credentials import EnvCredentialStore
 from erp_trace_executor.evidence import ExecutionEvidenceWriter
 from erp_trace_executor.errors import ToolExecutionError, ToolInputValidationError
+from erp_trace_executor.fiori_messages import FioriMessageSink
 from erp_trace_executor.fiori_page import FioriPage
 from erp_trace_executor.models import ExecutionTaskRecord, SessionInitRecord, SessionInitUser, ToolResult
 from erp_trace_executor.registry import ToolRegistry, build_default_registry
@@ -26,6 +30,7 @@ SAP_HOME_LOGO_SELECTORS = (
 )
 SAP_HOME_LOGO_CLICK_ATTEMPTS = 2
 SAP_HOME_NAVIGATION_TIMEOUT_MS = 1_000
+LOGGER = logging.getLogger(__name__)
 
 
 class TraceExecutor:
@@ -42,6 +47,8 @@ class TraceExecutor:
         self._credential_store = credential_store or EnvCredentialStore()
         self._state_store = state_store or RuntimeStateStore()
         self._home_urls: dict[str, str] = {}
+        self._fiori_message_log_lock = threading.Lock()
+        self._logged_fiori_messages: set[tuple[str, str, str, str, str]] = set()
 
     def execute_canonical(
         self,
@@ -59,6 +66,8 @@ class TraceExecutor:
         }
         cases_by_id = {case.case_id: case for case in trace.cases}
 
+        with self._fiori_message_log_lock:
+            self._logged_fiori_messages.clear()
         evidence_writer.log_event("run_started")
         try:
             results.extend(
@@ -164,6 +173,18 @@ class TraceExecutor:
     @property
     def registry(self) -> ToolRegistry:
         return self._registry
+
+    def fiori_message_sink_for(
+        self,
+        record: ExecutionTaskRecord,
+        session: BrowserSession,
+    ) -> FioriMessageSink:
+        return _LoggingFioriMessageSink(
+            record=record,
+            target=session.fiori_messages,
+            logged_messages=self._logged_fiori_messages,
+            lock=self._fiori_message_log_lock,
+        )
 
     def _run_initial_logins(
         self,
@@ -336,7 +357,11 @@ class TraceExecutor:
             messages = []
 
         try:
-            FioriPage(session.page, message_sink=messages).handle_messages()
+            record = getattr(context, "record", None)
+            message_sink: FioriMessageSink = messages
+            if isinstance(record, ExecutionTaskRecord) and getattr(session, "fiori_messages", None) is not None:
+                message_sink = self.fiori_message_sink_for(record, session)
+            FioriPage(session.page, message_sink=message_sink).handle_messages()
         except Exception:
             pass
 
@@ -469,6 +494,45 @@ class _ToolOperationError(Exception):
         self.sap_messages = sap_messages
 
 
+class _LoggingFioriMessageSink:
+    def __init__(
+        self,
+        *,
+        record: ExecutionTaskRecord,
+        target: list[dict[str, str]],
+        logged_messages: set[tuple[str, str, str, str, str]],
+        lock: threading.Lock,
+    ) -> None:
+        self._record = record
+        self._target = target
+        self._logged_messages = logged_messages
+        self._lock = lock
+
+    def append(self, message: dict[str, str]) -> None:
+        self._target.append(message)
+
+        text = _message_field(message, "text")
+        if not text:
+            return
+        severity = _message_field(message, "severity") or "unknown"
+        source = _message_field(message, "source") or "sap-message"
+        case_id = _case_id_for_message_log(self._record)
+        key = (case_id, self._record.actor_session_id, severity, source, text)
+        with self._lock:
+            if key in self._logged_messages:
+                return
+            self._logged_messages.add(key)
+
+        LOGGER.info(
+            "SAP Fiori %s message for case %s, actor session %s, planned step %s: %s",
+            severity,
+            case_id,
+            self._record.actor_session_id,
+            self._record.planned_step_id,
+            text,
+        )
+
+
 def _submit_context_operation(context: Any, operation: Callable[[Any], ToolResult]) -> Future[ToolResult]:
     submit = getattr(context, "submit_in_actor_session", None)
     if callable(submit):
@@ -545,6 +609,15 @@ def _validate_required_sap_object_keys(node: CanonicalPlannedStep, result: ToolR
 
 def _safe_error_text(exc: Exception) -> str:
     return " ".join(str(exc).split())[:2_000]
+
+
+def _message_field(message: dict[str, str], field_name: str) -> str:
+    return " ".join(str(message.get(field_name) or "").split())
+
+
+def _case_id_for_message_log(record: ExecutionTaskRecord) -> str:
+    case_id = record.meta.get("case_id")
+    return case_id if isinstance(case_id, str) and case_id else "unknown"
 
 
 def _write_object_registry_entries(
