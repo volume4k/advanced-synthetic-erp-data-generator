@@ -7,11 +7,24 @@ actors: Listing<objects.SyntheticActor> = new Listing {
     role = "procurement"
     timezone = "America/New_York"
     workLocation = "MI00"
-    speedFactor = 1.2
+    personaDescription =
+      "55-year-old procurement clerk, careful and conversational, uses ERP daily but pauses before save actions."
+    delayMultiplier = 1.2
+    runtimeDelayCapSeconds = 4.0
     realismProfile {
       workerType = "relaxed procurement clerk"
       workingHoursDeviation = -2.5
       pauseCharacteristicsIndex = 12
+    }
+    realismGuardrails {
+      delayMultiplierMin = 0.9
+      delayMultiplierMax = 1.8
+      workdayDeviationHoursMin = -2.5
+      workdayDeviationHoursMax = 0.5
+      pauseDurationMinutesMin = 35
+      pauseDurationMinutesMax = 90
+      runtimeDelayCapSecondsMin = 2.0
+      runtimeDelayCapSecondsMax = 6.0
     }
     exposeInFinalDatasetAs = "procurement_01"
     capabilities {
@@ -30,11 +43,24 @@ actors: Listing<objects.SyntheticActor> = new Listing {
     role = "procurement_manager"
     timezone = "America/New_York"
     workLocation = "MI00"
-    speedFactor = 0.9
+    personaDescription =
+      "Busy procurement manager who handles approvals between meetings and tends to work late."
+    delayMultiplier = 0.9
+    runtimeDelayCapSeconds = 3.0
     realismProfile {
       workerType = "busy procurement manager"
       workingHoursDeviation = 1.0
       pauseCharacteristicsIndex = 8
+    }
+    realismGuardrails {
+      delayMultiplierMin = 0.7
+      delayMultiplierMax = 1.4
+      workdayDeviationHoursMin = -0.5
+      workdayDeviationHoursMax = 2.0
+      pauseDurationMinutesMin = 20
+      pauseDurationMinutesMax = 60
+      runtimeDelayCapSecondsMin = 1.0
+      runtimeDelayCapSecondsMax = 5.0
     }
     exposeInFinalDatasetAs = "procurement_manager_01"
     capabilities {
@@ -50,11 +76,24 @@ actors: Listing<objects.SyntheticActor> = new Listing {
     role = "warehouse"
     timezone = "America/New_York"
     workLocation = "MI00"
-    speedFactor = 1.1
+    personaDescription =
+      "Warehouse worker who is fast with physical routines but slower and deliberate in SAP screens."
+    delayMultiplier = 1.4
+    runtimeDelayCapSeconds = 5.0
     realismProfile {
       workerType = "routine warehouse clerk"
       workingHoursDeviation = -1.0
       pauseCharacteristicsIndex = 10
+    }
+    realismGuardrails {
+      delayMultiplierMin = 1.0
+      delayMultiplierMax = 2.2
+      workdayDeviationHoursMin = -1.5
+      workdayDeviationHoursMax = 0.5
+      pauseDurationMinutesMin = 30
+      pauseDurationMinutesMax = 75
+      runtimeDelayCapSecondsMin = 2.0
+      runtimeDelayCapSecondsMax = 7.0
     }
     exposeInFinalDatasetAs = "warehouse_01"
     capabilities {
@@ -72,11 +111,24 @@ actors: Listing<objects.SyntheticActor> = new Listing {
     role = "accounts_payable"
     timezone = "America/New_York"
     workLocation = "MI00"
-    speedFactor = 1.0
+    personaDescription =
+      "Structured accounts payable clerk who works steadily and checks invoice/payment details before posting."
+    delayMultiplier = 1.0
+    runtimeDelayCapSeconds = 4.0
     realismProfile {
       workerType = "structured accounts payable clerk"
       workingHoursDeviation = 0.5
       pauseCharacteristicsIndex = 9
+    }
+    realismGuardrails {
+      delayMultiplierMin = 0.8
+      delayMultiplierMax = 1.6
+      workdayDeviationHoursMin = -0.5
+      workdayDeviationHoursMax = 1.5
+      pauseDurationMinutesMin = 25
+      pauseDurationMinutesMax = 70
+      runtimeDelayCapSecondsMin = 1.5
+      runtimeDelayCapSecondsMax = 6.0
     }
     exposeInFinalDatasetAs = "accounts_payable_01"
     capabilities {

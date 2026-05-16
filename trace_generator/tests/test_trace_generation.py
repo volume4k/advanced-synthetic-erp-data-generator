@@ -4,6 +4,7 @@ import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from random import Random
+from zoneinfo import ZoneInfo
 
 import pytest
 import yaml
@@ -18,6 +19,7 @@ from erp_trace_generator.fraud import FRAUD_TRANSFORMERS, register_fraud_transfo
 from erp_trace_generator.generator import generate_trace_artifacts
 from erp_trace_generator.models import CasePlan, FraudScenario, InputBinding, MasterDataEntry, MinuteRange, PlannedStep, ProcessStep
 from erp_trace_generator.planning import plan_cases, plan_steps, plan_waves
+from erp_trace_generator.realism import ActorRealismCriteria, DemandRelease
 from erp_trace_generator.schema_export import schema_output_paths
 from erp_trace_generator.timeline import TimelinePlanner
 
@@ -172,11 +174,23 @@ def _actor(actor_id: str, role: str, user_prefix: str) -> dict:
         "role": role,
         "timezone": "Europe/Berlin",
         "workLocation": "HD00",
-        "speedFactor": 1.0,
+        "delayMultiplier": 1.0,
+        "runtimeDelayCapSeconds": 3.0,
+        "personaDescription": f"{role} clerk with normal ERP habits",
         "realismProfile": {
             "workerType": role,
             "workingHoursDeviation": 0.0,
             "pauseCharacteristicsIndex": 10,
+        },
+        "realismGuardrails": {
+            "delayMultiplierMin": 0.8,
+            "delayMultiplierMax": 1.4,
+            "workdayDeviationHoursMin": -1.0,
+            "workdayDeviationHoursMax": 1.0,
+            "pauseDurationMinutesMin": 30,
+            "pauseDurationMinutesMax": 75,
+            "runtimeDelayCapSecondsMin": 1.0,
+            "runtimeDelayCapSecondsMax": 5.0,
         },
         "exposeInFinalDatasetAs": actor_id,
         "capabilities": [{"processType": "procure_to_pay", "stepTypes": capabilities}],
@@ -304,6 +318,40 @@ def test_config_loader_rejects_active_null_tool(tmp_path: Path) -> None:
     _write_yaml(config_path, payload)
 
     with pytest.raises(TraceGenerationError, match="has no tool"):
+        load_generation_config(config_path)
+
+
+def test_config_loader_rejects_deprecated_speed_factor(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["actors"][0]["speedFactor"] = 1.0
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="speedFactor.*deprecated.*delayMultiplier"):
+        load_generation_config(config_path)
+
+
+def test_config_loader_loads_delay_multiplier_and_runtime_cap(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["actors"][0]["delayMultiplier"] = 1.25
+    payload["actors"][0]["runtimeDelayCapSeconds"] = 4.0
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    config = load_generation_config(config_path)
+
+    assert config.actors[0].delay_multiplier == 1.25
+    assert config.actors[0].runtime_delay_cap_seconds == 4.0
+
+
+def test_config_loader_validates_realism_guardrails(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["actors"][0]["realismGuardrails"]["delayMultiplierMin"] = 2.0
+    payload["actors"][0]["realismGuardrails"]["delayMultiplierMax"] = 1.0
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(ValueError, match="delay_multiplier_min"):
         load_generation_config(config_path)
 
 
@@ -607,7 +655,7 @@ def test_scheduler_uses_second_capable_actor_when_first_is_busy(tmp_path: Path) 
         1,
         {
             **_actor("procurement_02", "procurement", "SAP_USER_4"),
-            "speedFactor": 1.0,
+            "delayMultiplier": 1.0,
         },
     )
     payload["technicalUsers"].append(_technical_user("GBGEN_P04", "SAP_USER_4"))
@@ -615,8 +663,13 @@ def test_scheduler_uses_second_capable_actor_when_first_is_busy(tmp_path: Path) 
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, payload)
     config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+    demand_releases = [
+        DemandRelease("C001", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025"),
+        DemandRelease("C002", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025"),
+    ]
 
-    planned_steps = plan_steps(config, plan_cases(config, Random(17)), Random(17))
+    planned_steps = plan_steps(config, plan_cases(config, Random(17), demand_releases=demand_releases), Random(17))
     requisition_actors = {
         planned_step.synthetic_actor_id
         for planned_step in planned_steps
@@ -624,6 +677,62 @@ def test_scheduler_uses_second_capable_actor_when_first_is_busy(tmp_path: Path) 
     }
 
     assert requisition_actors == {"procurement_01", "procurement_02"}
+
+
+def test_scheduler_orders_ready_steps_on_global_company_timeline(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["caseCount"] = 3
+    payload["runSettings"]["runHorizonDays"] = 10
+    payload["runSettings"]["interStepDelayMinutes"][0]["min"] = 60
+    payload["runSettings"]["interStepDelayMinutes"][0]["max"] = 60
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+    demand_releases = [
+        DemandRelease("C001", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025"),
+        DemandRelease("C002", datetime(2026, 5, 18, 8, 10, tzinfo=tz), "MA025"),
+        DemandRelease("C003", datetime(2026, 5, 18, 8, 20, tzinfo=tz), "MA025"),
+    ]
+
+    planned_steps = plan_steps(
+        config,
+        plan_cases(config, Random(17), demand_releases=demand_releases),
+        Random(17),
+        actor_criteria=_actor_criteria(config),
+    )
+    ordered = sorted(planned_steps, key=lambda planned_step: planned_step.target_start)
+
+    assert [(step.case_id, step.step_type) for step in ordered[:4]] == [
+        ("C001", "create_purchase_requisition"),
+        ("C002", "create_purchase_requisition"),
+        ("C003", "create_purchase_requisition"),
+        ("C001", "create_purchase_order"),
+    ]
+
+
+def test_scheduler_applies_hard_delivery_date_gate_to_goods_receipt(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["runHorizonDays"] = 10
+    payload["masterData"][0]["deliveryLeadTimeMinDays"] = 5
+    payload["masterData"][0]["deliveryLeadTimeMaxDays"] = 5
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+    demand_releases = [
+        DemandRelease("C001", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025"),
+        DemandRelease("C002", datetime(2026, 5, 18, 8, 30, tzinfo=tz), "MA025"),
+    ]
+
+    cases = plan_cases(config, Random(17), demand_releases=demand_releases)
+    planned_steps = plan_steps(config, cases, Random(17), actor_criteria=_actor_criteria(config))
+
+    goods_receipts = [step for step in planned_steps if step.step_type == "post_goods_receipt"]
+    delivery_date_by_case = {case.case_id: case.delivery_date for case in cases}
+    assert goods_receipts
+    for step in goods_receipts:
+        assert step.target_start.date() >= delivery_date_by_case[step.case_id]
 
 
 def test_scheduler_respects_shared_technical_user_availability(tmp_path: Path) -> None:
@@ -645,7 +754,7 @@ def test_wave_scheduler_prevents_shared_technical_user_in_same_wave(tmp_path: Pa
         1,
         {
             **_actor("procurement_02", "procurement", "SAP_USER_4"),
-            "speedFactor": 1.0,
+            "delayMultiplier": 1.0,
         },
     )
     payload["identityMappings"].append({"syntheticActorId": "procurement_02", "technicalSapUserId": "GBGEN_P01"})
@@ -740,6 +849,19 @@ def _assert_no_resource_overlap(planned_steps: list[PlannedStep]) -> None:
         assert first.target_end <= second.target_start
 
 
+def _actor_criteria(config) -> dict[str, ActorRealismCriteria]:
+    return {
+        actor.id: ActorRealismCriteria(
+            actor_id=actor.id,
+            delay_multiplier=actor.delay_multiplier,
+            workday_deviation_hours=0.0,
+            pause_duration_minutes=30,
+            runtime_delay_cap_seconds=actor.runtime_delay_cap_seconds,
+        )
+        for actor in config.actors
+    }
+
+
 def test_generated_inputs_fail_for_unknown_executor_tool(tmp_path: Path) -> None:
     payload = _base_config()
     unknown_tool = _tool(
@@ -789,13 +911,13 @@ def test_timeline_reuses_sampled_boundaries_per_day(tmp_path: Path) -> None:
     assert first == second
 
 
-def test_timeline_rejects_non_positive_speed_factor(tmp_path: Path) -> None:
+def test_timeline_rejects_non_positive_delay_multiplier(tmp_path: Path) -> None:
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, _base_config())
     config = load_generation_config(config_path)
     planner = TimelinePlanner(config.run_settings, Random(17))
 
-    with pytest.raises(TraceGenerationError, match="speed_factor must be greater than 0"):
+    with pytest.raises(TraceGenerationError, match="delay_multiplier must be greater than 0"):
         planner.add_step_duration(planner.first_start(), "create_purchase_requisition", 0)
 
 
@@ -861,36 +983,52 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
             "actor_session_id": "procurement_01-session",
             "synthetic_actor_id": "procurement_01",
             "technical_sap_user_id": "GBGEN_P01",
-            "username_env_var": "SAP_USER_1_UN",
-            "password_env_var": "SAP_USER_1_PW",
-            "login_url_env_var": "SAP_URL",
-        },
-        {
-            "actor_session_id": "warehouse_01-session",
-            "synthetic_actor_id": "warehouse_01",
-            "technical_sap_user_id": "GBGEN_P02",
-            "username_env_var": "SAP_USER_2_UN",
-            "password_env_var": "SAP_USER_2_PW",
-            "login_url_env_var": "SAP_URL",
-        },
-        {
-            "actor_session_id": "accounts_payable_01-session",
-            "synthetic_actor_id": "accounts_payable_01",
-            "technical_sap_user_id": "GBGEN_P03",
-            "username_env_var": "SAP_USER_3_UN",
-            "password_env_var": "SAP_USER_3_PW",
-            "login_url_env_var": "SAP_URL",
-        },
-    ]
+                "username_env_var": "SAP_USER_1_UN",
+                "password_env_var": "SAP_USER_1_PW",
+                "login_url_env_var": "SAP_URL",
+                "human_delay_profile": {"delay_multiplier": 1.0, "runtime_delay_cap_seconds": 3.0},
+            },
+            {
+                "actor_session_id": "warehouse_01-session",
+                "synthetic_actor_id": "warehouse_01",
+                "technical_sap_user_id": "GBGEN_P02",
+                "username_env_var": "SAP_USER_2_UN",
+                "password_env_var": "SAP_USER_2_PW",
+                "login_url_env_var": "SAP_URL",
+                "human_delay_profile": {"delay_multiplier": 1.0, "runtime_delay_cap_seconds": 3.0},
+            },
+            {
+                "actor_session_id": "accounts_payable_01-session",
+                "synthetic_actor_id": "accounts_payable_01",
+                "technical_sap_user_id": "GBGEN_P03",
+                "username_env_var": "SAP_USER_3_UN",
+                "password_env_var": "SAP_USER_3_PW",
+                "login_url_env_var": "SAP_URL",
+                "human_delay_profile": {"delay_multiplier": 1.0, "runtime_delay_cap_seconds": 3.0},
+            },
+        ]
     assert "secret" not in json.dumps(execution_trace)
-    assert [step["step_type"] for step in execution_trace["dependency_graph"]["planned_steps"][:5]] == [
+    assert [step["step_type"] for step in execution_trace["dependency_graph"]["planned_steps"][:2]] == [
+        "create_purchase_requisition",
+        "create_purchase_requisition",
+    ]
+    c001_steps = [
+        step["step_type"]
+        for step in execution_trace["dependency_graph"]["planned_steps"]
+        if step["case_id"] == "C001"
+    ]
+    assert c001_steps == [
         "create_purchase_requisition",
         "create_purchase_order",
         "post_goods_receipt",
         "enter_incoming_invoice",
         "post_outgoing_payment",
     ]
-    purchase_order_node = execution_trace["dependency_graph"]["planned_steps"][1]
+    purchase_order_node = next(
+        step
+        for step in execution_trace["dependency_graph"]["planned_steps"]
+        if step["case_id"] == "C001" and step["step_type"] == "create_purchase_order"
+    )
     assert purchase_order_node["inputs"] == {
         "purchase_requisition": "$purchase_requisition.pr_number",
         "storage_location": "0002",
@@ -898,7 +1036,11 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
         "quantity": 10,
         "net_price": execution_trace["cases"][0]["line_items"][0]["target_price"],
     }
-    goods_receipt_node = execution_trace["dependency_graph"]["planned_steps"][2]
+    goods_receipt_node = next(
+        step
+        for step in execution_trace["dependency_graph"]["planned_steps"]
+        if step["case_id"] == "C001" and step["step_type"] == "post_goods_receipt"
+    )
     assert goods_receipt_node["inputs"] == {
         "purchase_order": "$purchase_order.po_number",
         "storage_location": "Trading Goods",

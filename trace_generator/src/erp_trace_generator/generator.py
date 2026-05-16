@@ -10,7 +10,8 @@ from random import Random
 from erp_trace_generator.artifacts import write_artifacts
 from erp_trace_generator.config import load_generation_config
 from erp_trace_generator.models import GeneratedArtifacts
-from erp_trace_generator.planning import align_planned_step_times_to_waves, plan_cases, plan_steps, plan_waves
+from erp_trace_generator.planning import plan_cases, plan_steps, plan_waves
+from erp_trace_generator.realism import RealismLLMClient, compile_realism_criteria
 from erp_trace_generator.tool_validation import validate_planned_step_tool_inputs
 
 
@@ -20,15 +21,21 @@ def generate_trace_artifacts(
     out_dir: str | Path,
     run_id: str,
     seed: int | None = None,
+    realism_client: RealismLLMClient | None = None,
+    realism_cache_dir: str | Path | None = None,
 ) -> GeneratedArtifacts:
     config = load_generation_config(config_path)
     effective_seed = seed if seed is not None else config.run_settings.scheduler_seed
     rng = Random(effective_seed)
-    cases = plan_cases(config, rng)
-    planned_steps = plan_steps(config, cases, rng)
+    realism_criteria = compile_realism_criteria(
+        config=config,
+        client=realism_client,
+        cache_dir=realism_cache_dir,
+    )
+    cases = plan_cases(config, rng, demand_releases=realism_criteria.demand_releases)
+    planned_steps = plan_steps(config, cases, rng, actor_criteria=realism_criteria.actor_criteria)
     validate_planned_step_tool_inputs(planned_steps)
     waves = plan_waves(config, planned_steps)
-    align_planned_step_times_to_waves(planned_steps, waves)
     return write_artifacts(
         config=config,
         cases=cases,
@@ -39,6 +46,7 @@ def generate_trace_artifacts(
         seed=effective_seed,
         config_hash=_hash(config.raw),
         tool_catalog_hash=_hash(config.raw.get("toolRequirements", {})),
+        realism_criteria=realism_criteria,
     )
 
 

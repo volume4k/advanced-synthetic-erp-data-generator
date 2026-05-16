@@ -11,6 +11,11 @@ runSettings: objects.RunSettings = new objects.RunSettings {
   runStartDate = "2026-05-18"
   runHorizonDays = 30
   queuePolicy = "fifo"
+  realism {
+    enabled = false
+    maxRetries = 3
+    cacheDir = "configuration/build"
+  }
   workingHours {
     coreStart = "08:00"
     coreEnd = "17:00"

@@ -34,6 +34,11 @@ class TraceCase(ArtifactModel):
     line_items: list[TraceLineItem]
 
 
+class HumanDelayProfile(ArtifactModel):
+    delay_multiplier: float = Field(gt=0)
+    runtime_delay_cap_seconds: float = Field(ge=0)
+
+
 class TraceActorSession(ArtifactModel):
     actor_session_id: str
     synthetic_actor_id: str
@@ -45,6 +50,7 @@ class TraceActorSession(ArtifactModel):
     password_selector: str | None = None
     submit_selector: str | None = None
     success_selector: str | None = None
+    human_delay_profile: HumanDelayProfile | None = None
 
 
 class PlannedSyntheticTime(ArtifactModel):
@@ -179,6 +185,7 @@ class PostProcessingManifestArtifact(ArtifactModel):
     manifest_version: str
     run_id: str
     config_hash: str
+    realism_criteria_hash: str | None = None
     timestamp_policy: TimestampPolicy
     actor_projection: list[ActorProjection]
     case_scenario_types: list[CaseScenarioType]

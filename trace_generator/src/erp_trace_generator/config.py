@@ -24,6 +24,8 @@ from erp_trace_generator.models import (
     ProcessDefinition,
     ProcessDependency,
     ProcessStep,
+    RealismGuardrails,
+    RealismSettings,
     RunSettings,
     TechnicalUser,
     ToolRequirement,
@@ -73,13 +75,32 @@ def _list(payload: dict[str, Any], key: str) -> list[dict[str, Any]]:
 
 
 def _actor(item: dict[str, Any]) -> Actor:
+    if "speedFactor" in item:
+        raise TraceGenerationError("Actor field 'speedFactor' is deprecated; use 'delayMultiplier'")
+    guardrails = _realism_guardrails(item.get("realismGuardrails", {}))
     return Actor(
         id=str(item["id"]),
         role=str(item["role"]),
         timezone=str(item["timezone"]),
-        speed_factor=float(item.get("speedFactor", 1.0)),
+        persona_description=str(item.get("personaDescription", item.get("realismProfile", {}).get("workerType", item["role"]))),
+        delay_multiplier=float(item["delayMultiplier"]),
+        runtime_delay_cap_seconds=float(item.get("runtimeDelayCapSeconds", guardrails.runtime_delay_cap_seconds_max)),
+        realism_guardrails=guardrails,
         expose_as=str(item.get("exposeInFinalDatasetAs", item["id"])),
         capabilities=tuple(_actor_capability(value) for value in item.get("capabilities", [])),
+    )
+
+
+def _realism_guardrails(item: dict[str, Any]) -> RealismGuardrails:
+    return RealismGuardrails(
+        delay_multiplier_min=float(item.get("delayMultiplierMin", 0.5)),
+        delay_multiplier_max=float(item.get("delayMultiplierMax", 3.0)),
+        workday_deviation_hours_min=float(item.get("workdayDeviationHoursMin", -1.0)),
+        workday_deviation_hours_max=float(item.get("workdayDeviationHoursMax", 1.0)),
+        pause_duration_minutes_min=int(item.get("pauseDurationMinutesMin", 30)),
+        pause_duration_minutes_max=int(item.get("pauseDurationMinutesMax", 75)),
+        runtime_delay_cap_seconds_min=float(item.get("runtimeDelayCapSecondsMin", 0.5)),
+        runtime_delay_cap_seconds_max=float(item.get("runtimeDelayCapSecondsMax", 10.0)),
     )
 
 
@@ -248,6 +269,15 @@ def _run_settings(item: dict[str, Any]) -> RunSettings:
             PostProcessingExportGroup(id=str(value["id"]), description=str(value["description"]))
             for value in item.get("postProcessingExportGroups", [])
         ),
+        realism=_realism_settings(item.get("realism", {})),
+    )
+
+
+def _realism_settings(item: dict[str, Any]) -> RealismSettings:
+    return RealismSettings(
+        enabled=bool(item.get("enabled", False)),
+        max_retries=int(item.get("maxRetries", 3)),
+        cache_dir=str(item.get("cacheDir", "configuration/build")),
     )
 
 
@@ -256,6 +286,8 @@ def _validate(config: GenerationConfig) -> None:
         raise TraceGenerationError("Only FIFO queue policy is supported in trace generator v1")
     if len(config.run_settings.active_process_types) != 1:
         raise TraceGenerationError("Trace generator v1 supports exactly one active process type")
+    if config.run_settings.realism.max_retries < 1:
+        raise TraceGenerationError("runSettings.realism.maxRetries must be >= 1")
     active_process_types = set(config.run_settings.active_process_types)
     process_types = {process.process_type for process in config.processes}
     missing_processes = active_process_types - process_types
@@ -314,6 +346,7 @@ def _validate_actor_capabilities(config: GenerationConfig) -> None:
     }
     process_types = set(process_step_types)
     for actor in config.actors:
+        _validate_actor_realism(actor)
         for capability in actor.capabilities:
             if capability.process_type not in process_types:
                 raise TraceGenerationError(
@@ -324,6 +357,20 @@ def _validate_actor_capabilities(config: GenerationConfig) -> None:
                 raise TraceGenerationError(
                     f"Actor '{actor.id}' capability references unknown step type(s): {unknown_steps}"
                 )
+
+
+def _validate_actor_realism(actor: Actor) -> None:
+    guardrails = actor.realism_guardrails
+    if not guardrails.delay_multiplier_min <= actor.delay_multiplier <= guardrails.delay_multiplier_max:
+        raise TraceGenerationError(
+            f"Actor '{actor.id}' delayMultiplier must be within realism guardrails "
+            f"[{guardrails.delay_multiplier_min}, {guardrails.delay_multiplier_max}]"
+        )
+    if not guardrails.runtime_delay_cap_seconds_min <= actor.runtime_delay_cap_seconds <= guardrails.runtime_delay_cap_seconds_max:
+        raise TraceGenerationError(
+            f"Actor '{actor.id}' runtimeDelayCapSeconds must be within realism guardrails "
+            f"[{guardrails.runtime_delay_cap_seconds_min}, {guardrails.runtime_delay_cap_seconds_max}]"
+        )
 
 
 def _validate_acyclic(process: ProcessDefinition) -> None:

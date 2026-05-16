@@ -316,6 +316,18 @@
       "title": "Post Processing Exports",
       "type": "array"
     },
+    "realism_criteria_hash": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Realism Criteria Hash"
+    },
     "required_sap_object_keys": {
       "items": {
         "$ref": "#/$defs/RequiredSapObjectKeys"

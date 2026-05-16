@@ -10,6 +10,7 @@ import yaml
 from erp_trace_generator.artifact_models import ExecutionTraceArtifact, PostProcessingManifestArtifact
 from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.models import CasePlan, GenerationConfig, GeneratedArtifacts, PlannedStep
+from erp_trace_generator.realism import CompiledRealismCriteria
 
 
 def write_artifacts(
@@ -23,6 +24,7 @@ def write_artifacts(
     seed: int,
     config_hash: str,
     tool_catalog_hash: str,
+    realism_criteria: CompiledRealismCriteria,
 ) -> GeneratedArtifacts:
     output_dir = Path(out_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -30,9 +32,9 @@ def write_artifacts(
     post_processing_manifest_path = output_dir / f"{run_id}.post-processing-manifest.yaml"
 
     execution_trace = _validated_execution_trace(
-        _execution_trace(config, cases, planned_steps, waves, run_id, seed, config_hash, tool_catalog_hash)
+        _execution_trace(config, cases, planned_steps, waves, run_id, seed, config_hash, tool_catalog_hash, realism_criteria)
     )
-    manifest = _validated_manifest(_post_processing_manifest(config, cases, planned_steps, run_id, config_hash))
+    manifest = _validated_manifest(_post_processing_manifest(config, cases, planned_steps, run_id, config_hash, realism_criteria))
 
     execution_trace_path.write_text(yaml.safe_dump(execution_trace, sort_keys=False), encoding="utf-8")
     post_processing_manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
@@ -47,7 +49,11 @@ def _validated_execution_trace(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validated_manifest(payload: dict[str, Any]) -> dict[str, Any]:
-    validated = PostProcessingManifestArtifact.model_validate(payload).model_dump(mode="json", by_alias=True)
+    validated = PostProcessingManifestArtifact.model_validate(payload).model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+    )
     _validate_manifest_links(validated)
     return validated
 
@@ -80,6 +86,7 @@ def _execution_trace(
     seed: int,
     config_hash: str,
     tool_catalog_hash: str,
+    realism_criteria: CompiledRealismCriteria,
 ) -> dict[str, Any]:
     process = config.active_process()
     return {
@@ -88,8 +95,8 @@ def _execution_trace(
         "config_hash": config_hash,
         "tool_catalog_hash": tool_catalog_hash,
         "trace_generator_version": "0.1.0",
-        "llm_metadata": {"used": False, "seed": seed},
-        "actor_sessions": _session_records(config, planned_steps),
+        "llm_metadata": {**realism_criteria.llm_metadata, "seed": seed},
+        "actor_sessions": _session_records(config, planned_steps, realism_criteria),
         "cases": [_case_record(case) for case in cases],
         "dependency_graph": {
             "planned_steps": [_planned_step_record(planned_step) for planned_step in planned_steps],
@@ -119,10 +126,11 @@ def _post_processing_manifest(
     planned_steps: list[PlannedStep],
     run_id: str,
     config_hash: str,
+    realism_criteria: CompiledRealismCriteria | None = None,
 ) -> dict[str, Any]:
     actor_projection = []
     actors_by_id = {actor.id: actor for actor in config.actors}
-    for session in _session_records(config, planned_steps):
+    for session in _session_records(config, planned_steps, realism_criteria):
         actor = actors_by_id[session["synthetic_actor_id"]]
         actor_projection.append(
             {
@@ -133,7 +141,7 @@ def _post_processing_manifest(
             }
         )
 
-    return {
+    manifest = {
         "manifest_version": "0.2",
         "run_id": run_id,
         "config_hash": config_hash,
@@ -183,6 +191,9 @@ def _post_processing_manifest(
             "source_artifacts": ["execution_log", "object_registry"],
         },
     }
+    if realism_criteria is not None:
+        manifest["realism_criteria_hash"] = realism_criteria.criteria_hash
+    return manifest
 
 
 def _case_record(case: CasePlan) -> dict[str, Any]:
@@ -230,7 +241,11 @@ def _planned_date_input_overrides(planned_steps: list[PlannedStep]) -> list[dict
     return overrides
 
 
-def _session_records(config: GenerationConfig, planned_steps: list[PlannedStep]) -> list[dict[str, Any]]:
+def _session_records(
+    config: GenerationConfig,
+    planned_steps: list[PlannedStep],
+    realism_criteria: CompiledRealismCriteria | None = None,
+) -> list[dict[str, Any]]:
     actor_ids_by_session: dict[str, str] = {}
     source_steps_by_session: dict[str, str] = {}
     for node in sorted(planned_steps, key=lambda item: item.planned_step_id):
@@ -254,9 +269,22 @@ def _session_records(config: GenerationConfig, planned_steps: list[PlannedStep])
                 "username_env_var": technical_user.username_env_var,
                 "password_env_var": technical_user.password_env_var,
                 "login_url_env_var": technical_user.login_url_env_var,
+                **_human_delay_profile(actor_id, realism_criteria),
             }
         )
     return records
+
+
+def _human_delay_profile(actor_id: str, realism_criteria: CompiledRealismCriteria | None) -> dict[str, Any]:
+    if realism_criteria is None:
+        return {}
+    criteria = realism_criteria.actor_criteria[actor_id]
+    return {
+        "human_delay_profile": {
+            "delay_multiplier": criteria.delay_multiplier,
+            "runtime_delay_cap_seconds": criteria.runtime_delay_cap_seconds,
+        }
+    }
 
 
 def _planned_step_record(node: PlannedStep) -> dict[str, Any]:

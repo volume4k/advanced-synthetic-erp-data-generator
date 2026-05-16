@@ -24,6 +24,18 @@ class RealismProfile {
   pauseCharacteristicsIndex: Int
 }
 
+/// Hard bounds used to validate LLM-generated actor realism.
+class RealismGuardrails {
+  delayMultiplierMin: Float(this > 0) = 0.5
+  delayMultiplierMax: Float(this >= delayMultiplierMin) = 3.0
+  workdayDeviationHoursMin: Float = -1.0
+  workdayDeviationHoursMax: Float(this >= workdayDeviationHoursMin) = 1.0
+  pauseDurationMinutesMin: Int(this >= 0) = 30
+  pauseDurationMinutesMax: Int(this >= pauseDurationMinutesMin) = 75
+  runtimeDelayCapSecondsMin: Float(this >= 0) = 0.5
+  runtimeDelayCapSecondsMax: Float(this >= runtimeDelayCapSecondsMin) = 10.0
+}
+
 /// Inclusive minute range sampled by the trace generator.
 class MinuteRange {
   min: Int(this >= 0)
@@ -40,6 +52,13 @@ class WorkingHoursConfig {
   pauseWindowEnd: String(this.length > 0) = "13:30"
   pauseDurationMinutesMin: Int(this >= 0) = 30
   pauseDurationMinutesMax: Int(this >= pauseDurationMinutesMin) = 75
+}
+
+/// LLM realism compiler settings. Disabled keeps trace generation deterministic without LLM calls.
+class RealismCompilerSettings {
+  enabled: Boolean = false
+  maxRetries: Int(this >= 1) = 3
+  cacheDir: String(this.length > 0) = "configuration/build"
 }
 
 /// Waiting-time range between two process steps.
@@ -89,8 +108,11 @@ class SyntheticActor {
   role: String(this.length > 0)
   timezone: String(this.length > 0)
   workLocation: String(this.length > 0)
-  speedFactor: Float(this > 0)
+  personaDescription: String(this.length > 0)
+  delayMultiplier: Float(this > 0)
+  runtimeDelayCapSeconds: Float(this >= 0)
   realismProfile: RealismProfile
+  realismGuardrails: RealismGuardrails = new RealismGuardrails {}
   exposeInFinalDatasetAs: String(this.length > 0)
   capabilities: Listing<ActorCapability>
 }
@@ -177,4 +199,5 @@ class RunSettings {
   interStepDelayMinutes: Listing<InterStepDelayRange> = new Listing {}
   storageLocationLabels: Mapping<String, String> = new Mapping {}
   postProcessingExportGroups: Listing<PostProcessingExportGroup> = new Listing {}
+  realism: RealismCompilerSettings = new RealismCompilerSettings {}
 }

@@ -15,11 +15,36 @@ class ActorCapability:
 
 
 @dataclass(frozen=True)
+class RealismGuardrails:
+    delay_multiplier_min: float
+    delay_multiplier_max: float
+    workday_deviation_hours_min: float
+    workday_deviation_hours_max: float
+    pause_duration_minutes_min: int
+    pause_duration_minutes_max: int
+    runtime_delay_cap_seconds_min: float
+    runtime_delay_cap_seconds_max: float
+
+    def __post_init__(self) -> None:
+        if self.delay_multiplier_min > self.delay_multiplier_max:
+            raise ValueError("delay_multiplier_min must be <= delay_multiplier_max")
+        if self.workday_deviation_hours_min > self.workday_deviation_hours_max:
+            raise ValueError("workday_deviation_hours_min must be <= workday_deviation_hours_max")
+        if self.pause_duration_minutes_min > self.pause_duration_minutes_max:
+            raise ValueError("pause_duration_minutes_min must be <= pause_duration_minutes_max")
+        if self.runtime_delay_cap_seconds_min > self.runtime_delay_cap_seconds_max:
+            raise ValueError("runtime_delay_cap_seconds_min must be <= runtime_delay_cap_seconds_max")
+
+
+@dataclass(frozen=True)
 class Actor:
     id: str
     role: str
     timezone: str
-    speed_factor: float
+    persona_description: str
+    delay_multiplier: float
+    runtime_delay_cap_seconds: float
+    realism_guardrails: RealismGuardrails
     expose_as: str
     capabilities: tuple[ActorCapability, ...]
 
@@ -150,12 +175,20 @@ class RunSettings:
     inter_step_delay_minutes: dict[tuple[str, str], MinuteRange]
     storage_location_labels: dict[str, str]
     post_processing_export_groups: tuple["PostProcessingExportGroup", ...]
+    realism: "RealismSettings"
 
 
 @dataclass(frozen=True)
 class PostProcessingExportGroup:
     id: str
     description: str
+
+
+@dataclass(frozen=True)
+class RealismSettings:
+    enabled: bool = False
+    max_retries: int = 3
+    cache_dir: str = "configuration/build"
 
 
 @dataclass(frozen=True)
@@ -226,6 +259,7 @@ class CasePlan:
     currency: str
     delivery_date: date
     gross_amount: float
+    demand_release_time: datetime | None = None
     case_scenario_type: str = "NORMAL"
 
 
