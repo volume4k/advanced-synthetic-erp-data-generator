@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import re
-from collections.abc import MutableSequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from playwright.sync_api import Error as PlaywrightError
 
 from erp_trace_executor.errors import ToolExecutionError
+
+
+class FioriMessageSink(Protocol):
+    def append(self, message: dict[str, str]) -> None:
+        ...
 
 
 DEFAULT_FATAL_MESSAGE_PATTERNS = (
@@ -67,7 +71,7 @@ class FioriMessageHandler:
         self,
         page: Any,
         *,
-        message_sink: MutableSequence[dict[str, str]] | None = None,
+        message_sink: FioriMessageSink | None = None,
         policy: FioriMessagePolicy | None = None,
     ) -> None:
         self._page = page

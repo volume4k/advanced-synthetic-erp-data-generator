@@ -46,24 +46,26 @@ class SapPurchaseOrderFlow:
 
         frame = page.locator(IFRAME_SELECTOR).content_frame
         self._close_start_dialog_if_visible(frame)
-        frame.get_by_role("button", name="Positionen aufklappen Strg+F3").wait_for(state="visible")
-        frame.get_by_role("button", name="Positionen aufklappen Strg+F3").click()
-
-        self._focus_purchase_requisition_by_tab(frame)
-        self._fill_grid_textbox(frame, "Banf", params.purchase_requisition)
 
         supplier = frame.get_by_role("textbox", name="Lieferant")
         supplier.click()
         supplier.fill(params.supplier)
         supplier.press("Enter")
 
-        frame.locator("img").click()
+        frame.get_by_role("button", name="Positionen aufklappen Strg+F3").wait_for(state="visible")
+        frame.get_by_role("button", name="Positionen aufklappen Strg+F3").click()
+
+        self._focus_purchase_requisition_by_tab(frame)
+        purchase_requisition = frame.get_by_role("textbox", name="Banf").first
+        purchase_requisition.wait_for(state="visible")
+        self._type_grid_textbox_value(purchase_requisition, params.purchase_requisition)
+
         quantity_input = frame.get_by_role("textbox", name="Bestellmenge").first
         quantity_input.wait_for(state="visible")
-        self._replace_grid_textbox_value(quantity_input, str(params.quantity))
+        self._type_grid_textbox_value(quantity_input, str(params.quantity))
         net_price_input = frame.get_by_role("textbox", name="Nettopreis").first
         net_price_input.wait_for(state="visible")
-        self._type_selected_grid_textbox_value(net_price_input, format_number(params.net_price))
+        self._type_grid_textbox_value(net_price_input, format_number(params.net_price))
         frame.get_by_role("tablist").get_by_text("Rechnung").click()
         tax_code = frame.get_by_role("textbox", name="Steuerkennz.")
         tax_code.click()
@@ -88,8 +90,7 @@ class SapPurchaseOrderFlow:
     def _focus_purchase_requisition_by_tab(self, frame) -> None:
         """Move through SAP GUI item table by keyboard until the Banf cell exists."""
 
-        frame.get_by_role("textbox", name="Bestellmenge").first.click(retry_on_next_wait=True)
-        frame.get_by_role("grid").locator('input[name="InputField"]').press("Tab")
+        frame.get_by_role("textbox", name="Bestellmenge").first.press("Tab")
         frame.get_by_role("textbox", name="Charge").first.press("Tab")
         frame.get_by_role("textbox", name="Bestandssegment").first.press("Tab")
         frame.get_by_role("textbox", name="BedarfsNr.").first.press("Tab")
@@ -100,24 +101,8 @@ class SapPurchaseOrderFlow:
         frame.get_by_role("checkbox").nth(1).press("Tab")
         frame.get_by_role("textbox", name="Banf").first.wait_for(state="visible")
 
-    def _fill_grid_textbox(self, frame, label: str, value: str) -> None:
-        """Fill one SAP GUI grid textbox after it has been reached in the table."""
-
-        cell = frame.get_by_role("textbox", name=label).first
-        cell.wait_for(state="visible")
-        self._replace_grid_textbox_value(cell, value)
-
-    def _replace_grid_textbox_value(self, cell, value: str) -> None:
-        """Replace SAP GUI grid text where the textbox may be a focusable span."""
-
-        cell.click()
-        cell.press("ControlOrMeta+a")
-        for character in value:
-            cell.press(character)
-        cell.press("Enter")
-
-    def _type_selected_grid_textbox_value(self, cell, value: str) -> None:
-        """Type into a SAP GUI grid textbox whose current value is already selected."""
+    def _type_grid_textbox_value(self, cell, value: str) -> None:
+        """Type into the current SAP GUI grid textbox and commit it."""
 
         for character in value:
             cell.press(character)

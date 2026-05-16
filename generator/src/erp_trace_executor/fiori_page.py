@@ -7,7 +7,7 @@ from typing import Any
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from erp_trace_executor.fiori_messages import FioriMessageHandler, FioriMessagePolicy
+from erp_trace_executor.fiori_messages import FioriMessageHandler, FioriMessagePolicy, FioriMessageSink
 
 
 DEFAULT_FIORI_TIMEOUT_MS = 30_000
@@ -32,7 +32,7 @@ class FioriPage:
         *,
         timeout_ms: int = DEFAULT_FIORI_TIMEOUT_MS,
         quiet_ms: int = DEFAULT_DOM_QUIET_MS,
-        message_sink: list[dict[str, str]] | None = None,
+        message_sink: FioriMessageSink | None = None,
         message_policy: FioriMessagePolicy | None = None,
     ) -> None:
         self.raw_page = page
