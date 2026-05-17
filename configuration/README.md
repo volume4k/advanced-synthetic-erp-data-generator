@@ -17,7 +17,7 @@ This folder owns trace-planning configuration. The generator stays execution-onl
 - `actors.pkl`: synthetic actors and realism profiles.
 - `technical_users.pkl`: SAP technical user references. Contains env var names only, no secrets.
 - `identity_mapping.pkl`: mapping from synthetic actors to technical SAP users.
-- `master_data.pkl`: material/vendor/plant/storage-location matrix and sampling ranges.
+- `master_data.pkl`: material/vendor/plant/storage-location matrix and hard sampling guardrails.
 - `processes.pkl`: process steps, tool assignments, step-local input bindings, required SAP object keys, and process dependencies.
 - `fraud_scenarios.pkl`: enabled fraud scenario placeholders and target shares.
 - `run_settings.pkl`: case count, concurrency, timezone, active process types, scheduler seed, working hours, pause ranges, inter-step delay ranges, storage-location labels, and post-processing export groups.
@@ -130,7 +130,9 @@ This means `create_purchase_requisition` must happen before `create_purchase_ord
 
 Keep trace-planning settings in Pkl. `run_settings.pkl` defines FIFO scheduling, core working hours, pause ranges, deterministic step-duration ranges, inter-step waiting-time ranges, storage-location labels, logical post-processing export groups, and optional realism compiler settings.
 
-When `runSettings.realism.enabled` is `true`, `erp-trace-generate` calls an OpenAI-compatible local LLM endpoint before scheduling. Configure it with:
+When `runSettings.realism.enabled` is `true`, `erp-trace-generate` calls an OpenAI-compatible local LLM endpoint before scheduling. Realism v2 asks the LLM for compact actor baseline models, per-material price anchors, and daily demand patterns; the trace generator expands exact process cases deterministically from those models.
+
+Configure the endpoint with:
 
 ```bash
 REALISM_LLM_BASE_URL=http://localhost:1234
@@ -141,6 +143,8 @@ REALISM_LLM_API_KEY=<optional-token>
 The trace-generator CLI reads these values from `configuration/.env` by default. Shell environment variables take precedence over values in that file.
 
 Validated compiler output is cached in `configuration/build/realism-criteria.<hash>.json`. The cache is only a performance optimization; generated execution traces and manifests contain the runtime and post-processing fields they need.
+
+Demand patterns must sum to `caseCount`. The generator expands them into demand releases, requested delivery dates, and anchored prices inside the hard master-data guardrails.
 
 ## Build YAML
 

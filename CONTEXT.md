@@ -136,9 +136,29 @@ _Avoid_: Prompt hints, soft preferences, unvalidated realism
 Validated structured realism data produced from natural-language descriptions and **Realism Guardrails** before scheduling.
 _Avoid_: Raw LLM answer, prompt output, schedule
 
+**Demand Pattern**:
+A compact daily demand shape that the **Trace Generator** expands into exact **Demand Releases**.
+_Avoid_: Demand batch, demand prompt, generated cases
+
 **Demand Release**:
 The planned moment when a **Process Case** becomes available for its first **Planned Step**.
 _Avoid_: Case start, order date, task start
+
+**Requested Delivery Date**:
+The requested warehouse delivery date used as the process case's planned delivery input and earliest goods-receipt gate.
+_Avoid_: Actual arrival date, runtime receipt date, warehouse arrival
+
+**Price Anchor**:
+A per-material price center used to sample realistic target prices inside configured price guardrails.
+_Avoid_: Fixed price, raw price range, case price
+
+**Actor Day Profile**:
+One date-specific timing profile for a **Synthetic Actor** derived from its baseline realism model and daily workload.
+_Avoid_: Daily actor criteria, day mood, runtime delay profile
+
+**Workload Intensity**:
+A daily demand pressure category that can softly influence **Actor Day Profiles**.
+_Avoid_: Capacity, backlog, utilization
 
 **Human Delay Profile**:
 Runtime-safe actor behavior metadata that lets the **Trace Executor** apply bounded human-like delays without reading planning cache artifacts.
@@ -183,7 +203,12 @@ _Avoid_: Actor, business user, persona
 - An **Execution Trace** contains one or more **Actor Sessions**.
 - A **Synthetic Actor** maps to exactly one **Technical SAP User** during execution.
 - A **Synthetic Actor** may have **Realism Guardrails** that limit its **Compiled Realism Criteria**.
+- **Compiled Realism Criteria** can contain **Demand Patterns**, **Price Anchors**, and **Actor Day Profiles**.
+- A **Demand Pattern** produces one or more **Demand Releases**.
 - A **Process Case** has exactly one **Demand Release**.
+- A **Process Case** has exactly one **Requested Delivery Date**.
+- A **Price Anchor** belongs to exactly one configured material.
+- A **Workload Intensity** can influence one or more **Actor Day Profiles**.
 - A **Technical SAP User** may back multiple **Synthetic Actors**.
 - Scheduling prevents one **Technical SAP User** from running multiple **Planned Steps** at the same time.
 - An **Actor Session** belongs to exactly one **Synthetic Actor** and is authenticated through exactly one **Technical SAP User**.
