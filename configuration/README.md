@@ -138,6 +138,8 @@ REALISM_LLM_MODEL=<model-name>
 REALISM_LLM_API_KEY=<optional-token>
 ```
 
+The trace-generator CLI reads these values from `configuration/.env` by default. Shell environment variables take precedence over values in that file.
+
 Validated compiler output is cached in `configuration/build/realism-criteria.<hash>.json`. The cache is only a performance optimization; generated execution traces and manifests contain the runtime and post-processing fields they need.
 
 ## Build YAML

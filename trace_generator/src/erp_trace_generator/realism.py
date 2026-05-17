@@ -90,13 +90,13 @@ class OpenAICompatibleLLMClient:
                 {
                     "role": "system",
                     "content": (
-                        "Return only one strict JSON object. Do not include markdown, comments, or prose."
+                        "You are a JSON generator. Return only one raw JSON object. "
+                        "Do not include markdown, code fences, comments, wrappers, or prose."
                     ),
                 },
                 {"role": "user", "content": prompt},
             ],
-            "temperature": 0.1,
-            "response_format": {"type": "json_object"},
+            "temperature": 0.0,
         }
         body = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json"}
@@ -220,7 +220,7 @@ class RealismCompiler:
         )
 
     def _actor_criteria_from_json(self, raw_response: str, actor: Actor) -> ActorRealismCriteria:
-        payload = json.loads(raw_response)
+        payload = _load_json_object(raw_response)
         criteria = ActorRealismCriteria.model_validate(payload)
         self._validate_actor_criteria(actor, criteria)
         return criteria
@@ -232,7 +232,7 @@ class RealismCompiler:
         remaining_count: int,
         case_start_index: int,
     ) -> list[DemandRelease]:
-        payload = json.loads(raw_response)
+        payload = _load_json_object(raw_response)
         response = DailyDemandResponse.model_validate(payload)
         if response.date != expected_day:
             raise TraceGenerationError(f"demand response date '{response.date}' did not match requested date '{expected_day}'")
@@ -306,6 +306,12 @@ class RealismCompiler:
         guardrails = actor.realism_guardrails
         prompt = {
             "task": "Compile actor realism criteria for one synthetic ERP actor.",
+            "output_rules": [
+                "Return exactly one JSON object.",
+                "Top-level keys must be exactly actor_id, delay_multiplier, workday_deviation_hours, pause_duration_minutes, runtime_delay_cap_seconds.",
+                "Do not add nested objects, markdown, comments, explanations, examples, or wrappers.",
+                "Choose concrete scalar values inside the guardrail ranges.",
+            ],
             "actor": {
                 "actor_id": actor.id,
                 "role": actor.role,
@@ -333,6 +339,13 @@ class RealismCompiler:
                 "pause_duration_minutes": "integer",
                 "runtime_delay_cap_seconds": "number",
             },
+            "example_json": {
+                "actor_id": actor.id,
+                "delay_multiplier": actor.delay_multiplier,
+                "workday_deviation_hours": 0.0,
+                "pause_duration_minutes": actor.realism_guardrails.pause_duration_minutes_min,
+                "runtime_delay_cap_seconds": actor.runtime_delay_cap_seconds,
+            },
         }
         if last_error:
             prompt["previous_error"] = f"Validation failed: {last_error}"
@@ -341,6 +354,13 @@ class RealismCompiler:
     def _daily_demand_prompt(self, day: str, remaining_count: int, last_error: str | None) -> str:
         prompt = {
             "task": "Compile demand releases for one day. Output only Process Case releases, not process steps.",
+            "output_rules": [
+                "Return exactly one JSON object.",
+                "Top-level keys must be exactly date and releases.",
+                "Each release must have exactly release_time and material_id.",
+                "Do not add markdown, comments, explanations, examples, nested wrappers, or extra keys.",
+                "Use only allowed material ids.",
+            ],
             "date": day,
             "remaining_case_count": remaining_count,
             "working_hours": {
@@ -453,3 +473,25 @@ def _criteria_payload(
 def _criteria_hash(payload: dict) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _load_json_object(raw_response: str) -> dict:
+    text = _strip_json_markdown_fence(raw_response.strip())
+    payload = json.loads(text)
+    if not isinstance(payload, dict):
+        raise TraceGenerationError("Realism LLM response must be a JSON object")
+    return payload
+
+
+def _strip_json_markdown_fence(text: str) -> str:
+    if not text.startswith("```"):
+        return text
+    lines = text.splitlines()
+    if not lines:
+        return text
+    first_line = lines[0].strip().lower()
+    if first_line not in {"```", "```json"}:
+        return text
+    if len(lines) >= 2 and lines[-1].strip() == "```":
+        return "\n".join(lines[1:-1]).strip()
+    return text

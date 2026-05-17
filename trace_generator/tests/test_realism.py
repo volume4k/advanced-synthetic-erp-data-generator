@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 import yaml
 
+from erp_trace_generator import realism as realism_module
+from erp_trace_generator.cli import main
 from erp_trace_generator.config import load_generation_config
+from erp_trace_generator.env import load_env_file, read_env_values
 from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.generator import generate_trace_artifacts
 from erp_trace_generator.realism import RealismCompiler, RealismLLMClient
@@ -43,6 +47,25 @@ def test_realism_compiler_accepts_valid_actor_criteria(tmp_path: Path) -> None:
     assert criteria.delay_multiplier == 1.2
     assert criteria.pause_duration_minutes == 45
     assert len(client.prompts) == 1
+
+
+def test_realism_compiler_accepts_json_markdown_fenced_actor_criteria(tmp_path: Path) -> None:
+    config = _load_config(tmp_path, _base_config())
+    response = """```json
+{
+  "actor_id": "procurement_01",
+  "delay_multiplier": 1.2,
+  "workday_deviation_hours": -0.5,
+  "pause_duration_minutes": 45,
+  "runtime_delay_cap_seconds": 4.0
+}
+```"""
+    client = FakeRealismClient([response])
+
+    criteria = RealismCompiler(config=config, client=client, cache_dir=tmp_path).compile_actor("procurement_01")
+
+    assert criteria.actor_id == "procurement_01"
+    assert criteria.delay_multiplier == 1.2
 
 
 def test_realism_compiler_retries_invalid_actor_criteria_with_error_feedback(tmp_path: Path) -> None:
@@ -137,6 +160,27 @@ def test_realism_compiler_accepts_daily_demand_releases(tmp_path: Path) -> None:
     assert releases[1].material_id == "MA025"
 
 
+def test_realism_compiler_accepts_json_markdown_fenced_daily_demand(tmp_path: Path) -> None:
+    config = _load_config(tmp_path, _base_config())
+    client = FakeRealismClient(
+        [
+            """```json
+{
+  "date": "2026-05-18",
+  "releases": [
+    {"release_time": "08:10", "material_id": "MA025"}
+  ]
+}
+```"""
+        ]
+    )
+
+    releases = RealismCompiler(config=config, client=client, cache_dir=tmp_path).compile_daily_demand("2026-05-18", 1)
+
+    assert [release.case_id for release in releases] == ["C001"]
+    assert releases[0].material_id == "MA025"
+
+
 def test_realism_compiler_rejects_unknown_demand_material(tmp_path: Path) -> None:
     config = _load_config(tmp_path, _base_config())
     client = FakeRealismClient(
@@ -221,6 +265,100 @@ def test_trace_generation_uses_enabled_realism_compiler(tmp_path: Path) -> None:
     assert first_step["case_id"] == "C001"
     assert first_step["planned_synthetic_time"]["start"].startswith("2026-05-18T08:05:00")
     assert len(client.prompts) == 4
+
+
+def test_env_file_loader_preserves_existing_environment(tmp_path: Path) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "\n".join(
+            [
+                "REALISM_LLM_BASE_URL=http://from-file",
+                "REALISM_LLM_MODEL='model-from-file'",
+                "export REALISM_LLM_API_KEY=\"token-from-file\"",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    environ = {"REALISM_LLM_BASE_URL": "http://from-shell"}
+
+    values = load_env_file(env_path, environ=environ)
+
+    assert values == {
+        "REALISM_LLM_BASE_URL": "http://from-file",
+        "REALISM_LLM_MODEL": "model-from-file",
+        "REALISM_LLM_API_KEY": "token-from-file",
+    }
+    assert environ["REALISM_LLM_BASE_URL"] == "http://from-shell"
+    assert environ["REALISM_LLM_MODEL"] == "model-from-file"
+    assert environ["REALISM_LLM_API_KEY"] == "token-from-file"
+
+
+def test_read_env_values_missing_file_returns_empty(tmp_path: Path) -> None:
+    assert read_env_values(tmp_path / "missing.env") == {}
+
+
+def test_cli_loads_default_env_file_before_realism_client(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_dir = tmp_path / "configuration"
+    build_dir = config_dir / "build"
+    build_dir.mkdir(parents=True)
+    payload = _base_config()
+    payload["runSettings"]["realism"] = {"enabled": True, "maxRetries": 1, "cacheDir": str(build_dir)}
+    config_path = build_dir / "main.yaml"
+    config_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    (config_dir / ".env").write_text(
+        "\n".join(
+            [
+                "REALISM_LLM_BASE_URL=http://realism.local",
+                "REALISM_LLM_MODEL=realism-model",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    responses = [
+        _actor_response("procurement_01", 1.2),
+        _actor_response("warehouse_01", 1.4),
+        _actor_response("accounts_payable_01", 1.0),
+        json.dumps(
+            {
+                "date": "2026-05-18",
+                "releases": [
+                    {"release_time": "08:05", "material_id": "MA025"},
+                    {"release_time": "08:35", "material_id": "MA025"},
+                ],
+            }
+        ),
+    ]
+
+    class EnvCheckingClient:
+        def __init__(self) -> None:
+            assert os.environ["REALISM_LLM_BASE_URL"] == "http://realism.local"
+            assert os.environ["REALISM_LLM_MODEL"] == "realism-model"
+
+        def complete_json(self, prompt: str) -> str:
+            if not responses:
+                raise AssertionError("unexpected LLM call")
+            return responses.pop(0)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("REALISM_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("REALISM_LLM_MODEL", raising=False)
+    monkeypatch.setattr(realism_module, "OpenAICompatibleLLMClient", EnvCheckingClient)
+
+    exit_code = main(
+        [
+            str(config_path),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--run-id",
+            "RUN_ENV_REALISM",
+        ]
+    )
+
+    assert exit_code == 0
+    assert responses == []
 
 
 def _load_config(tmp_path: Path, payload: dict):
