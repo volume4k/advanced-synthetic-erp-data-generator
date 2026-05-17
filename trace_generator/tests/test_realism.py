@@ -68,6 +68,60 @@ def test_realism_compiler_accepts_json_markdown_fenced_actor_criteria(tmp_path: 
     assert criteria.delay_multiplier == 1.2
 
 
+def test_realism_compiler_accepts_local_model_actor_wrapper(tmp_path: Path) -> None:
+    config = _load_config(tmp_path, _base_config())
+    response = json.dumps(
+        {
+            "actor": {"actor_id": "procurement_01", "role": "procurement"},
+            "synthetic_data": {
+                "delay_multiplier": 1.2,
+                "workday_deviation_hours": -0.5,
+                "pause_duration_minutes": 45,
+                "runtime_delay_cap_seconds": 4.0,
+                "day_delay_multiplier_variance": 0.1,
+                "day_workday_deviation_hours_variance": 0.2,
+                "day_pause_duration_minutes_variance": 10,
+                "workload_delay_multiplier_boost": 0.15,
+                "workload_workday_deviation_hours_boost": 0.25,
+            },
+            "ignored_wrapper_key": "local model metadata",
+        }
+    )
+    client = FakeRealismClient([response])
+
+    criteria = RealismCompiler(config=config, client=client, cache_dir=tmp_path).compile_actor("procurement_01")
+
+    assert criteria.actor_id == "procurement_01"
+    assert criteria.delay_multiplier == 1.2
+    assert criteria.workload_delay_multiplier_boost == 0.15
+
+
+def test_realism_compiler_accepts_local_model_actor_with_extra_input_echo(tmp_path: Path) -> None:
+    config = _load_config(tmp_path, _base_config())
+    response = json.dumps(
+        {
+            "actor": {"actor_id": "procurement_01", "role": "procurement"},
+            "guardrails": {"delay_multiplier": 1.2, "pause_duration_minutes": 45},
+            "delay_multiplier": 1.2,
+            "workday_deviation_hours": -0.5,
+            "pause_duration_minutes": 45,
+            "runtime_delay_cap_seconds": 4.0,
+            "day_delay_multiplier_variance": 0.1,
+            "day_workday_deviation_hours_variance": -0.2,
+            "day_pause_duration_minutes_variance": 10,
+            "workload_delay_multiplier_boost": 0.15,
+            "workload_workday_deviation_hours_boost": 0.25,
+            "output_rules": None,
+        }
+    )
+    client = FakeRealismClient([response])
+
+    criteria = RealismCompiler(config=config, client=client, cache_dir=tmp_path).compile_actor("procurement_01")
+
+    assert criteria.actor_id == "procurement_01"
+    assert criteria.workday_deviation_hours == -0.5
+
+
 def test_realism_compiler_retries_invalid_actor_criteria_with_error_feedback(tmp_path: Path) -> None:
     config = _load_config(tmp_path, _base_config())
     invalid = json.dumps(
@@ -233,12 +287,18 @@ def test_trace_generation_uses_enabled_realism_compiler(tmp_path: Path) -> None:
             _actor_response("procurement_01", 1.2),
             _actor_response("warehouse_01", 1.4),
             _actor_response("accounts_payable_01", 1.0),
+            _price_anchor_response("MA025", 20.0),
             json.dumps(
                 {
-                    "date": "2026-05-18",
-                    "releases": [
-                        {"release_time": "08:05", "material_id": "MA025"},
-                        {"release_time": "08:35", "material_id": "MA025"},
+                    "patterns": [
+                        {
+                            "date": "2026-05-18",
+                            "case_count": 2,
+                            "workload_intensity": "normal",
+                            "release_windows": [{"start": "08:05", "end": "08:45", "share": 1.0}],
+                            "lead_time_mix": [{"days": 5, "share": 1.0}],
+                            "material_mix": [{"material_id": "MA025", "share": 1.0}],
+                        }
                     ],
                 }
             ),
@@ -257,14 +317,146 @@ def test_trace_generation_uses_enabled_realism_compiler(tmp_path: Path) -> None:
 
     assert trace["llm_metadata"]["used"] is True
     assert trace["llm_metadata"]["realism_criteria_hash"]
+    assert trace["llm_metadata"]["realism_compiler_schema_version"] == "2"
+    assert trace["llm_metadata"]["llm_request_count"] == 5
+    assert trace["llm_metadata"]["llm_retry_count"] == 0
     assert trace["actor_sessions"][0]["human_delay_profile"] == {
         "delay_multiplier": 1.2,
         "runtime_delay_cap_seconds": 4.0,
     }
+    assert trace["cases"][0]["requested_delivery_date"] == "2026-05-23"
+    assert 19.0 <= trace["cases"][0]["line_items"][0]["target_price"] <= 21.0
     first_step = trace["dependency_graph"]["planned_steps"][0]
     assert first_step["case_id"] == "C001"
-    assert first_step["planned_synthetic_time"]["start"].startswith("2026-05-18T08:05:00")
-    assert len(client.prompts) == 4
+    first_start = first_step["planned_synthetic_time"]["start"]
+    assert first_start.startswith("2026-05-18T08:")
+    assert "08:05:00" <= first_start[11:19] < "08:45:00"
+    assert first_step["inputs"]["delivery_date"] == "05/23/2026"
+    assert len(client.prompts) == 5
+
+
+def test_realism_compiler_expands_horizon_patterns_without_per_case_llm_calls(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["caseCount"] = 10_000
+    payload["runSettings"]["runHorizonDays"] = 30
+    config = _load_config(tmp_path, payload)
+    client = FakeRealismClient(
+        [
+            _actor_response("procurement_01", 1.2),
+            _actor_response("warehouse_01", 1.4),
+            _actor_response("accounts_payable_01", 1.0),
+            _price_anchor_response("MA025", 20.0),
+            json.dumps(
+                {
+                    "patterns": [
+                        {
+                            "date": "2026-05-18",
+                            "case_count": 6000,
+                            "workload_intensity": "high",
+                            "release_windows": [
+                                {"start": "08:00", "end": "10:30", "share": 0.45},
+                                {"start": "13:00", "end": "16:30", "share": 0.55},
+                            ],
+                            "lead_time_mix": [{"days": 5, "share": 1.0}],
+                            "material_mix": [{"material_id": "MA025", "share": 1.0}],
+                        },
+                        {
+                            "date": "2026-05-19",
+                            "case_count": 4000,
+                            "workload_intensity": "normal",
+                            "release_windows": [{"start": "09:00", "end": "15:00", "share": 1.0}],
+                            "lead_time_mix": [{"days": 5, "share": 1.0}],
+                            "material_mix": [{"material_id": "MA025", "share": 1.0}],
+                        },
+                    ],
+                }
+            ),
+        ]
+    )
+
+    criteria = RealismCompiler(config=config, client=client, cache_dir=tmp_path, max_retries=1).compile()
+
+    assert len(criteria.demand_releases) == 10_000
+    assert len(client.prompts) == 5
+    assert criteria.demand_releases[0].case_id == "C001"
+    assert criteria.demand_releases[-1].case_id == "C10000"
+    assert criteria.demand_releases == sorted(criteria.demand_releases, key=lambda item: item.release_time)
+    assert {release.requested_delivery_date for release in criteria.demand_releases[:6000]} == {
+        config.run_settings.run_start_date.replace(day=23)
+    }
+
+
+def test_realism_compiler_rejects_invalid_horizon_pattern_share(tmp_path: Path) -> None:
+    config = _load_config(tmp_path, _base_config())
+    client = FakeRealismClient(
+        [
+            _actor_response("procurement_01", 1.2),
+            _actor_response("warehouse_01", 1.4),
+            _actor_response("accounts_payable_01", 1.0),
+            _price_anchor_response("MA025", 20.0),
+            json.dumps(
+                {
+                    "patterns": [
+                        {
+                            "date": "2026-05-18",
+                            "case_count": 2,
+                            "workload_intensity": "normal",
+                            "release_windows": [{"start": "08:00", "end": "10:00", "share": 0.4}],
+                            "lead_time_mix": [{"days": 5, "share": 1.0}],
+                            "material_mix": [{"material_id": "MA025", "share": 1.0}],
+                        }
+                    ],
+                }
+            ),
+        ]
+    )
+
+    with pytest.raises(TraceGenerationError, match="release_windows shares must sum to 1.0"):
+        RealismCompiler(config=config, client=client, cache_dir=tmp_path, max_retries=1).compile()
+
+
+def test_actor_day_profiles_vary_by_day_and_workload(tmp_path: Path) -> None:
+    config = _load_config(tmp_path, _base_config())
+    client = FakeRealismClient(
+        [
+            _actor_response("procurement_01", 1.2),
+            _actor_response("warehouse_01", 1.4),
+            _actor_response("accounts_payable_01", 1.0),
+            _price_anchor_response("MA025", 20.0),
+            json.dumps(
+                {
+                    "patterns": [
+                        {
+                            "date": "2026-05-18",
+                            "case_count": 1,
+                            "workload_intensity": "high",
+                            "release_windows": [{"start": "08:00", "end": "09:00", "share": 1.0}],
+                            "lead_time_mix": [{"days": 5, "share": 1.0}],
+                            "material_mix": [{"material_id": "MA025", "share": 1.0}],
+                        },
+                        {
+                            "date": "2026-05-19",
+                            "case_count": 1,
+                            "workload_intensity": "low",
+                            "release_windows": [{"start": "08:00", "end": "09:00", "share": 1.0}],
+                            "lead_time_mix": [{"days": 5, "share": 1.0}],
+                            "material_mix": [{"material_id": "MA025", "share": 1.0}],
+                        },
+                    ],
+                }
+            ),
+        ]
+    )
+
+    criteria = RealismCompiler(config=config, client=client, cache_dir=tmp_path, max_retries=1).compile()
+    first = criteria.actor_day_profiles[("procurement_01", "2026-05-18")]
+    second = criteria.actor_day_profiles[("procurement_01", "2026-05-19")]
+    guardrails = config.actors[0].realism_guardrails
+
+    assert first.delay_multiplier != second.delay_multiplier
+    assert first.delay_multiplier >= criteria.actor_criteria["procurement_01"].delay_multiplier
+    assert guardrails.delay_multiplier_min <= first.delay_multiplier <= guardrails.delay_multiplier_max
+    assert guardrails.delay_multiplier_min <= second.delay_multiplier <= guardrails.delay_multiplier_max
 
 
 def test_env_file_loader_preserves_existing_environment(tmp_path: Path) -> None:
@@ -321,12 +513,18 @@ def test_cli_loads_default_env_file_before_realism_client(
         _actor_response("procurement_01", 1.2),
         _actor_response("warehouse_01", 1.4),
         _actor_response("accounts_payable_01", 1.0),
+        _price_anchor_response("MA025", 20.0),
         json.dumps(
             {
-                "date": "2026-05-18",
-                "releases": [
-                    {"release_time": "08:05", "material_id": "MA025"},
-                    {"release_time": "08:35", "material_id": "MA025"},
+                "patterns": [
+                    {
+                        "date": "2026-05-18",
+                        "case_count": 2,
+                        "workload_intensity": "normal",
+                        "release_windows": [{"start": "08:05", "end": "08:45", "share": 1.0}],
+                        "lead_time_mix": [{"days": 5, "share": 1.0}],
+                        "material_mix": [{"material_id": "MA025", "share": 1.0}],
+                    }
                 ],
             }
         ),
@@ -383,5 +581,25 @@ def _actor_response(actor_id: str, delay_multiplier: float) -> str:
             "workday_deviation_hours": 0.0,
             "pause_duration_minutes": 45,
             "runtime_delay_cap_seconds": 4.0,
+            "day_delay_multiplier_variance": 0.1,
+            "day_workday_deviation_hours_variance": 0.2,
+            "day_pause_duration_minutes_variance": 10,
+            "workload_delay_multiplier_boost": 0.15,
+            "workload_workday_deviation_hours_boost": 0.25,
+        }
+    )
+
+
+def _price_anchor_response(material_id: str, anchor_price: float) -> str:
+    return json.dumps(
+        {
+            "material_prices": [
+                {
+                    "material_id": material_id,
+                    "anchor_price": anchor_price,
+                    "typical_variation_pct": 0.02,
+                    "daily_trend_pct": 0.001,
+                }
+            ]
         }
     )

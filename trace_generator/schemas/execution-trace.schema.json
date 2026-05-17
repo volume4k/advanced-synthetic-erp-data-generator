@@ -261,6 +261,18 @@
         "process_type": {
           "title": "Process Type",
           "type": "string"
+        },
+        "requested_delivery_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requested Delivery Date"
         }
       },
       "required": [

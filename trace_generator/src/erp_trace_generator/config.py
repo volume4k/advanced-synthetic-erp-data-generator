@@ -278,6 +278,12 @@ def _realism_settings(item: dict[str, Any]) -> RealismSettings:
         enabled=bool(item.get("enabled", False)),
         max_retries=int(item.get("maxRetries", 3)),
         cache_dir=str(item.get("cacheDir", "configuration/build")),
+        daily_case_count_min=int(item.get("dailyCaseCountMin", 0)),
+        daily_case_count_max=int(item.get("dailyCaseCountMax", 10000)),
+        max_price_variation_pct=float(item.get("maxPriceVariationPct", 0.05)),
+        max_daily_price_trend_pct=float(item.get("maxDailyPriceTrendPct", 0.01)),
+        max_workload_delay_multiplier_boost=float(item.get("maxWorkloadDelayMultiplierBoost", 0.25)),
+        max_workload_workday_deviation_hours_boost=float(item.get("maxWorkloadWorkdayDeviationHoursBoost", 0.5)),
     )
 
 
@@ -288,6 +294,8 @@ def _validate(config: GenerationConfig) -> None:
         raise TraceGenerationError("Trace generator v1 supports exactly one active process type")
     if config.run_settings.realism.max_retries < 1:
         raise TraceGenerationError("runSettings.realism.maxRetries must be >= 1")
+    if config.run_settings.realism.daily_case_count_min > config.run_settings.realism.daily_case_count_max:
+        raise TraceGenerationError("runSettings.realism daily case count min must be <= max")
     active_process_types = set(config.run_settings.active_process_types)
     process_types = {process.process_type for process in config.processes}
     missing_processes = active_process_types - process_types

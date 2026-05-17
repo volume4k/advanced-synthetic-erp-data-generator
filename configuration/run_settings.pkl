@@ -12,9 +12,15 @@ runSettings: objects.RunSettings = new objects.RunSettings {
   runHorizonDays = 30
   queuePolicy = "fifo"
   realism {
-    enabled = false
+    enabled = true
     maxRetries = 3
     cacheDir = "configuration/build"
+    dailyCaseCountMin = 0
+    dailyCaseCountMax = 10000
+    maxPriceVariationPct = 0.05
+    maxDailyPriceTrendPct = 0.01
+    maxWorkloadDelayMultiplierBoost = 0.25
+    maxWorkloadWorkdayDeviationHoursBoost = 0.5
   }
   workingHours {
     coreStart = "08:00"

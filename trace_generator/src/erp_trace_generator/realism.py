@@ -8,7 +8,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Protocol
+from random import Random
+from typing import Literal, Protocol
 from urllib import request
 from urllib.error import URLError
 from zoneinfo import ZoneInfo
@@ -16,7 +17,11 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from erp_trace_generator.errors import TraceGenerationError
-from erp_trace_generator.models import Actor, GenerationConfig
+from erp_trace_generator.models import Actor, GenerationConfig, MasterDataEntry
+
+
+REALISM_COMPILER_SCHEMA_VERSION = "2"
+WORKLOAD_FACTORS = {"low": -0.5, "normal": 0.0, "high": 1.0}
 
 
 class RealismLLMClient(Protocol):
@@ -32,6 +37,11 @@ class ActorRealismCriteria(BaseModel):
     workday_deviation_hours: float
     pause_duration_minutes: int
     runtime_delay_cap_seconds: float
+    day_delay_multiplier_variance: float = 0.0
+    day_workday_deviation_hours_variance: float = 0.0
+    day_pause_duration_minutes_variance: int = 0
+    workload_delay_multiplier_boost: float = 0.0
+    workload_workday_deviation_hours_boost: float = 0.0
 
 
 class DailyDemandResponse(BaseModel):
@@ -48,11 +58,68 @@ class DemandReleaseItem(BaseModel):
     material_id: str
 
 
+class PriceAnchorResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    material_prices: list["PriceAnchor"]
+
+
+class PriceAnchor(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    material_id: str
+    anchor_price: float
+    typical_variation_pct: float
+    daily_trend_pct: float
+
+
+class HorizonDemandResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    patterns: list["DemandPattern"]
+
+
+class DemandPattern(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    date: str
+    case_count: int
+    workload_intensity: Literal["low", "normal", "high"]
+    release_windows: list["ReleaseWindow"]
+    lead_time_mix: list["LeadTimeMixItem"]
+    material_mix: list["MaterialMixItem"]
+
+
+class ReleaseWindow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start: str
+    end: str
+    share: float
+
+
+class LeadTimeMixItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    days: int
+    share: float
+
+
+class MaterialMixItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    material_id: str
+    share: float
+
+
 @dataclass(frozen=True)
 class DemandRelease:
     case_id: str
     release_time: datetime
     material_id: str
+    requested_delivery_date: date | None = None
+    target_price: float | None = None
+    workload_intensity: str = "normal"
 
 
 @dataclass(frozen=True)
@@ -61,6 +128,9 @@ class CompiledRealismCriteria:
     demand_releases: list[DemandRelease]
     criteria_hash: str
     llm_metadata: dict
+    actor_day_profiles: dict[tuple[str, str], ActorRealismCriteria]
+    price_anchors: dict[str, PriceAnchor]
+    demand_patterns: list[DemandPattern]
 
 
 class OpenAICompatibleLLMClient:
@@ -136,14 +206,20 @@ class RealismCompiler:
         self._client = client
         self._cache_dir = Path(cache_dir)
         self._max_retries = max_retries
+        self._llm_request_count = 0
+        self._llm_retry_count = 0
+        self._cache_hit_count = 0
 
     def actor_cache_path(self, actor_id: str) -> Path:
         return self._cache_dir / f"realism-criteria.actor.{actor_id}.{self._actor_hash(actor_id)}.json"
 
     def compile(self) -> CompiledRealismCriteria:
         actor_criteria = {actor.id: self.compile_actor(actor.id) for actor in self._config.actors}
-        demand_releases = self._compile_demand_releases()
-        payload = _criteria_payload(actor_criteria, demand_releases)
+        price_anchors = self.compile_price_anchors()
+        demand_patterns = self.compile_horizon_demand_patterns()
+        demand_releases = self.expand_demand_patterns(demand_patterns, price_anchors)
+        actor_day_profiles = self._compile_actor_day_profiles(actor_criteria, demand_patterns)
+        payload = _criteria_payload(actor_criteria, demand_releases, actor_day_profiles, price_anchors, demand_patterns)
         criteria_hash = _criteria_hash(payload)
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         (self._cache_dir / f"realism-criteria.{criteria_hash}.json").write_text(
@@ -152,25 +228,38 @@ class RealismCompiler:
         )
         return CompiledRealismCriteria(
             actor_criteria=actor_criteria,
+            actor_day_profiles=actor_day_profiles,
             demand_releases=demand_releases,
+            demand_patterns=demand_patterns,
+            price_anchors=price_anchors,
             criteria_hash=criteria_hash,
-            llm_metadata={"used": True, "realism_criteria_hash": criteria_hash},
+            llm_metadata={
+                "used": True,
+                "realism_criteria_hash": criteria_hash,
+                "realism_compiler_schema_version": REALISM_COMPILER_SCHEMA_VERSION,
+                "llm_request_count": self._llm_request_count,
+                "llm_retry_count": self._llm_retry_count,
+                "cache_hit_count": self._cache_hit_count,
+            },
         )
 
     def compile_actor(self, actor_id: str) -> ActorRealismCriteria:
         actor = self._actor(actor_id)
         cache_path = self.actor_cache_path(actor_id)
         if cache_path.exists():
+            self._cache_hit_count += 1
             return self._actor_criteria_from_json(cache_path.read_text(encoding="utf-8"), actor)
 
         last_error: str | None = None
-        for _attempt in range(self._max_retries):
+        for attempt in range(self._max_retries):
             prompt = self._actor_prompt(actor, last_error)
-            raw_response = self._client.complete_json(prompt)
+            raw_response = self._complete_json(prompt)
             try:
                 criteria = self._actor_criteria_from_json(raw_response, actor)
             except (TraceGenerationError, ValidationError, json.JSONDecodeError) as exc:
                 last_error = str(exc)
+                if attempt < self._max_retries - 1:
+                    self._llm_retry_count += 1
                 continue
             self._cache_dir.mkdir(parents=True, exist_ok=True)
             cache_path.write_text(criteria.model_dump_json(indent=2), encoding="utf-8")
@@ -178,6 +267,90 @@ class RealismCompiler:
 
         detail = f": {last_error}" if last_error else ""
         raise TraceGenerationError(f"Could not compile realism criteria for actor '{actor_id}'{detail}")
+
+    def compile_price_anchors(self) -> dict[str, PriceAnchor]:
+        last_error: str | None = None
+        for attempt in range(self._max_retries):
+            raw_response = self._complete_json(self._price_anchor_prompt(last_error))
+            try:
+                anchors = self._price_anchors_from_json(raw_response)
+            except (TraceGenerationError, ValidationError, json.JSONDecodeError) as exc:
+                last_error = str(exc)
+                if attempt < self._max_retries - 1:
+                    self._llm_retry_count += 1
+                continue
+            return anchors
+        detail = f": {last_error}" if last_error else ""
+        raise TraceGenerationError(f"Could not compile price anchors{detail}")
+
+    def compile_horizon_demand_patterns(self) -> list[DemandPattern]:
+        last_error: str | None = None
+        for attempt in range(self._max_retries):
+            raw_response = self._complete_json(self._horizon_demand_prompt(last_error))
+            try:
+                return self._demand_patterns_from_json(raw_response)
+            except (TraceGenerationError, ValidationError, json.JSONDecodeError, ValueError) as exc:
+                last_error = str(exc)
+                if attempt < self._max_retries - 1:
+                    self._llm_retry_count += 1
+                continue
+        detail = f": {last_error}" if last_error else ""
+        raise TraceGenerationError(f"Could not compile horizon demand patterns{detail}")
+
+    def expand_demand_patterns(
+        self,
+        demand_patterns: list[DemandPattern],
+        price_anchors: dict[str, PriceAnchor],
+    ) -> list[DemandRelease]:
+        tz = ZoneInfo(self._config.run_settings.target_timezone)
+        expanded: list[DemandRelease] = []
+        master_data_by_material_id = {entry.material_id: entry for entry in self._config.master_data}
+
+        for pattern in sorted(demand_patterns, key=lambda item: item.date):
+            pattern_date = date.fromisoformat(pattern.date)
+            window_counts = _allocate_counts(pattern.case_count, [item.share for item in pattern.release_windows])
+            material_ids = _expand_weighted_values(
+                pattern.case_count,
+                [(item.material_id, item.share) for item in pattern.material_mix],
+            )
+            lead_days = _expand_weighted_values(
+                pattern.case_count,
+                [(item.days, item.share) for item in pattern.lead_time_mix],
+            )
+            release_times: list[datetime] = []
+            for window, count in zip(pattern.release_windows, window_counts, strict=True):
+                release_times.extend(_release_times_for_window(pattern_date, window, count, tz, self._config.run_settings.scheduler_seed))
+            release_times.sort()
+            for item_index, release_at in enumerate(release_times):
+                material_id = material_ids[item_index]
+                master_data = master_data_by_material_id[material_id]
+                days = lead_days[item_index]
+                requested_delivery_date = release_at.date() + timedelta(days=days)
+                self._validate_requested_delivery_date(release_at, requested_delivery_date, master_data)
+                target_price = self._sample_target_price(price_anchors[material_id], master_data, release_at, item_index)
+                expanded.append(
+                    DemandRelease(
+                        case_id="",
+                        release_time=release_at,
+                        material_id=material_id,
+                        requested_delivery_date=requested_delivery_date,
+                        target_price=target_price,
+                        workload_intensity=pattern.workload_intensity,
+                    )
+                )
+
+        expanded.sort(key=lambda item: item.release_time)
+        return [
+            DemandRelease(
+                case_id=f"C{index:03d}",
+                release_time=release.release_time,
+                material_id=release.material_id,
+                requested_delivery_date=release.requested_delivery_date,
+                target_price=release.target_price,
+                workload_intensity=release.workload_intensity,
+            )
+            for index, release in enumerate(expanded, start=1)
+        ]
 
     def compile_daily_demand(
         self,
@@ -187,43 +360,78 @@ class RealismCompiler:
         case_start_index: int = 1,
     ) -> list[DemandRelease]:
         last_error: str | None = None
-        for _attempt in range(self._max_retries):
+        for attempt in range(self._max_retries):
             prompt = self._daily_demand_prompt(day, remaining_count, last_error)
-            raw_response = self._client.complete_json(prompt)
+            raw_response = self._complete_json(prompt)
             try:
                 return self._demand_releases_from_json(raw_response, day, remaining_count, case_start_index)
             except (TraceGenerationError, ValidationError, json.JSONDecodeError, ValueError) as exc:
                 last_error = str(exc)
+                if attempt < self._max_retries - 1:
+                    self._llm_retry_count += 1
                 continue
 
         detail = f": {last_error}" if last_error else ""
         raise TraceGenerationError(f"Could not compile demand releases for {day}{detail}")
 
-    def _compile_demand_releases(self) -> list[DemandRelease]:
-        releases: list[DemandRelease] = []
-        remaining = self._config.run_settings.case_count
-        current_day = self._config.run_settings.run_start_date
-        for _day_index in range(self._config.run_settings.run_horizon_days):
-            daily = self.compile_daily_demand(
-                current_day.isoformat(),
-                remaining,
-                case_start_index=len(releases) + 1,
-            )
-            releases.extend(daily)
-            remaining -= len(daily)
-            if remaining == 0:
-                return releases
-            current_day += timedelta(days=1)
-        raise TraceGenerationError(
-            f"Compiled demand releases produced {len(releases)} process cases, "
-            f"but caseCount requires {self._config.run_settings.case_count}"
-        )
+    def _complete_json(self, prompt: str) -> str:
+        self._llm_request_count += 1
+        return self._client.complete_json(prompt)
 
     def _actor_criteria_from_json(self, raw_response: str, actor: Actor) -> ActorRealismCriteria:
-        payload = _load_json_object(raw_response)
+        payload = _normalize_actor_payload(_load_json_object(raw_response), actor)
         criteria = ActorRealismCriteria.model_validate(payload)
         self._validate_actor_criteria(actor, criteria)
         return criteria
+
+    def _price_anchors_from_json(self, raw_response: str) -> dict[str, PriceAnchor]:
+        payload = _load_json_object(raw_response)
+        response = PriceAnchorResponse.model_validate(payload)
+        anchors = {item.material_id: item for item in response.material_prices}
+        expected_material_ids = {entry.material_id for entry in self._config.master_data}
+        if set(anchors) != expected_material_ids:
+            raise TraceGenerationError("price anchor response must include exactly the configured material ids")
+        for material in self._config.master_data:
+            anchor = anchors[material.material_id]
+            if not material.price_min <= anchor.anchor_price <= material.price_max:
+                raise TraceGenerationError(f"anchor_price for material '{material.material_id}' outside price guardrails")
+            if not 0 <= anchor.typical_variation_pct <= self._config.run_settings.realism.max_price_variation_pct:
+                raise TraceGenerationError(f"typical_variation_pct for material '{material.material_id}' outside guardrails")
+            if abs(anchor.daily_trend_pct) > self._config.run_settings.realism.max_daily_price_trend_pct:
+                raise TraceGenerationError(f"daily_trend_pct for material '{material.material_id}' outside guardrails")
+        return anchors
+
+    def _demand_patterns_from_json(self, raw_response: str) -> list[DemandPattern]:
+        payload = _load_json_object(raw_response)
+        response = HorizonDemandResponse.model_validate(payload)
+        total = sum(pattern.case_count for pattern in response.patterns)
+        if total != self._config.run_settings.case_count:
+            raise TraceGenerationError(
+                f"demand patterns total {total} cases, but caseCount requires {self._config.run_settings.case_count}"
+            )
+        known_material_ids = {entry.material_id for entry in self._config.master_data}
+        run_end_exclusive = self._config.run_settings.run_start_date + timedelta(days=self._config.run_settings.run_horizon_days)
+        for pattern in response.patterns:
+            pattern_date = date.fromisoformat(pattern.date)
+            if not self._config.run_settings.run_start_date <= pattern_date < run_end_exclusive:
+                raise TraceGenerationError(f"demand pattern date '{pattern.date}' is outside run horizon")
+            if not self._config.run_settings.realism.daily_case_count_min <= pattern.case_count <= self._config.run_settings.realism.daily_case_count_max:
+                raise TraceGenerationError(f"demand pattern case_count {pattern.case_count} outside guardrails")
+            _validate_share_sum([item.share for item in pattern.release_windows], "release_windows")
+            _validate_share_sum([item.share for item in pattern.lead_time_mix], "lead_time_mix")
+            _validate_share_sum([item.share for item in pattern.material_mix], "material_mix")
+            for window in pattern.release_windows:
+                start = time.fromisoformat(window.start)
+                end = time.fromisoformat(window.end)
+                if start >= end:
+                    raise TraceGenerationError("release window start must be before end")
+                self._validate_release_inside_workday(datetime.combine(pattern_date, start, ZoneInfo(self._config.run_settings.target_timezone)))
+                self._validate_release_inside_workday(datetime.combine(pattern_date, (datetime.combine(pattern_date, end) - timedelta(minutes=1)).time(), ZoneInfo(self._config.run_settings.target_timezone)))
+            for item in pattern.material_mix:
+                if item.material_id not in known_material_ids:
+                    raise TraceGenerationError(f"unknown material_id '{item.material_id}' in demand pattern")
+            self._validate_pattern_lead_times(pattern)
+        return response.patterns
 
     def _demand_releases_from_json(
         self,
@@ -255,11 +463,17 @@ class RealismCompiler:
             release_clock = time.fromisoformat(release.release_time)
             release_at = datetime.combine(target_day, release_clock, tz)
             self._validate_release_inside_workday(release_at)
-            self._validate_release_can_finish_inside_horizon(
-                release_at,
-                master_data_by_material_id[release.material_id].delivery_lead_time_min_days,
+            master_data = master_data_by_material_id[release.material_id]
+            requested_delivery_date = release_at.date() + timedelta(days=master_data.delivery_lead_time_min_days)
+            self._validate_requested_delivery_date(release_at, requested_delivery_date, master_data)
+            releases.append(
+                DemandRelease(
+                    case_id=f"C{index:03d}",
+                    release_time=release_at,
+                    material_id=release.material_id,
+                    requested_delivery_date=requested_delivery_date,
+                )
             )
-            releases.append(DemandRelease(case_id=f"C{index:03d}", release_time=release_at, material_id=release.material_id))
         return releases
 
     def _validate_actor_criteria(self, actor: Actor, criteria: ActorRealismCriteria) -> None:
@@ -286,6 +500,11 @@ class RealismCompiler:
                 f"runtime_delay_cap_seconds {criteria.runtime_delay_cap_seconds} outside guardrails "
                 f"[{guardrails.runtime_delay_cap_seconds_min}, {guardrails.runtime_delay_cap_seconds_max}]"
             )
+        settings = self._config.run_settings.realism
+        if criteria.workload_delay_multiplier_boost > settings.max_workload_delay_multiplier_boost:
+            raise TraceGenerationError("workload_delay_multiplier_boost outside guardrails")
+        if criteria.workload_workday_deviation_hours_boost > settings.max_workload_workday_deviation_hours_boost:
+            raise TraceGenerationError("workload_workday_deviation_hours_boost outside guardrails")
 
     def _validate_release_inside_workday(self, release_at: datetime) -> None:
         work_start = time.fromisoformat(self._config.run_settings.working_hours.core_start)
@@ -293,24 +512,117 @@ class RealismCompiler:
         if not work_start <= release_at.timetz().replace(tzinfo=None) < work_end:
             raise TraceGenerationError(f"demand release '{release_at.isoformat()}' is outside configured working hours")
 
-    def _validate_release_can_finish_inside_horizon(self, release_at: datetime, delivery_lead_time_min_days: int) -> None:
+    def _validate_requested_delivery_date(
+        self,
+        release_at: datetime,
+        requested_delivery_date: date,
+        master_data: MasterDataEntry,
+    ) -> None:
+        lead_days = (requested_delivery_date - release_at.date()).days
+        if not master_data.delivery_lead_time_min_days <= lead_days <= master_data.delivery_lead_time_max_days:
+            raise TraceGenerationError(
+                f"requested delivery date '{requested_delivery_date.isoformat()}' outside lead-time guardrails "
+                f"for material '{master_data.material_id}'"
+            )
         run_end_exclusive = self._config.run_settings.run_start_date + timedelta(days=self._config.run_settings.run_horizon_days)
-        earliest_payment_date = release_at.date() + timedelta(days=delivery_lead_time_min_days + 1)
+        earliest_payment_date = requested_delivery_date + timedelta(days=1)
         if earliest_payment_date >= run_end_exclusive:
             raise TraceGenerationError(
-                f"demand release '{release_at.isoformat()}' cannot finish inside run horizon; "
-                f"earliest payment date is {earliest_payment_date.isoformat()}"
+                f"requested delivery date '{requested_delivery_date.isoformat()}' cannot finish inside run horizon"
             )
+
+    def _validate_pattern_lead_times(self, pattern: DemandPattern) -> None:
+        master_data_by_material_id = {entry.material_id: entry for entry in self._config.master_data}
+        material_ids = [item.material_id for item in pattern.material_mix]
+        for lead_time in pattern.lead_time_mix:
+            for material_id in material_ids:
+                material = master_data_by_material_id[material_id]
+                if not material.delivery_lead_time_min_days <= lead_time.days <= material.delivery_lead_time_max_days:
+                    raise TraceGenerationError(
+                        f"lead_time_mix days {lead_time.days} outside guardrails for material '{material_id}'"
+                    )
+
+    def _sample_target_price(
+        self,
+        anchor: PriceAnchor,
+        master_data: MasterDataEntry,
+        release_at: datetime,
+        index: int,
+    ) -> float:
+        days_since_start = (release_at.date() - self._config.run_settings.run_start_date).days
+        rng = Random(f"{self._config.run_settings.scheduler_seed}:{anchor.material_id}:{release_at.isoformat()}:{index}")
+        trended_anchor = anchor.anchor_price * (1 + anchor.daily_trend_pct * days_since_start)
+        sampled = trended_anchor * (1 + rng.uniform(-anchor.typical_variation_pct, anchor.typical_variation_pct))
+        return round(min(master_data.price_max, max(master_data.price_min, sampled)), 2)
+
+    def _compile_actor_day_profiles(
+        self,
+        actor_criteria: dict[str, ActorRealismCriteria],
+        demand_patterns: list[DemandPattern],
+    ) -> dict[tuple[str, str], ActorRealismCriteria]:
+        workload_by_date = {pattern.date: pattern.workload_intensity for pattern in demand_patterns}
+        profiles: dict[tuple[str, str], ActorRealismCriteria] = {}
+        for actor in self._config.actors:
+            baseline = actor_criteria[actor.id]
+            guardrails = actor.realism_guardrails
+            for offset in range(self._config.run_settings.run_horizon_days):
+                day = self._config.run_settings.run_start_date + timedelta(days=offset)
+                day_key = day.isoformat()
+                workload = workload_by_date.get(day_key, "normal")
+                factor = WORKLOAD_FACTORS[workload]
+                rng = Random(f"{self._config.run_settings.scheduler_seed}:{actor.id}:{day_key}")
+                delay_variance = abs(baseline.day_delay_multiplier_variance)
+                workday_variance = abs(baseline.day_workday_deviation_hours_variance)
+                pause_variance = abs(baseline.day_pause_duration_minutes_variance)
+                delay_multiplier = _clamp(
+                    baseline.delay_multiplier
+                    + rng.uniform(-delay_variance, delay_variance)
+                    + baseline.workload_delay_multiplier_boost * factor,
+                    guardrails.delay_multiplier_min,
+                    guardrails.delay_multiplier_max,
+                )
+                workday_deviation_hours = _clamp(
+                    baseline.workday_deviation_hours
+                    + rng.uniform(-workday_variance, workday_variance)
+                    + baseline.workload_workday_deviation_hours_boost * factor,
+                    guardrails.workday_deviation_hours_min,
+                    guardrails.workday_deviation_hours_max,
+                )
+                pause_delta = (
+                    rng.randint(-pause_variance, pause_variance)
+                    if pause_variance > 0
+                    else 0
+                )
+                pause_duration_minutes = int(
+                    _clamp(
+                        baseline.pause_duration_minutes + pause_delta,
+                        guardrails.pause_duration_minutes_min,
+                        guardrails.pause_duration_minutes_max,
+                    )
+                )
+                profiles[(actor.id, day_key)] = ActorRealismCriteria(
+                    actor_id=actor.id,
+                    delay_multiplier=round(delay_multiplier, 3),
+                    workday_deviation_hours=round(workday_deviation_hours, 3),
+                    pause_duration_minutes=pause_duration_minutes,
+                    runtime_delay_cap_seconds=baseline.runtime_delay_cap_seconds,
+                    day_delay_multiplier_variance=baseline.day_delay_multiplier_variance,
+                    day_workday_deviation_hours_variance=baseline.day_workday_deviation_hours_variance,
+                    day_pause_duration_minutes_variance=baseline.day_pause_duration_minutes_variance,
+                    workload_delay_multiplier_boost=baseline.workload_delay_multiplier_boost,
+                    workload_workday_deviation_hours_boost=baseline.workload_workday_deviation_hours_boost,
+                )
+        return profiles
 
     def _actor_prompt(self, actor: Actor, last_error: str | None) -> str:
         guardrails = actor.realism_guardrails
         prompt = {
-            "task": "Compile actor realism criteria for one synthetic ERP actor.",
+            "task": "Compile actor baseline realism model for one synthetic ERP actor.",
             "output_rules": [
                 "Return exactly one JSON object.",
-                "Top-level keys must be exactly actor_id, delay_multiplier, workday_deviation_hours, pause_duration_minutes, runtime_delay_cap_seconds.",
-                "Do not add nested objects, markdown, comments, explanations, examples, or wrappers.",
-                "Choose concrete scalar values inside the guardrail ranges.",
+                "Top-level keys must match required_json_shape exactly.",
+                "Choose scalar values inside guardrail ranges.",
+                "Day variance fields describe deterministic per-day variation bounds.",
             ],
             "actor": {
                 "actor_id": actor.id,
@@ -331,6 +643,8 @@ class RealismCompiler:
                     guardrails.runtime_delay_cap_seconds_min,
                     guardrails.runtime_delay_cap_seconds_max,
                 ],
+                "workload_delay_multiplier_boost_max": self._config.run_settings.realism.max_workload_delay_multiplier_boost,
+                "workload_workday_deviation_hours_boost_max": self._config.run_settings.realism.max_workload_workday_deviation_hours_boost,
             },
             "required_json_shape": {
                 "actor_id": actor.id,
@@ -338,13 +652,129 @@ class RealismCompiler:
                 "workday_deviation_hours": "number",
                 "pause_duration_minutes": "integer",
                 "runtime_delay_cap_seconds": "number",
+                "day_delay_multiplier_variance": "number",
+                "day_workday_deviation_hours_variance": "number",
+                "day_pause_duration_minutes_variance": "integer",
+                "workload_delay_multiplier_boost": "number",
+                "workload_workday_deviation_hours_boost": "number",
             },
-            "example_json": {
-                "actor_id": actor.id,
-                "delay_multiplier": actor.delay_multiplier,
-                "workday_deviation_hours": 0.0,
-                "pause_duration_minutes": actor.realism_guardrails.pause_duration_minutes_min,
-                "runtime_delay_cap_seconds": actor.runtime_delay_cap_seconds,
+        }
+        if last_error:
+            prompt["previous_error"] = f"Validation failed: {last_error}"
+        return json.dumps(prompt, sort_keys=True)
+
+    def _price_anchor_prompt(self, last_error: str | None) -> str:
+        prompt = {
+            "task": "Compile one realistic price anchor model per configured material.",
+            "output_rules": [
+                "Return exactly one JSON object.",
+                "Return one material_prices item for every configured material.",
+                "Do not return per-case prices.",
+                "anchor_price must be inside hard price guardrails.",
+            ],
+            "materials": [
+                {
+                    "material_id": item.material_id,
+                    "price_min": item.price_min,
+                    "price_max": item.price_max,
+                    "currency": item.currency,
+                }
+                for item in self._config.master_data
+            ],
+            "guardrails": {
+                "typical_variation_pct": [0, self._config.run_settings.realism.max_price_variation_pct],
+                "daily_trend_pct": [
+                    -self._config.run_settings.realism.max_daily_price_trend_pct,
+                    self._config.run_settings.realism.max_daily_price_trend_pct,
+                ],
+            },
+            "required_json_shape": {
+                "material_prices": [
+                    {
+                        "material_id": "configured material id",
+                        "anchor_price": "number",
+                        "typical_variation_pct": "number",
+                        "daily_trend_pct": "number",
+                    }
+                ]
+            },
+        }
+        if last_error:
+            prompt["previous_error"] = f"Validation failed: {last_error}"
+        return json.dumps(prompt, sort_keys=True)
+
+    def _horizon_demand_prompt(self, last_error: str | None) -> str:
+        run_start = self._config.run_settings.run_start_date
+        run_end = run_start + timedelta(days=self._config.run_settings.run_horizon_days - 1)
+        prompt = {
+            "task": "Compile compact Demand Patterns for the whole run horizon. Do not output individual Process Cases.",
+            "exact_total_case_count_required": self._config.run_settings.case_count,
+            "output_rules": [
+                "Return exactly one JSON object.",
+                f"Sum of all pattern case_count values must equal exactly {self._config.run_settings.case_count}.",
+                "Never invent a larger business volume than caseCount.",
+                "Return compact daily patterns only; omit days with zero cases.",
+                "Every returned pattern must have case_count >= 1.",
+                "release_windows, lead_time_mix, and material_mix shares must each sum to 1.0.",
+                "Every release window must be inside working_hours.",
+                "Every release window start must be before end; do not use equal times or overnight windows.",
+                "Use varied non-flat workload and release windows when realistic.",
+            ],
+            "caseCount": self._config.run_settings.case_count,
+            "run_horizon": {
+                "start_date": run_start.isoformat(),
+                "end_date": run_end.isoformat(),
+                "days": self._config.run_settings.run_horizon_days,
+            },
+            "working_hours": {
+                "core_start": self._config.run_settings.working_hours.core_start,
+                "core_end": self._config.run_settings.working_hours.core_end,
+            },
+            "materials": [
+                {
+                    "material_id": item.material_id,
+                    "delivery_lead_time_min_days": item.delivery_lead_time_min_days,
+                    "delivery_lead_time_max_days": item.delivery_lead_time_max_days,
+                }
+                for item in self._config.master_data
+            ],
+            "guardrails": {
+                "daily_case_count": [
+                    self._config.run_settings.realism.daily_case_count_min,
+                    self._config.run_settings.realism.daily_case_count_max,
+                ]
+            },
+            "required_json_shape": {
+                "patterns": [
+                    {
+                        "date": "YYYY-MM-DD",
+                        "case_count": "integer",
+                        "workload_intensity": "low|normal|high",
+                        "release_windows": [{"start": "HH:MM", "end": "HH:MM", "share": "number"}],
+                        "lead_time_mix": [{"days": "integer", "share": "number"}],
+                        "material_mix": [{"material_id": "configured material id", "share": "number"}],
+                    }
+                ]
+            },
+            "example_json_for_current_case_count": {
+                "patterns": [
+                    {
+                        "date": run_start.isoformat(),
+                        "case_count": self._config.run_settings.case_count,
+                        "workload_intensity": "normal",
+                        "release_windows": [
+                            {"start": self._config.run_settings.working_hours.core_start, "end": "11:00", "share": 0.5},
+                            {"start": "13:00", "end": self._config.run_settings.working_hours.core_end, "share": 0.5},
+                        ],
+                        "lead_time_mix": [
+                            {
+                                "days": self._config.master_data[0].delivery_lead_time_min_days,
+                                "share": 1.0,
+                            }
+                        ],
+                        "material_mix": [{"material_id": self._config.master_data[0].material_id, "share": 1.0}],
+                    }
+                ]
             },
         }
         if last_error:
@@ -390,7 +820,15 @@ class RealismCompiler:
 
     def _actor_hash(self, actor_id: str) -> str:
         actor_payload = next((item for item in self._config.raw.get("actors", []) if item.get("id") == actor_id), None)
-        encoded = json.dumps(actor_payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        encoded = json.dumps(
+            {
+                "schema_version": REALISM_COMPILER_SCHEMA_VERSION,
+                "actor": actor_payload,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()[:16]
 
 
@@ -405,14 +843,38 @@ def default_realism_criteria(config: GenerationConfig) -> CompiledRealismCriteri
         )
         for actor in config.actors
     }
+    actor_day_profiles = {
+        (actor_id, (config.run_settings.run_start_date + timedelta(days=offset)).isoformat()): criteria
+        for actor_id, criteria in actor_criteria.items()
+        for offset in range(config.run_settings.run_horizon_days)
+    }
     demand_releases = default_demand_releases(config)
-    payload = _criteria_payload(actor_criteria, demand_releases)
+    price_anchors = {
+        item.material_id: PriceAnchor(
+            material_id=item.material_id,
+            anchor_price=round((item.price_min + item.price_max) / 2, 2),
+            typical_variation_pct=0.0,
+            daily_trend_pct=0.0,
+        )
+        for item in config.master_data
+    }
+    payload = _criteria_payload(actor_criteria, demand_releases, actor_day_profiles, price_anchors, [])
     criteria_hash = _criteria_hash(payload)
     return CompiledRealismCriteria(
         actor_criteria=actor_criteria,
+        actor_day_profiles=actor_day_profiles,
         demand_releases=demand_releases,
+        demand_patterns=[],
+        price_anchors=price_anchors,
         criteria_hash=criteria_hash,
-        llm_metadata={"used": False, "realism_criteria_hash": criteria_hash},
+        llm_metadata={
+            "used": False,
+            "realism_criteria_hash": criteria_hash,
+            "realism_compiler_schema_version": REALISM_COMPILER_SCHEMA_VERSION,
+            "llm_request_count": 0,
+            "llm_retry_count": 0,
+            "cache_hit_count": 0,
+        },
     )
 
 
@@ -453,17 +915,35 @@ def default_demand_releases(config: GenerationConfig) -> list[DemandRelease]:
 def _criteria_payload(
     actor_criteria: dict[str, ActorRealismCriteria],
     demand_releases: list[DemandRelease],
+    actor_day_profiles: dict[tuple[str, str], ActorRealismCriteria],
+    price_anchors: dict[str, PriceAnchor],
+    demand_patterns: list[DemandPattern],
 ) -> dict:
     return {
+        "schema_version": REALISM_COMPILER_SCHEMA_VERSION,
         "actor_criteria": {
             actor_id: criteria.model_dump(mode="json")
             for actor_id, criteria in sorted(actor_criteria.items())
         },
+        "actor_day_profiles": {
+            f"{actor_id}:{day}": criteria.model_dump(mode="json")
+            for (actor_id, day), criteria in sorted(actor_day_profiles.items())
+        },
+        "price_anchors": {
+            material_id: anchor.model_dump(mode="json")
+            for material_id, anchor in sorted(price_anchors.items())
+        },
+        "demand_patterns": [pattern.model_dump(mode="json") for pattern in demand_patterns],
         "demand_releases": [
             {
                 "case_id": release.case_id,
                 "release_time": release.release_time.isoformat(),
                 "material_id": release.material_id,
+                "requested_delivery_date": release.requested_delivery_date.isoformat()
+                if release.requested_delivery_date is not None
+                else None,
+                "target_price": release.target_price,
+                "workload_intensity": release.workload_intensity,
             }
             for release in demand_releases
         ],
@@ -483,6 +963,36 @@ def _load_json_object(raw_response: str) -> dict:
     return payload
 
 
+def _normalize_actor_payload(payload: dict, actor: Actor) -> dict:
+    allowed_keys = set(ActorRealismCriteria.model_fields)
+    required_keys = {
+        "actor_id",
+        "delay_multiplier",
+        "workday_deviation_hours",
+        "pause_duration_minutes",
+        "runtime_delay_cap_seconds",
+    }
+    if required_keys.issubset(payload):
+        return {key: value for key, value in payload.items() if key in allowed_keys}
+    nested = payload.get("synthetic_data")
+    if isinstance(nested, dict):
+        normalized = {key: value for key, value in nested.items() if key in allowed_keys}
+        actor_payload = payload.get("actor")
+        if isinstance(actor_payload, dict):
+            normalized["actor_id"] = actor_payload.get("actor_id", actor.id)
+        else:
+            normalized["actor_id"] = payload.get("actor_id", actor.id)
+        return normalized
+    actor_payload = payload.get("actor")
+    guardrail_payload = payload.get("guardrails")
+    if isinstance(actor_payload, dict) and isinstance(guardrail_payload, dict):
+        normalized = {key: value for key, value in payload.items() if key in allowed_keys}
+        normalized.update({key: value for key, value in guardrail_payload.items() if key in allowed_keys})
+        normalized["actor_id"] = actor_payload.get("actor_id", actor.id)
+        return normalized
+    return payload
+
+
 def _strip_json_markdown_fence(text: str) -> str:
     if not text.startswith("```"):
         return text
@@ -495,3 +1005,51 @@ def _strip_json_markdown_fence(text: str) -> str:
     if len(lines) >= 2 and lines[-1].strip() == "```":
         return "\n".join(lines[1:-1]).strip()
     return text
+
+
+def _validate_share_sum(shares: list[float], name: str) -> None:
+    if not shares or any(share < 0 for share in shares):
+        raise TraceGenerationError(f"{name} shares must be non-negative and non-empty")
+    if abs(sum(shares) - 1.0) > 0.0001:
+        raise TraceGenerationError(f"{name} shares must sum to 1.0")
+
+
+def _allocate_counts(total: int, shares: list[float]) -> list[int]:
+    raw = [total * share for share in shares]
+    counts = [int(value) for value in raw]
+    remainder = total - sum(counts)
+    order = sorted(range(len(shares)), key=lambda index: raw[index] - counts[index], reverse=True)
+    for index in order[:remainder]:
+        counts[index] += 1
+    return counts
+
+
+def _expand_weighted_values(total: int, weighted_values: list[tuple[object, float]]) -> list:
+    counts = _allocate_counts(total, [share for _value, share in weighted_values])
+    values: list = []
+    for (value, _share), count in zip(weighted_values, counts, strict=True):
+        values.extend([value] * count)
+    return values
+
+
+def _release_times_for_window(
+    target_day: date,
+    window: ReleaseWindow,
+    count: int,
+    tz: ZoneInfo,
+    seed: int,
+) -> list[datetime]:
+    if count == 0:
+        return []
+    start_dt = datetime.combine(target_day, time.fromisoformat(window.start), tz)
+    end_dt = datetime.combine(target_day, time.fromisoformat(window.end), tz)
+    seconds = max(1, int((end_dt - start_dt).total_seconds()))
+    rng = Random(f"{seed}:{target_day.isoformat()}:{window.start}:{window.end}:{count}")
+    return [
+        start_dt + timedelta(seconds=min(seconds - 1, int(seconds * ((index + rng.random()) / count))))
+        for index in range(count)
+    ]
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return min(maximum, max(minimum, value))

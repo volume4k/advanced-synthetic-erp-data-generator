@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from random import Random
 from zoneinfo import ZoneInfo
 
@@ -22,11 +22,11 @@ def plan_cases(config: GenerationConfig, rng: Random, *, demand_releases: list[D
     for index, release in enumerate(releases, start=1):
         master_data = _master_data_for_release(config, release, rng)
         quantity = rng.randint(master_data.quantity_min, master_data.quantity_max)
-        target_price = round(rng.uniform(master_data.price_min, master_data.price_max), 2)
-        delivery_days = rng.randint(
-            master_data.delivery_lead_time_min_days,
-            master_data.delivery_lead_time_max_days,
-        )
+        delivery_days = rng.randint(master_data.delivery_lead_time_min_days, master_data.delivery_lead_time_max_days)
+        requested_delivery_date = release.requested_delivery_date or release.release_time.date() + timedelta(days=delivery_days)
+        target_price = release.target_price
+        if target_price is None:
+            target_price = round(rng.uniform(master_data.price_min, master_data.price_max), 2)
         storage_location = rng.choice(master_data.valid_storage_locations)
         cases.append(
             CasePlan(
@@ -41,9 +41,10 @@ def plan_cases(config: GenerationConfig, rng: Random, *, demand_releases: list[D
                 quantity=quantity,
                 target_price=target_price,
                 currency=master_data.currency,
-                delivery_date=release.release_time.date() + timedelta(days=delivery_days),
+                delivery_date=requested_delivery_date,
                 gross_amount=round(quantity * target_price, 2),
                 demand_release_time=release.release_time,
+                requested_delivery_date=requested_delivery_date,
             )
         )
     return cases
@@ -55,6 +56,7 @@ def plan_steps(
     rng: Random,
     *,
     actor_criteria: dict[str, ActorRealismCriteria] | None = None,
+    actor_day_profiles: dict[tuple[str, str], ActorRealismCriteria] | None = None,
 ) -> list[PlannedStep]:
     process = config.active_process()
     timeline = TimelinePlanner(config.run_settings, rng)
@@ -86,6 +88,7 @@ def plan_steps(
                 technical_user_available=technical_user_available,
                 timeline=timeline,
                 actor_criteria=criteria,
+                actor_day_profiles=actor_day_profiles,
             )
             candidates.append((start, step_index, case.case_id, step, actor, technical_user))
 
@@ -97,7 +100,7 @@ def plan_steps(
             key=lambda item: (item[0], item[1], item[2]),
         )
         case = case_by_id[case_id]
-        actor_realism = criteria[actor.id]
+        actor_realism = _profile_for_actor_day(actor.id, start.date(), criteria, actor_day_profiles)
         end = timeline.add_step_duration(start, step.step_type, actor_realism.delay_multiplier, actor_realism)
         actor_available[actor.id] = end
         technical_user_available[technical_user.id] = end
@@ -139,6 +142,7 @@ def _allocate_actor(
     technical_user_available: dict[str, datetime],
     timeline: TimelinePlanner,
     actor_criteria: dict[str, ActorRealismCriteria],
+    actor_day_profiles: dict[tuple[str, str], ActorRealismCriteria] | None = None,
 ) -> tuple[Actor, TechnicalUser, datetime]:
     candidates: list[tuple[datetime, int, Actor, TechnicalUser]] = []
     capable_actors = set(config.actors_capable_of(process_type, step_type))
@@ -146,18 +150,24 @@ def _allocate_actor(
         if actor not in capable_actors:
             continue
         technical_user = config.technical_user_for_actor(actor.id)
-        start = timeline.align_start(
-            max(
-                earliest,
-                actor_available[actor.id],
-                technical_user_available[technical_user.id],
-            ),
-            actor_criteria[actor.id],
-        )
+        candidate = max(earliest, actor_available[actor.id], technical_user_available[technical_user.id])
+        profile = _profile_for_actor_day(actor.id, candidate.date(), actor_criteria, actor_day_profiles)
+        start = timeline.align_start(candidate, profile)
         candidates.append((start, actor_index, actor, technical_user))
 
     start, _actor_index, actor, technical_user = min(candidates, key=lambda item: (item[0], item[1]))
     return actor, technical_user, start
+
+
+def _profile_for_actor_day(
+    actor_id: str,
+    day: date,
+    actor_criteria: dict[str, ActorRealismCriteria],
+    actor_day_profiles: dict[tuple[str, str], ActorRealismCriteria] | None,
+) -> ActorRealismCriteria:
+    if actor_day_profiles is None:
+        return actor_criteria[actor_id]
+    return actor_day_profiles.get((actor_id, day.isoformat()), actor_criteria[actor_id])
 
 
 def plan_waves(config: GenerationConfig, planned_steps: list[PlannedStep]) -> list[dict]:

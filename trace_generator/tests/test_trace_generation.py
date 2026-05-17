@@ -355,6 +355,20 @@ def test_config_loader_validates_realism_guardrails(tmp_path: Path) -> None:
         load_generation_config(config_path)
 
 
+def test_config_loader_validates_realism_settings_guardrails(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["realism"] = {
+        "enabled": True,
+        "dailyCaseCountMin": 5,
+        "dailyCaseCountMax": 4,
+    }
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(ValueError, match="daily_case_count_min"):
+        load_generation_config(config_path)
+
+
 def test_config_loader_rejects_process_without_steps(tmp_path: Path) -> None:
     payload = _base_config()
     payload["processes"][0]["steps"] = []

@@ -201,6 +201,7 @@ def _case_record(case: CasePlan) -> dict[str, Any]:
         "case_id": case.case_id,
         "process_type": case.process_type,
         "case_scenario_type": case.case_scenario_type,
+        "requested_delivery_date": (case.requested_delivery_date or case.delivery_date).isoformat(),
         "line_items": [
             {
                 "line_id": f"{case.case_id}_L1",

@@ -31,6 +31,7 @@ class TraceCase(ArtifactModel):
     case_id: str
     process_type: str
     case_scenario_type: str
+    requested_delivery_date: str | None = None
     line_items: list[TraceLineItem]
 
 

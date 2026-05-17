@@ -189,6 +189,26 @@ class RealismSettings:
     enabled: bool = False
     max_retries: int = 3
     cache_dir: str = "configuration/build"
+    daily_case_count_min: int = 0
+    daily_case_count_max: int = 10000
+    max_price_variation_pct: float = 0.05
+    max_daily_price_trend_pct: float = 0.01
+    max_workload_delay_multiplier_boost: float = 0.25
+    max_workload_workday_deviation_hours_boost: float = 0.5
+
+    def __post_init__(self) -> None:
+        if self.daily_case_count_min < 0:
+            raise ValueError("daily_case_count_min must be >= 0")
+        if self.daily_case_count_min > self.daily_case_count_max:
+            raise ValueError("daily_case_count_min must be <= daily_case_count_max")
+        if self.max_price_variation_pct < 0:
+            raise ValueError("max_price_variation_pct must be >= 0")
+        if self.max_daily_price_trend_pct < 0:
+            raise ValueError("max_daily_price_trend_pct must be >= 0")
+        if self.max_workload_delay_multiplier_boost < 0:
+            raise ValueError("max_workload_delay_multiplier_boost must be >= 0")
+        if self.max_workload_workday_deviation_hours_boost < 0:
+            raise ValueError("max_workload_workday_deviation_hours_boost must be >= 0")
 
 
 @dataclass(frozen=True)
@@ -260,6 +280,7 @@ class CasePlan:
     delivery_date: date
     gross_amount: float
     demand_release_time: datetime | None = None
+    requested_delivery_date: date | None = None
     case_scenario_type: str = "NORMAL"
 
 

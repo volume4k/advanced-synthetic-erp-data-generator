@@ -33,7 +33,13 @@ def generate_trace_artifacts(
         cache_dir=realism_cache_dir,
     )
     cases = plan_cases(config, rng, demand_releases=realism_criteria.demand_releases)
-    planned_steps = plan_steps(config, cases, rng, actor_criteria=realism_criteria.actor_criteria)
+    planned_steps = plan_steps(
+        config,
+        cases,
+        rng,
+        actor_criteria=realism_criteria.actor_criteria,
+        actor_day_profiles=realism_criteria.actor_day_profiles,
+    )
     validate_planned_step_tool_inputs(planned_steps)
     waves = plan_waves(config, planned_steps)
     return write_artifacts(
