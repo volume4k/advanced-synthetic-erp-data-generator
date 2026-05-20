@@ -705,6 +705,27 @@ def test_execution_context_runtime_delay_marker_uses_multiplier_and_cap():
     assert page.waited == [2500]
 
 
+def test_execution_context_runtime_delay_marker_skips_invalid_profile(caplog):
+    record = _record("C001_A1", tool="test.noop")
+    record.meta["human_delay_profile"] = {
+        "delay_multiplier": 0,
+        "runtime_delay_cap_seconds": 2.5,
+    }
+
+    class FakeSessionManager:
+        def get_session(self, *, actor_session_id: str, synthetic_actor_id: str):
+            raise AssertionError("invalid delay profile should not open a browser session")
+
+    context = ExecutionContext(record=record, session_manager=FakeSessionManager())
+
+    caplog.set_level(logging.WARNING, logger="erp_trace_executor.context")
+    context.runtime_delay_marker("review_save", 1.5)
+
+    assert "invalid human_delay_profile metadata" in caplog.text
+    assert "C001_A1" in caplog.text
+    assert "buyer-session" in caplog.text
+
+
 def test_executor_falls_back_to_current_login_url_when_home_logo_clicks_fail(tmp_path, monkeypatch):
     page = FakeHomeResetPage(logo_click_succeeds=False)
     record = _record("planned-step-1", tool="fiori.fake_tool")

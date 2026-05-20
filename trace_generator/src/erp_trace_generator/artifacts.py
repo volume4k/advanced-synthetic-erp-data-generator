@@ -279,7 +279,9 @@ def _session_records(
 def _human_delay_profile(actor_id: str, realism_criteria: CompiledRealismCriteria | None) -> dict[str, Any]:
     if realism_criteria is None:
         return {}
-    criteria = realism_criteria.actor_criteria[actor_id]
+    criteria = realism_criteria.actor_criteria.get(actor_id)
+    if criteria is None:
+        return {}
     return {
         "human_delay_profile": {
             "delay_multiplier": criteria.delay_multiplier,

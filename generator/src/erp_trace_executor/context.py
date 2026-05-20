@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
+import logging
 from typing import TypeVar
+
+from pydantic import ValidationError
 
 from erp_trace_executor.browser.session import BrowserSession, BrowserSessionManager
 from erp_trace_executor.fiori_messages import FioriMessageSink
@@ -14,6 +17,7 @@ from erp_trace_executor.models import ExecutionTaskRecord, HumanDelayProfile
 
 ResultT = TypeVar("ResultT")
 FioriMessageSinkFactory = Callable[[ExecutionTaskRecord, BrowserSession], FioriMessageSink]
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -114,7 +118,18 @@ def _runtime_delay_marker(context: ExecutionContext | ActorSessionExecutionConte
     profile_payload = context.record.meta.get("human_delay_profile")
     if not profile_payload:
         return
-    profile = HumanDelayProfile.model_validate(profile_payload)
+    try:
+        profile = HumanDelayProfile.model_validate(profile_payload)
+    except ValidationError:
+        logger.warning(
+            "Skipping runtime delay marker '%s' for planned step '%s' in actor session '%s': "
+            "invalid human_delay_profile metadata %r",
+            marker,
+            context.record.planned_step_id,
+            context.record.actor_session_id,
+            profile_payload,
+        )
+        return
     delay_seconds = min(base_seconds * profile.delay_multiplier, profile.runtime_delay_cap_seconds)
     if delay_seconds <= 0:
         return
