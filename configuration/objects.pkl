@@ -73,6 +73,9 @@ class RealismCompilerSettings {
   allowedOrderMultiples: Listing<Int(this >= 1)> = new Listing { 1; 5; 10; 20; 25; 50 }
   maxMaterialSharePerHorizon: Float(this > 0 && this <= 1)? = null
   requireAllActiveMaterialsInDemandProfile: Boolean = true
+  materialValuationLockEnabled: Boolean = true
+  materialValuationLockBufferSeconds: Int(this >= 0) = 120
+  blockedMaterials: Listing<String(this.length > 0)> = new Listing {}
 }
 
 /// Waiting-time range between two process steps.

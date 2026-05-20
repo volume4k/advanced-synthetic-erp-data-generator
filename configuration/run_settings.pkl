@@ -36,6 +36,9 @@ runSettings: objects.RunSettings = new objects.RunSettings {
     }
     maxMaterialSharePerHorizon = 0.35
     requireAllActiveMaterialsInDemandProfile = true
+    materialValuationLockEnabled = true
+    materialValuationLockBufferSeconds = 120
+    blockedMaterials = new Listing {}
   }
   workingHours {
     coreStart = "08:00"

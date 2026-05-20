@@ -66,6 +66,8 @@ def _planned_date_input_binding_value(binding: InputBinding, case: CasePlan) -> 
 
 
 def _derived_value(case: CasePlan, value: str) -> Any:
+    if value == "invoice_amount":
+        return case.invoice_amount
     if value == "gross_amount":
         return case.gross_amount
     if value == "fiori_delivery_date":
@@ -118,5 +120,9 @@ _CASE_VALUE_ALIASES = {
     "quantity": "quantity",
     "target_price": "target_price",
     "targetPrice": "target_price",
+    "invoice_amount": "invoice_amount",
+    "invoiceAmount": "invoice_amount",
+    "gross_amount": "gross_amount",
+    "grossAmount": "gross_amount",
     "currency": "currency",
 }

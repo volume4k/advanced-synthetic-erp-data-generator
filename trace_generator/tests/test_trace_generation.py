@@ -152,7 +152,7 @@ def _base_config() -> dict:
             ),
             "fiori.create_supplier_invoice": _tool(
                 "fiori.create_supplier_invoice",
-                ["invoice_date", "invoicing_party", "gross_amount", "purchase_order"],
+                ["invoice_date", "invoicing_party", "invoice_amount", "purchase_order"],
             ),
             "fiori.send_payment": _tool(
                 "fiori.send_payment",
@@ -264,7 +264,7 @@ def _input_bindings(step_type: str) -> list[dict]:
         "enter_incoming_invoice": [
             _binding("invoice_date", "derived", "fiori_delivery_date"),
             _binding("invoicing_party", "master_data", "vendor_id"),
-            _binding("gross_amount", "derived", "gross_amount"),
+            _binding("invoice_amount", "derived", "invoice_amount"),
             _binding("purchase_order", "prior_output", "purchase_order.po_number"),
             _binding("tax_code", "literal", "XI"),
         ],
@@ -275,7 +275,7 @@ def _input_bindings(step_type: str) -> list[dict]:
             _binding("supplier", "master_data", "vendor_id"),
             _binding("accounting_document", "prior_output", "supplier_invoice.invoice_number"),
             _binding("general_ledger_account", "literal", "1800000"),
-            _binding("amount", "derived", "gross_amount"),
+            _binding("amount", "derived", "invoice_amount"),
             _binding("currency", "master_data", "currency"),
         ],
     }[step_type]
@@ -393,6 +393,39 @@ def test_config_loader_rejects_invalid_material_order_multiple(tmp_path: Path) -
     _write_yaml(config_path, payload)
 
     with pytest.raises(ValueError, match="allowed_order_multiples"):
+        load_generation_config(config_path)
+
+
+def test_config_loader_loads_material_valuation_lock_guardrails(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["realism"] = {
+        "materialValuationLockEnabled": True,
+        "materialValuationLockBufferSeconds": 180,
+        "blockedMaterials": ["MA025"],
+    }
+    payload["masterData"].append(
+        {
+            **payload["masterData"][0],
+            "materialId": "MB026",
+        }
+    )
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    config = load_generation_config(config_path)
+
+    assert config.run_settings.realism.material_valuation_lock_enabled is True
+    assert config.run_settings.realism.material_valuation_lock_buffer_seconds == 180
+    assert config.run_settings.realism.blocked_materials == ("MA025",)
+
+
+def test_config_loader_rejects_unknown_blocked_material(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["realism"] = {"blockedMaterials": ["MISSING"]}
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="blockedMaterials"):
         load_generation_config(config_path)
 
 
@@ -544,6 +577,7 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
             InputBinding("sample_step", "purchase_order", "prior_output", "purchase_order.po_number"),
             InputBinding("sample_step", "price_unit", "literal", "1", "int"),
             InputBinding("sample_step", "amount", "derived", "gross_amount"),
+            InputBinding("sample_step", "invoice_amount", "derived", "invoice_amount"),
             InputBinding("sample_step", "document_date", "derived", "fiori_delivery_date"),
             InputBinding("sample_step", "storage_location", "derived", "storage_location_label"),
         ),
@@ -561,6 +595,7 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
         "purchase_order": "$purchase_order.po_number",
         "price_unit": 1,
         "amount": 200.0,
+        "invoice_amount": 200.0,
         "document_date": "05/18/2026",
         "storage_location": "Trading Goods",
     }
@@ -568,6 +603,37 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
         "document_date": "2026-05-18",
         "posting_date": "2026-05-19",
     }
+
+
+def test_plan_cases_sets_invoice_amount_from_quantity_and_target_price(tmp_path: Path) -> None:
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, _base_config())
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+
+    cases = plan_cases(
+        config,
+        Random(17),
+        demand_releases=[
+            DemandRelease(
+                "C001",
+                datetime(2026, 5, 18, 8, 0, tzinfo=tz),
+                "MA025",
+                target_quantity=7,
+                target_price=12.345,
+            ),
+            DemandRelease(
+                "C002",
+                datetime(2026, 5, 18, 8, 30, tzinfo=tz),
+                "MA025",
+                target_quantity=4,
+                target_price=20.0,
+            ),
+        ],
+    )
+
+    assert cases[0].invoice_amount == 86.42
+    assert cases[1].invoice_amount == 80.0
 
 
 def test_binding_resolver_reports_invalid_literal_casts() -> None:
@@ -791,6 +857,45 @@ def test_scheduler_applies_hard_delivery_date_gate_to_goods_receipt(tmp_path: Pa
         assert step.target_start.date() >= delivery_date_by_case[step.case_id]
 
 
+def test_scheduler_respects_material_valuation_lock_buffer(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["caseCount"] = 2
+    payload["runSettings"]["runHorizonDays"] = 10
+    payload["runSettings"]["maxParallelActorSessions"] = 4
+    payload["runSettings"]["realism"] = {"materialValuationLockBufferSeconds": 120}
+    payload["runSettings"]["stepDurationMinutes"]["post_goods_receipt"] = {"min": 1, "max": 1}
+    payload["actors"].insert(2, _actor("warehouse_02", "warehouse", "SAP_USER_4"))
+    payload["technicalUsers"].append(_technical_user("GBGEN_P04", "SAP_USER_4"))
+    payload["identityMappings"].append({"syntheticActorId": "warehouse_02", "technicalSapUserId": "GBGEN_P04"})
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+    demand_releases = [
+        DemandRelease("C001", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025"),
+        DemandRelease("C002", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025"),
+    ]
+
+    planned_steps = plan_steps(
+        config,
+        plan_cases(config, Random(17), demand_releases=demand_releases),
+        Random(17),
+        actor_criteria=_actor_criteria(config),
+    )
+    lock_steps = sorted(
+        [
+            step
+            for step in planned_steps
+            if step.labels.get("material_valuation_lock_key") == "MI00:MA025"
+        ],
+        key=lambda item: item.target_start,
+    )
+
+    assert lock_steps
+    for first, second in zip(lock_steps, lock_steps[1:]):
+        assert second.target_start >= first.target_end + timedelta(seconds=120)
+
+
 def test_scheduler_respects_shared_technical_user_availability(tmp_path: Path) -> None:
     payload = _base_config()
     for mapping in payload["identityMappings"]:
@@ -826,6 +931,69 @@ def test_wave_scheduler_prevents_shared_technical_user_in_same_wave(tmp_path: Pa
             for item in wave["planned_steps"]
         ]
         assert len(technical_user_ids) == len(set(technical_user_ids))
+
+
+def test_wave_scheduler_prevents_same_material_lock_key_in_same_wave(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["actors"].insert(1, _actor("procurement_02", "procurement", "SAP_USER_4"))
+    payload["technicalUsers"].append(_technical_user("GBGEN_P04", "SAP_USER_4"))
+    payload["identityMappings"].append({"syntheticActorId": "procurement_02", "technicalSapUserId": "GBGEN_P04"})
+    payload["runSettings"]["maxParallelActorSessions"] = 2
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    planned_steps = [
+        PlannedStep(
+            planned_step_id="C001_A1",
+            case_id="C001",
+            step_id="A1",
+            step_type="create_purchase_requisition",
+            tool_name="fiori.create_purchase_requisition",
+            synthetic_actor_id="procurement_01",
+            technical_sap_user_id="GBGEN_P01",
+            actor_session_id="procurement_01-session",
+            inputs={},
+            required_sap_object_keys=[],
+            planned_date_inputs={},
+            target_start=datetime(2026, 5, 18, 8, 0),
+            target_end=datetime(2026, 5, 18, 8, 1),
+            labels={"step_label": "normal", "material_valuation_lock_key": "MI00:MA025"},
+        ),
+        PlannedStep(
+            planned_step_id="C002_A1",
+            case_id="C002",
+            step_id="A1",
+            step_type="create_purchase_requisition",
+            tool_name="fiori.create_purchase_requisition",
+            synthetic_actor_id="procurement_02",
+            technical_sap_user_id="GBGEN_P04",
+            actor_session_id="procurement_02-session",
+            inputs={},
+            required_sap_object_keys=[],
+            planned_date_inputs={},
+            target_start=datetime(2026, 5, 18, 8, 0),
+            target_end=datetime(2026, 5, 18, 8, 1),
+            labels={"step_label": "normal", "material_valuation_lock_key": "MI00:MA025"},
+        ),
+    ]
+
+    waves = plan_waves(config, planned_steps)
+
+    assert [len(wave["planned_steps"]) for wave in waves[:2]] == [1, 1]
+
+
+def test_plan_cases_excludes_blocked_materials_without_release_material(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["caseCount"] = 4
+    payload["runSettings"]["realism"] = {"blockedMaterials": ["MA025"]}
+    payload["masterData"].append({**payload["masterData"][0], "materialId": "MB026"})
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+
+    cases = plan_cases(config, Random(17))
+
+    assert {case.material_id for case in cases} == {"MB026"}
 
 
 def test_wave_scheduler_waits_for_all_dependency_parents(tmp_path: Path) -> None:

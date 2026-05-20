@@ -221,6 +221,9 @@ class RealismCompiler:
         self._llm_retry_count = 0
         self._cache_hit_count = 0
 
+    def _active_master_data(self) -> tuple[MasterDataEntry, ...]:
+        return _active_master_data(self._config)
+
     def actor_cache_path(self, actor_id: str) -> Path:
         return self._cache_dir / f"realism-criteria.actor.{actor_id}.{self._actor_hash(actor_id)}.json"
 
@@ -339,7 +342,8 @@ class RealismCompiler:
     ) -> list[DemandRelease]:
         tz = ZoneInfo(self._config.run_settings.target_timezone)
         slots: list[tuple[datetime, int, str]] = []
-        master_data_by_material_id = {entry.material_id: entry for entry in self._config.master_data}
+        active_master_data = self._active_master_data()
+        master_data_by_material_id = {entry.material_id: entry for entry in active_master_data}
 
         for pattern in sorted(demand_patterns, key=lambda item: item.date):
             pattern_date = date.fromisoformat(pattern.date)
@@ -358,7 +362,7 @@ class RealismCompiler:
         slots.sort(key=lambda item: item[0])
         profiles_for_allocation = [
             material_demand_profiles[item.material_id]
-            for item in self._config.master_data
+            for item in active_master_data
             if item.material_id in material_demand_profiles
         ]
         material_ids = _material_ids_for_releases(
@@ -437,7 +441,8 @@ class RealismCompiler:
         payload = _load_json_object(raw_response)
         response = PriceAnchorResponse.model_validate(payload)
         anchors = {item.material_id: item for item in response.material_prices}
-        expected_material_ids = [entry.material_id for entry in self._config.master_data]
+        active_master_data = self._active_master_data()
+        expected_material_ids = [entry.material_id for entry in active_master_data]
         expected_material_id_set = set(expected_material_ids)
         returned_material_id_set = set(anchors)
         if returned_material_id_set != expected_material_id_set:
@@ -447,7 +452,7 @@ class RealismCompiler:
                 "price anchor response must include exactly the configured material ids; "
                 f"missing={missing}; unexpected={unexpected}; required={expected_material_ids}"
             )
-        for material in self._config.master_data:
+        for material in active_master_data:
             anchor = anchors[material.material_id]
             if not material.price_min <= anchor.anchor_price <= material.price_max:
                 raise TraceGenerationError(f"anchor_price for material '{material.material_id}' outside price guardrails")
@@ -460,7 +465,8 @@ class RealismCompiler:
     def _material_demand_profiles_from_json(self, raw_response: str) -> dict[str, MaterialDemandProfile]:
         payload = _load_json_object(raw_response)
         response = MaterialDemandProfileResponse.model_validate(payload)
-        expected_material_ids = [entry.material_id for entry in self._config.master_data]
+        active_master_data = self._active_master_data()
+        expected_material_ids = [entry.material_id for entry in active_master_data]
         returned_material_ids = [item.material_id for item in response.material_profiles]
         expected_material_id_set = set(expected_material_ids)
         returned_material_id_set = set(returned_material_ids)
@@ -482,7 +488,7 @@ class RealismCompiler:
         profiles = {item.material_id: item for item in response.material_profiles}
         if not profiles:
             raise TraceGenerationError("material demand profile response must include at least one configured material id")
-        master_data_by_material_id = {entry.material_id: entry for entry in self._config.master_data}
+        master_data_by_material_id = {entry.material_id: entry for entry in active_master_data}
         settings = self._config.run_settings.realism
         for material_id in returned_material_ids:
             profile = profiles[material_id]
@@ -541,7 +547,8 @@ class RealismCompiler:
             raise TraceGenerationError(
                 f"demand response returned {len(response.releases)} releases with only {remaining_count} remaining"
             )
-        master_data_by_material_id = {entry.material_id: entry for entry in self._config.master_data}
+        active_master_data = self._active_master_data()
+        master_data_by_material_id = {entry.material_id: entry for entry in active_master_data}
         known_material_ids = set(master_data_by_material_id)
         target_day = date.fromisoformat(expected_day)
         tz = ZoneInfo(self._config.run_settings.target_timezone)
@@ -626,7 +633,7 @@ class RealismCompiler:
 
     def _validate_pattern_lead_times(self, pattern: DemandPattern) -> None:
         for lead_time in pattern.lead_time_mix:
-            for material in self._config.master_data:
+            for material in self._active_master_data():
                 if not material.delivery_lead_time_min_days <= lead_time.days <= material.delivery_lead_time_max_days:
                     raise TraceGenerationError(
                         f"lead_time_mix days {lead_time.days} outside guardrails for material '{material.material_id}'"
@@ -782,7 +789,8 @@ class RealismCompiler:
         return json.dumps(prompt, sort_keys=True)
 
     def _price_anchor_prompt(self, last_error: str | None) -> str:
-        material_ids = [item.material_id for item in self._config.master_data]
+        active_master_data = self._active_master_data()
+        material_ids = [item.material_id for item in active_master_data]
         prompt = {
             "task": "Compile one realistic price anchor model per configured material.",
             "output_rules": [
@@ -801,7 +809,7 @@ class RealismCompiler:
                     "price_max": item.price_max,
                     "currency": item.currency,
                 }
-                for item in self._config.master_data
+                for item in active_master_data
             ],
             "guardrails": {
                 "typical_variation_pct": [0, self._config.run_settings.realism.max_price_variation_pct],
@@ -827,7 +835,8 @@ class RealismCompiler:
 
     def _material_demand_profile_prompt(self, last_error: str | None) -> str:
         settings = self._config.run_settings.realism
-        material_ids = [item.material_id for item in self._config.master_data]
+        active_master_data = self._active_master_data()
+        material_ids = [item.material_id for item in active_master_data]
         prompt = {
             "task": "Compile Material Demand Profiles for active configured materials. Trace Generator normalizes relative weights and samples quantities.",
             "output_rules": [
@@ -850,7 +859,7 @@ class RealismCompiler:
                     "delivery_lead_time_min_days": item.delivery_lead_time_min_days,
                     "delivery_lead_time_max_days": item.delivery_lead_time_max_days,
                 }
-                for item in self._config.master_data
+                for item in active_master_data
             ],
             "guardrails": {
                 "relative_demand_weight": [
@@ -884,8 +893,9 @@ class RealismCompiler:
     def _horizon_demand_prompt(self, last_error: str | None) -> str:
         run_start = self._config.run_settings.run_start_date
         run_end = run_start + timedelta(days=self._config.run_settings.run_horizon_days - 1)
-        allowed_lead_time_days = _shared_lead_time_day_values(self._config.master_data)
-        example_lead_days = allowed_lead_time_days[0] if allowed_lead_time_days else _shared_lead_time_days(self._config.master_data)
+        active_master_data = self._active_master_data()
+        allowed_lead_time_days = _shared_lead_time_day_values(active_master_data)
+        example_lead_days = allowed_lead_time_days[0] if allowed_lead_time_days else _shared_lead_time_days(active_master_data)
         prompt = {
             "task": "Compile compact Demand Patterns for the whole run horizon. Do not output individual Process Cases.",
             "exact_total_case_count_required": self._config.run_settings.case_count,
@@ -919,7 +929,7 @@ class RealismCompiler:
                     "delivery_lead_time_min_days": item.delivery_lead_time_min_days,
                     "delivery_lead_time_max_days": item.delivery_lead_time_max_days,
                 }
-                for item in self._config.master_data
+                for item in active_master_data
             ],
             "guardrails": {
                 "daily_case_count": [
@@ -980,7 +990,7 @@ class RealismCompiler:
                 "core_start": self._config.run_settings.working_hours.core_start,
                 "core_end": self._config.run_settings.working_hours.core_end,
             },
-            "allowed_material_ids": [entry.material_id for entry in self._config.master_data],
+            "allowed_material_ids": [entry.material_id for entry in self._active_master_data()],
             "required_json_shape": {
                 "date": day,
                 "releases": [
@@ -1031,6 +1041,7 @@ def default_realism_criteria(config: GenerationConfig) -> CompiledRealismCriteri
         for actor_id, criteria in actor_criteria.items()
         for offset in range(config.run_settings.run_horizon_days)
     }
+    active_master_data = _active_master_data(config)
     demand_releases = default_demand_releases(config)
     price_anchors = {
         item.material_id: PriceAnchor(
@@ -1039,7 +1050,7 @@ def default_realism_criteria(config: GenerationConfig) -> CompiledRealismCriteri
             typical_variation_pct=0.0,
             daily_trend_pct=0.0,
         )
-        for item in config.master_data
+        for item in active_master_data
     }
     material_demand_profiles = _default_material_demand_profiles(config)
     payload = _criteria_payload(
@@ -1088,6 +1099,7 @@ def compile_realism_criteria(
 
 
 def default_demand_releases(config: GenerationConfig) -> list[DemandRelease]:
+    active_master_data = _active_master_data(config)
     tz = ZoneInfo(config.run_settings.target_timezone)
     start = datetime.combine(
         config.run_settings.run_start_date,
@@ -1098,7 +1110,7 @@ def default_demand_releases(config: GenerationConfig) -> list[DemandRelease]:
         DemandRelease(
             case_id=f"C{index:03d}",
             release_time=start + timedelta(minutes=30 * (index - 1)),
-            material_id=config.master_data[(index - 1) % len(config.master_data)].material_id,
+            material_id=active_master_data[(index - 1) % len(active_master_data)].material_id,
         )
         for index in range(1, config.run_settings.case_count + 1)
     ]
@@ -1158,8 +1170,16 @@ def _default_material_demand_profiles(config: GenerationConfig) -> dict[str, Mat
             bulk_order_share=0.0,
             order_multiple=1,
         )
-        for item in config.master_data
+        for item in _active_master_data(config)
     }
+
+
+def _active_master_data(config: GenerationConfig) -> tuple[MasterDataEntry, ...]:
+    blocked_materials = set(config.run_settings.realism.blocked_materials)
+    active = tuple(item for item in config.master_data if item.material_id not in blocked_materials)
+    if not active:
+        raise TraceGenerationError("No unblocked master data remains for realism compilation")
+    return active
 
 
 def _criteria_hash(payload: dict) -> str:

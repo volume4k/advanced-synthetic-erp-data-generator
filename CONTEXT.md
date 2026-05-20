@@ -168,6 +168,10 @@ _Avoid_: Probability, percentage, share
 A per-material order-quantity model containing typical quantity, variation, bulk share, and order multiple inside configured hard quantity guardrails.
 _Avoid_: Quantity range, random amount, SAP quantity
 
+**Material Valuation Lock Key**:
+The `(plant, material_id)` resource used by the **Trace Generator** to keep lock-sensitive valuation postings out of the same **Execution Wave** and separated by a configured buffer.
+_Avoid_: SAP lock retry, browser wait, executor scheduling
+
 **Actor Day Profile**:
 One date-specific timing profile for a **Synthetic Actor** derived from its baseline realism model and daily workload.
 _Avoid_: Daily actor criteria, day mood, runtime delay profile

@@ -64,6 +64,7 @@ def plan_steps(
     timeline = TimelinePlanner(config.run_settings, rng)
     actor_available: dict[str, datetime] = defaultdict(timeline.first_start)
     technical_user_available: dict[str, datetime] = defaultdict(timeline.first_start)
+    material_lock_available: dict[str, datetime] = defaultdict(timeline.first_start)
     planned_steps: list[PlannedStep] = []
     criteria = actor_criteria or _default_actor_criteria(config)
     next_step_index = {case.case_id: 0 for case in cases}
@@ -81,6 +82,9 @@ def plan_steps(
                 continue
             step = process.steps[step_index]
             earliest = max(earliest_by_case[case.case_id], _business_date_gate(config, case, step.step_type))
+            material_lock_key = _material_valuation_lock_key(config, case, step.step_type)
+            if material_lock_key is not None:
+                earliest = max(earliest, material_lock_available[material_lock_key])
             actor, technical_user, start = _allocate_actor(
                 config=config,
                 process_type=process.process_type,
@@ -106,6 +110,13 @@ def plan_steps(
         end = timeline.add_step_duration(start, step.step_type, actor_realism.delay_multiplier, actor_realism)
         actor_available[actor.id] = end
         technical_user_available[technical_user.id] = end
+        material_lock_key = _material_valuation_lock_key(config, case, step.step_type)
+        if material_lock_key is not None:
+            buffer_seconds = config.run_settings.realism.material_valuation_lock_buffer_seconds
+            material_lock_available[material_lock_key] = end + timedelta(seconds=buffer_seconds)
+        labels = {"step_label": "normal"}
+        if material_lock_key is not None:
+            labels["material_valuation_lock_key"] = material_lock_key
 
         planned_step = PlannedStep(
             planned_step_id=f"{case.case_id}_{step.step_id}",
@@ -121,6 +132,7 @@ def plan_steps(
             planned_date_inputs=planned_date_inputs_for_step(step, case),
             target_start=start,
             target_end=end,
+            labels=labels,
         )
         planned_steps.append(planned_step)
         next_step_index[case.case_id] += 1
@@ -190,6 +202,7 @@ def plan_waves(config: GenerationConfig, planned_steps: list[PlannedStep]) -> li
     while unscheduled:
         used_actors: set[str] = set()
         used_technical_users: set[str] = set()
+        used_material_lock_keys: set[str] = set()
         wave_steps: list[PlannedStep] = []
 
         ready_steps = []
@@ -205,11 +218,16 @@ def plan_waves(config: GenerationConfig, planned_steps: list[PlannedStep]) -> li
         ):
             if planned_step.synthetic_actor_id in used_actors or planned_step.technical_sap_user_id in used_technical_users:
                 continue
+            material_lock_key = planned_step.labels.get("material_valuation_lock_key")
+            if material_lock_key is not None and material_lock_key in used_material_lock_keys:
+                continue
             if len(wave_steps) >= config.run_settings.max_parallel_actor_sessions:
                 continue
             wave_steps.append(planned_step)
             used_actors.add(planned_step.synthetic_actor_id)
             used_technical_users.add(planned_step.technical_sap_user_id)
+            if material_lock_key is not None:
+                used_material_lock_keys.add(material_lock_key)
 
         if not wave_steps:
             raise AssertionError("scheduler validation missed impossible schedule")
@@ -256,12 +274,26 @@ def _step_id_for(process, step_type: str) -> str:
 
 
 def _master_data_for_release(config: GenerationConfig, release: DemandRelease, rng: Random):
+    blocked_materials = set(config.run_settings.realism.blocked_materials)
     if release.material_id:
+        if release.material_id in blocked_materials:
+            raise TraceGenerationError(f"Demand release references blocked material_id '{release.material_id}'")
         match = next((item for item in config.master_data if item.material_id == release.material_id), None)
         if match is None:
             raise TraceGenerationError(f"Demand release references unknown material_id '{release.material_id}'")
         return match
-    return rng.choice(config.master_data)
+    active_master_data = [item for item in config.master_data if item.material_id not in blocked_materials]
+    if not active_master_data:
+        raise TraceGenerationError("No unblocked master data remains for case planning")
+    return rng.choice(active_master_data)
+
+
+def _material_valuation_lock_key(config: GenerationConfig, case: CasePlan, step_type: str) -> str | None:
+    if not config.run_settings.realism.material_valuation_lock_enabled:
+        return None
+    if step_type not in {"post_goods_receipt", "enter_incoming_invoice"}:
+        return None
+    return f"{case.plant}:{case.material_id}"
 
 
 def _default_actor_criteria(config: GenerationConfig) -> dict[str, ActorRealismCriteria]:

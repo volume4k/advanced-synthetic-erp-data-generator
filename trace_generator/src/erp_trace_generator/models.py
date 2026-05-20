@@ -203,6 +203,9 @@ class RealismSettings:
     allowed_order_multiples: tuple[int, ...] = (1, 5, 10, 20, 25, 50)
     max_material_share_per_horizon: float | None = None
     require_all_active_materials_in_demand_profile: bool = True
+    material_valuation_lock_enabled: bool = True
+    material_valuation_lock_buffer_seconds: int = 120
+    blocked_materials: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.daily_case_count_min < 0:
@@ -231,6 +234,10 @@ class RealismSettings:
             raise ValueError("allowed_order_multiples must contain positive integers")
         if self.max_material_share_per_horizon is not None and not 0 < self.max_material_share_per_horizon <= 1:
             raise ValueError("max_material_share_per_horizon must be between 0 and 1")
+        if self.material_valuation_lock_buffer_seconds < 0:
+            raise ValueError("material_valuation_lock_buffer_seconds must be >= 0")
+        if any(not material_id for material_id in self.blocked_materials):
+            raise ValueError("blocked_materials must not contain empty material ids")
 
 
 @dataclass(frozen=True)
@@ -304,6 +311,10 @@ class CasePlan:
     demand_release_time: datetime | None = None
     requested_delivery_date: date | None = None
     case_scenario_type: str = "NORMAL"
+
+    @property
+    def invoice_amount(self) -> float:
+        return self.gross_amount
 
 
 @dataclass

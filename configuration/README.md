@@ -112,7 +112,7 @@ Active steps must have a tool, bindings for every required tool input, and at le
 
 `plannedDateInputBindings` hold planned date inputs for the canonical trace and post-processing manifest. Use them when SAP runtime either cannot accept the planned date, as with goods receipt, or when post-processing needs a stable planned date contract.
 
-Supported binding sources are `literal`, `master_data`, `case`, `planned_date`, `prior_output`, and `derived`. Supported derived values in v1 are `gross_amount`, `fiori_delivery_date`, `fiori_payment_posting_date`, and `storage_location_label`.
+Supported binding sources are `literal`, `master_data`, `case`, `planned_date`, `prior_output`, and `derived`. Supported derived values in v1 are `invoice_amount`, `gross_amount` as a legacy alias, `fiori_delivery_date`, `fiori_payment_posting_date`, and `storage_location_label`.
 
 Dependencies define process-step ordering:
 
@@ -167,8 +167,13 @@ realism {
   }
   maxMaterialSharePerHorizon = 0.35
   requireAllActiveMaterialsInDemandProfile = true
+  materialValuationLockEnabled = true
+  materialValuationLockBufferSeconds = 120
+  blockedMaterials = new Listing {}
 }
 ```
+
+`materialValuationLockEnabled` makes the trace generator treat `(plant, material_id)` as a lock resource for goods receipt and supplier invoice posting. Those lock-sensitive steps cannot share one execution wave for the same key, and `materialValuationLockBufferSeconds` separates them in planned synthetic time. `blockedMaterials` excludes currently externally locked materials from realism compilation and case planning before an execution trace is written.
 
 The trace executor does not know material demand profiles, normalize weights, sample quantities, or do scheduling math. It only receives the final execution trace fields such as material, vendor, quantity, target price, requested delivery date, planned synthetic time, and human delay profile.
 

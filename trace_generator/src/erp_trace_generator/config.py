@@ -298,6 +298,9 @@ def _realism_settings(item: dict[str, Any]) -> RealismSettings:
         require_all_active_materials_in_demand_profile=bool(
             item.get("requireAllActiveMaterialsInDemandProfile", True)
         ),
+        material_valuation_lock_enabled=bool(item.get("materialValuationLockEnabled", True)),
+        material_valuation_lock_buffer_seconds=int(item.get("materialValuationLockBufferSeconds", 120)),
+        blocked_materials=tuple(str(value) for value in item.get("blockedMaterials", [])),
     )
 
 
@@ -315,6 +318,16 @@ def _validate(config: GenerationConfig) -> None:
     missing_processes = active_process_types - process_types
     if missing_processes:
         raise TraceGenerationError(f"Active process type not configured: {sorted(missing_processes)}")
+    master_material_ids = {item.material_id for item in config.master_data}
+    unknown_blocked_materials = sorted(
+        set(config.run_settings.realism.blocked_materials) - master_material_ids
+    )
+    if unknown_blocked_materials:
+        raise TraceGenerationError(
+            f"runSettings.realism.blockedMaterials references unknown material(s): {unknown_blocked_materials}"
+        )
+    if len(config.run_settings.realism.blocked_materials) >= len(config.master_data):
+        raise TraceGenerationError("runSettings.realism.blockedMaterials cannot block all configured materials")
 
     actor_ids = {actor.id for actor in config.actors}
     technical_user_ids = {user.id for user in config.technical_users}
