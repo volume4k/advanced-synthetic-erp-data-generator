@@ -10,7 +10,7 @@ import pytest
 import yaml
 
 from erp_trace_generator.artifact_models import ExecutionTraceArtifact, PostProcessingManifestArtifact
-from erp_trace_generator.artifacts import _post_processing_manifest, _session_records
+from erp_trace_generator.artifacts import _human_delay_profile, _post_processing_manifest, _session_records
 from erp_trace_generator.bindings import planned_date_inputs_for_step, resolve_step_inputs
 from erp_trace_generator.cli import main
 from erp_trace_generator.config import load_generation_config
@@ -19,7 +19,7 @@ from erp_trace_generator.fraud import FRAUD_TRANSFORMERS, register_fraud_transfo
 from erp_trace_generator.generator import generate_trace_artifacts
 from erp_trace_generator.models import CasePlan, FraudScenario, InputBinding, MasterDataEntry, MinuteRange, PlannedStep, ProcessStep
 from erp_trace_generator.planning import plan_cases, plan_steps, plan_waves
-from erp_trace_generator.realism import ActorRealismCriteria, DemandRelease
+from erp_trace_generator.realism import ActorRealismCriteria, CompiledRealismCriteria, DemandRelease
 from erp_trace_generator.schema_export import schema_output_paths
 from erp_trace_generator.timeline import TimelinePlanner
 
@@ -369,6 +369,33 @@ def test_config_loader_validates_realism_settings_guardrails(tmp_path: Path) -> 
         load_generation_config(config_path)
 
 
+def test_config_loader_validates_material_demand_profile_guardrails(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["realism"] = {
+        "enabled": True,
+        "relativeDemandWeightMin": 10,
+        "relativeDemandWeightMax": 5,
+    }
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(ValueError, match="relative_demand_weight_min"):
+        load_generation_config(config_path)
+
+
+def test_config_loader_rejects_invalid_material_order_multiple(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["realism"] = {
+        "enabled": True,
+        "allowedOrderMultiples": [0, 5],
+    }
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(ValueError, match="allowed_order_multiples"):
+        load_generation_config(config_path)
+
+
 def test_config_loader_rejects_process_without_steps(tmp_path: Path) -> None:
     payload = _base_config()
     payload["processes"][0]["steps"] = []
@@ -596,6 +623,21 @@ def test_session_records_reject_same_session_for_multiple_actors(tmp_path: Path)
                 PlannedStep(planned_step_id="C001_A3", synthetic_actor_id="warehouse_01", **planned_step_kwargs),
             ],
         )
+
+
+def test_human_delay_profile_omits_missing_actor_criteria() -> None:
+    criteria = CompiledRealismCriteria(
+        actor_criteria={},
+        demand_releases=[],
+        criteria_hash="criteria",
+        llm_metadata={},
+        actor_day_profiles={},
+        price_anchors={},
+        material_demand_profiles={},
+        demand_patterns=[],
+    )
+
+    assert _human_delay_profile("missing_actor", criteria) == {}
 
 
 def test_manifest_actor_projection_uses_planned_actor_session_ids(tmp_path: Path) -> None:

@@ -21,7 +21,9 @@ def plan_cases(config: GenerationConfig, rng: Random, *, demand_releases: list[D
     cases: list[CasePlan] = []
     for index, release in enumerate(releases, start=1):
         master_data = _master_data_for_release(config, release, rng)
-        quantity = rng.randint(master_data.quantity_min, master_data.quantity_max)
+        quantity = release.target_quantity
+        if quantity is None:
+            quantity = rng.randint(master_data.quantity_min, master_data.quantity_max)
         delivery_days = rng.randint(master_data.delivery_lead_time_min_days, master_data.delivery_lead_time_max_days)
         requested_delivery_date = release.requested_delivery_date or release.release_time.date() + timedelta(days=delivery_days)
         target_price = release.target_price

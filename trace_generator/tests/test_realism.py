@@ -17,7 +17,7 @@ from erp_trace_generator.realism import RealismCompiler, RealismLLMClient
 
 
 class FakeRealismClient(RealismLLMClient):
-    def __init__(self, responses: list[str]) -> None:
+    def __init__(self, responses: list[str | Exception]) -> None:
         self.responses = list(responses)
         self.prompts: list[str] = []
 
@@ -25,7 +25,10 @@ class FakeRealismClient(RealismLLMClient):
         self.prompts.append(prompt)
         if not self.responses:
             raise AssertionError("unexpected LLM call")
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 def test_realism_compiler_accepts_valid_actor_criteria(tmp_path: Path) -> None:
@@ -191,6 +194,17 @@ def test_realism_compiler_uses_cached_actor_criteria(tmp_path: Path) -> None:
     assert client.prompts == []
 
 
+def test_realism_compiler_retries_llm_request_failure(tmp_path: Path) -> None:
+    config = _load_config(tmp_path, _base_config())
+    client = FakeRealismClient([TraceGenerationError("temporary disconnect"), _price_anchor_response("MA025", 20.0)])
+
+    anchors = RealismCompiler(config=config, client=client, cache_dir=tmp_path, max_retries=2).compile_price_anchors()
+
+    assert anchors["MA025"].anchor_price == 20.0
+    assert len(client.prompts) == 2
+    assert "Validation failed: temporary disconnect" in client.prompts[1]
+
+
 def test_realism_compiler_accepts_daily_demand_releases(tmp_path: Path) -> None:
     config = _load_config(tmp_path, _base_config())
     client = FakeRealismClient(
@@ -288,6 +302,7 @@ def test_trace_generation_uses_enabled_realism_compiler(tmp_path: Path) -> None:
             _actor_response("warehouse_01", 1.4),
             _actor_response("accounts_payable_01", 1.0),
             _price_anchor_response("MA025", 20.0),
+            _material_profiles_response(_material_profile("MA025", relative_demand_weight=1, typical_order_quantity=10)),
             json.dumps(
                 {
                     "patterns": [
@@ -297,7 +312,6 @@ def test_trace_generation_uses_enabled_realism_compiler(tmp_path: Path) -> None:
                             "workload_intensity": "normal",
                             "release_windows": [{"start": "08:05", "end": "08:45", "share": 1.0}],
                             "lead_time_mix": [{"days": 5, "share": 1.0}],
-                            "material_mix": [{"material_id": "MA025", "share": 1.0}],
                         }
                     ],
                 }
@@ -318,7 +332,7 @@ def test_trace_generation_uses_enabled_realism_compiler(tmp_path: Path) -> None:
     assert trace["llm_metadata"]["used"] is True
     assert trace["llm_metadata"]["realism_criteria_hash"]
     assert trace["llm_metadata"]["realism_compiler_schema_version"] == "2"
-    assert trace["llm_metadata"]["llm_request_count"] == 5
+    assert trace["llm_metadata"]["llm_request_count"] == 6
     assert trace["llm_metadata"]["llm_retry_count"] == 0
     assert trace["actor_sessions"][0]["human_delay_profile"] == {
         "delay_multiplier": 1.2,
@@ -332,7 +346,161 @@ def test_trace_generation_uses_enabled_realism_compiler(tmp_path: Path) -> None:
     assert first_start.startswith("2026-05-18T08:")
     assert "08:05:00" <= first_start[11:19] < "08:45:00"
     assert first_step["inputs"]["delivery_date"] == "05/23/2026"
-    assert len(client.prompts) == 5
+    assert len(client.prompts) == 6
+
+
+def test_price_anchor_retry_prompt_lists_required_material_ids(tmp_path: Path) -> None:
+    payload = _base_config()
+    second_material = dict(payload["masterData"][0])
+    second_material["materialId"] = "MB025"
+    second_material["priceMin"] = 30.0
+    second_material["priceMax"] = 40.0
+    payload["masterData"].append(second_material)
+    config = _load_config(tmp_path, payload)
+    invalid = _price_anchor_response("MA025", 20.0)
+    valid = json.dumps(
+        {
+            "material_prices": [
+                {
+                    "material_id": "MA025",
+                    "anchor_price": 20.0,
+                    "typical_variation_pct": 0.02,
+                    "daily_trend_pct": 0.001,
+                },
+                {
+                    "material_id": "MB025",
+                    "anchor_price": 35.0,
+                    "typical_variation_pct": 0.02,
+                    "daily_trend_pct": 0.001,
+                },
+            ]
+        }
+    )
+    client = FakeRealismClient([invalid, valid])
+
+    anchors = RealismCompiler(config=config, client=client, cache_dir=tmp_path, max_retries=2).compile_price_anchors()
+
+    retry_prompt = json.loads(client.prompts[1])
+    assert set(anchors) == {"MA025", "MB025"}
+    assert retry_prompt["required_material_ids"] == ["MA025", "MB025"]
+    assert "missing=['MB025']" in retry_prompt["previous_error"]
+
+
+def test_realism_compiler_accepts_material_demand_profiles_for_all_materials(tmp_path: Path) -> None:
+    payload = _base_config_with_second_material()
+    config = _load_config(tmp_path, payload)
+    client = FakeRealismClient(
+        [
+            _material_profiles_response(
+                _material_profile("MA025", relative_demand_weight=20, typical_order_quantity=10),
+                _material_profile("MB025", relative_demand_weight=10, typical_order_quantity=30),
+            )
+        ]
+    )
+
+    profiles = RealismCompiler(config=config, client=client, cache_dir=tmp_path).compile_material_demand_profiles()
+
+    assert set(profiles) == {"MA025", "MB025"}
+    assert profiles["MA025"].relative_demand_weight == 20
+    assert profiles["MB025"].typical_order_quantity == 30
+
+
+def test_realism_compiler_retries_missing_material_profile_with_error_feedback(tmp_path: Path) -> None:
+    payload = _base_config_with_second_material()
+    config = _load_config(tmp_path, payload)
+    client = FakeRealismClient(
+        [
+            _material_profiles_response(_material_profile("MA025", relative_demand_weight=20, typical_order_quantity=10)),
+            _material_profiles_response(
+                _material_profile("MA025", relative_demand_weight=20, typical_order_quantity=10),
+                _material_profile("MB025", relative_demand_weight=10, typical_order_quantity=30),
+            ),
+        ]
+    )
+
+    profiles = RealismCompiler(config=config, client=client, cache_dir=tmp_path, max_retries=2).compile_material_demand_profiles()
+
+    retry_prompt = json.loads(client.prompts[1])
+    assert set(profiles) == {"MA025", "MB025"}
+    assert retry_prompt["required_material_ids"] == ["MA025", "MB025"]
+    assert "missing=['MB025']" in retry_prompt["previous_error"]
+
+
+def test_realism_compiler_rejects_invalid_quantity_profile(tmp_path: Path) -> None:
+    config = _load_config(tmp_path, _base_config())
+    client = FakeRealismClient(
+        [
+            _material_profiles_response(
+                _material_profile("MA025", relative_demand_weight=20, typical_order_quantity=999),
+            )
+        ]
+    )
+
+    with pytest.raises(TraceGenerationError, match="typical_order_quantity.*MA025"):
+        RealismCompiler(config=config, client=client, cache_dir=tmp_path, max_retries=1).compile_material_demand_profiles()
+
+
+def test_realism_compiler_allocates_materials_and_quantities_from_profiles(tmp_path: Path) -> None:
+    payload = _base_config_with_second_material()
+    payload["runSettings"]["caseCount"] = 6
+    config = _load_config(tmp_path, payload)
+    client = FakeRealismClient(
+        [
+            _actor_response("procurement_01", 1.2),
+            _actor_response("warehouse_01", 1.4),
+            _actor_response("accounts_payable_01", 1.0),
+            _price_anchor_profiles_response(("MA025", 20.0), ("MB025", 35.0)),
+            _material_profiles_response(
+                _material_profile("MA025", relative_demand_weight=1, typical_order_quantity=10, order_multiple=5),
+                _material_profile("MB025", relative_demand_weight=1, typical_order_quantity=30, order_multiple=10),
+            ),
+            json.dumps(
+                {
+                    "patterns": [
+                        {
+                            "date": "2026-05-18",
+                            "case_count": 6,
+                            "workload_intensity": "normal",
+                            "release_windows": [{"start": "08:00", "end": "12:00", "share": 1.0}],
+                            "lead_time_mix": [{"days": 5, "share": 1.0}],
+                        }
+                    ],
+                }
+            ),
+        ]
+    )
+
+    criteria = RealismCompiler(config=config, client=client, cache_dir=tmp_path, max_retries=1).compile()
+
+    material_counts = {material_id: 0 for material_id in ("MA025", "MB025")}
+    for release in criteria.demand_releases:
+        material_counts[release.material_id] += 1
+        assert release.target_quantity is not None
+        if release.material_id == "MA025":
+            assert 10 <= release.target_quantity <= 10
+            assert release.target_quantity % 5 == 0
+        else:
+            assert 20 <= release.target_quantity <= 40
+            assert release.target_quantity % 10 == 0
+    assert material_counts == {"MA025": 3, "MB025": 3}
+    assert [release.material_id for release in criteria.demand_releases[:3]] != ["MA025", "MA025", "MA025"]
+
+
+def test_horizon_demand_prompt_lists_only_shared_lead_time_days(tmp_path: Path) -> None:
+    payload = _base_config_with_second_material()
+    payload["masterData"][0]["deliveryLeadTimeMinDays"] = 5
+    payload["masterData"][0]["deliveryLeadTimeMaxDays"] = 9
+    payload["masterData"][1]["deliveryLeadTimeMinDays"] = 8
+    payload["masterData"][1]["deliveryLeadTimeMaxDays"] = 12
+    config = _load_config(tmp_path, payload)
+
+    prompt = json.loads(
+        RealismCompiler(config=config, client=FakeRealismClient([]), cache_dir=tmp_path)._horizon_demand_prompt(None)
+    )
+
+    assert prompt["allowed_lead_time_days"] == [8, 9]
+    assert prompt["guardrails"]["allowed_lead_time_days"] == [8, 9]
+    assert prompt["example_json_for_current_case_count"]["patterns"][0]["lead_time_mix"][0]["days"] == 8
 
 
 def test_realism_compiler_expands_horizon_patterns_without_per_case_llm_calls(tmp_path: Path) -> None:
@@ -346,6 +514,7 @@ def test_realism_compiler_expands_horizon_patterns_without_per_case_llm_calls(tm
             _actor_response("warehouse_01", 1.4),
             _actor_response("accounts_payable_01", 1.0),
             _price_anchor_response("MA025", 20.0),
+            _material_profiles_response(_material_profile("MA025", relative_demand_weight=1, typical_order_quantity=10)),
             json.dumps(
                 {
                     "patterns": [
@@ -358,7 +527,6 @@ def test_realism_compiler_expands_horizon_patterns_without_per_case_llm_calls(tm
                                 {"start": "13:00", "end": "16:30", "share": 0.55},
                             ],
                             "lead_time_mix": [{"days": 5, "share": 1.0}],
-                            "material_mix": [{"material_id": "MA025", "share": 1.0}],
                         },
                         {
                             "date": "2026-05-19",
@@ -366,7 +534,6 @@ def test_realism_compiler_expands_horizon_patterns_without_per_case_llm_calls(tm
                             "workload_intensity": "normal",
                             "release_windows": [{"start": "09:00", "end": "15:00", "share": 1.0}],
                             "lead_time_mix": [{"days": 5, "share": 1.0}],
-                            "material_mix": [{"material_id": "MA025", "share": 1.0}],
                         },
                     ],
                 }
@@ -377,7 +544,7 @@ def test_realism_compiler_expands_horizon_patterns_without_per_case_llm_calls(tm
     criteria = RealismCompiler(config=config, client=client, cache_dir=tmp_path, max_retries=1).compile()
 
     assert len(criteria.demand_releases) == 10_000
-    assert len(client.prompts) == 5
+    assert len(client.prompts) == 6
     assert criteria.demand_releases[0].case_id == "C001"
     assert criteria.demand_releases[-1].case_id == "C10000"
     assert criteria.demand_releases == sorted(criteria.demand_releases, key=lambda item: item.release_time)
@@ -394,6 +561,7 @@ def test_realism_compiler_rejects_invalid_horizon_pattern_share(tmp_path: Path) 
             _actor_response("warehouse_01", 1.4),
             _actor_response("accounts_payable_01", 1.0),
             _price_anchor_response("MA025", 20.0),
+            _material_profiles_response(_material_profile("MA025", relative_demand_weight=1, typical_order_quantity=10)),
             json.dumps(
                 {
                     "patterns": [
@@ -403,7 +571,6 @@ def test_realism_compiler_rejects_invalid_horizon_pattern_share(tmp_path: Path) 
                             "workload_intensity": "normal",
                             "release_windows": [{"start": "08:00", "end": "10:00", "share": 0.4}],
                             "lead_time_mix": [{"days": 5, "share": 1.0}],
-                            "material_mix": [{"material_id": "MA025", "share": 1.0}],
                         }
                     ],
                 }
@@ -423,6 +590,7 @@ def test_actor_day_profiles_vary_by_day_and_workload(tmp_path: Path) -> None:
             _actor_response("warehouse_01", 1.4),
             _actor_response("accounts_payable_01", 1.0),
             _price_anchor_response("MA025", 20.0),
+            _material_profiles_response(_material_profile("MA025", relative_demand_weight=1, typical_order_quantity=10)),
             json.dumps(
                 {
                     "patterns": [
@@ -432,7 +600,6 @@ def test_actor_day_profiles_vary_by_day_and_workload(tmp_path: Path) -> None:
                             "workload_intensity": "high",
                             "release_windows": [{"start": "08:00", "end": "09:00", "share": 1.0}],
                             "lead_time_mix": [{"days": 5, "share": 1.0}],
-                            "material_mix": [{"material_id": "MA025", "share": 1.0}],
                         },
                         {
                             "date": "2026-05-19",
@@ -440,7 +607,6 @@ def test_actor_day_profiles_vary_by_day_and_workload(tmp_path: Path) -> None:
                             "workload_intensity": "low",
                             "release_windows": [{"start": "08:00", "end": "09:00", "share": 1.0}],
                             "lead_time_mix": [{"days": 5, "share": 1.0}],
-                            "material_mix": [{"material_id": "MA025", "share": 1.0}],
                         },
                     ],
                 }
@@ -514,6 +680,7 @@ def test_cli_loads_default_env_file_before_realism_client(
         _actor_response("warehouse_01", 1.4),
         _actor_response("accounts_payable_01", 1.0),
         _price_anchor_response("MA025", 20.0),
+        _material_profiles_response(_material_profile("MA025", relative_demand_weight=1, typical_order_quantity=10)),
         json.dumps(
             {
                 "patterns": [
@@ -523,7 +690,6 @@ def test_cli_loads_default_env_file_before_realism_client(
                         "workload_intensity": "normal",
                         "release_windows": [{"start": "08:05", "end": "08:45", "share": 1.0}],
                         "lead_time_mix": [{"days": 5, "share": 1.0}],
-                        "material_mix": [{"material_id": "MA025", "share": 1.0}],
                     }
                 ],
             }
@@ -573,6 +739,18 @@ def _base_config() -> dict:
     return payload
 
 
+def _base_config_with_second_material() -> dict:
+    payload = _base_config()
+    second_material = dict(payload["masterData"][0])
+    second_material["materialId"] = "MB025"
+    second_material["quantityMin"] = 20
+    second_material["quantityMax"] = 40
+    second_material["priceMin"] = 30.0
+    second_material["priceMax"] = 40.0
+    payload["masterData"].append(second_material)
+    return payload
+
+
 def _actor_response(actor_id: str, delay_multiplier: float) -> str:
     return json.dumps(
         {
@@ -591,6 +769,10 @@ def _actor_response(actor_id: str, delay_multiplier: float) -> str:
 
 
 def _price_anchor_response(material_id: str, anchor_price: float) -> str:
+    return _price_anchor_profiles_response((material_id, anchor_price))
+
+
+def _price_anchor_profiles_response(*items: tuple[str, float]) -> str:
     return json.dumps(
         {
             "material_prices": [
@@ -600,6 +782,30 @@ def _price_anchor_response(material_id: str, anchor_price: float) -> str:
                     "typical_variation_pct": 0.02,
                     "daily_trend_pct": 0.001,
                 }
+                for material_id, anchor_price in items
             ]
         }
     )
+
+
+def _material_profile(
+    material_id: str,
+    *,
+    relative_demand_weight: int = 10,
+    typical_order_quantity: int = 10,
+    quantity_variation_pct: float = 0.1,
+    bulk_order_share: float = 0.1,
+    order_multiple: int = 1,
+) -> dict:
+    return {
+        "material_id": material_id,
+        "relative_demand_weight": relative_demand_weight,
+        "typical_order_quantity": typical_order_quantity,
+        "quantity_variation_pct": quantity_variation_pct,
+        "bulk_order_share": bulk_order_share,
+        "order_multiple": order_multiple,
+    }
+
+
+def _material_profiles_response(*profiles: dict) -> str:
+    return json.dumps({"material_profiles": list(profiles)})

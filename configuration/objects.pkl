@@ -65,6 +65,14 @@ class RealismCompilerSettings {
   maxDailyPriceTrendPct: Float(this >= 0) = 0.01
   maxWorkloadDelayMultiplierBoost: Float(this >= 0) = 0.25
   maxWorkloadWorkdayDeviationHoursBoost: Float(this >= 0) = 0.5
+  relativeDemandWeightMin: Int(this >= 1) = 1
+  relativeDemandWeightMax: Int(this >= relativeDemandWeightMin) = 100
+  quantityVariationPctMin: Float(this >= 0) = 0.05
+  quantityVariationPctMax: Float(this >= quantityVariationPctMin) = 0.5
+  maxBulkOrderShare: Float(this >= 0 && this <= 1) = 0.35
+  allowedOrderMultiples: Listing<Int(this >= 1)> = new Listing { 1; 5; 10; 25; 50 }
+  maxMaterialSharePerHorizon: Float(this > 0 && this <= 1)? = null
+  requireAllActiveMaterialsInDemandProfile: Boolean = true
 }
 
 /// Waiting-time range between two process steps.
@@ -114,7 +122,7 @@ class SyntheticActor {
   role: String(this.length > 0)
   timezone: String(this.length > 0)
   workLocation: String(this.length > 0)
-  personaDescription: String(this.length > 0)
+  personaDescription: String
   delayMultiplier: Float(this > 0)
   runtimeDelayCapSeconds: Float(this >= 0)
   realismProfile: RealismProfile

@@ -195,6 +195,14 @@ class RealismSettings:
     max_daily_price_trend_pct: float = 0.01
     max_workload_delay_multiplier_boost: float = 0.25
     max_workload_workday_deviation_hours_boost: float = 0.5
+    relative_demand_weight_min: int = 1
+    relative_demand_weight_max: int = 100
+    quantity_variation_pct_min: float = 0.05
+    quantity_variation_pct_max: float = 0.5
+    max_bulk_order_share: float = 0.35
+    allowed_order_multiples: tuple[int, ...] = (1, 5, 10, 25, 50)
+    max_material_share_per_horizon: float | None = None
+    require_all_active_materials_in_demand_profile: bool = True
 
     def __post_init__(self) -> None:
         if self.daily_case_count_min < 0:
@@ -209,6 +217,20 @@ class RealismSettings:
             raise ValueError("max_workload_delay_multiplier_boost must be >= 0")
         if self.max_workload_workday_deviation_hours_boost < 0:
             raise ValueError("max_workload_workday_deviation_hours_boost must be >= 0")
+        if self.relative_demand_weight_min < 1:
+            raise ValueError("relative_demand_weight_min must be >= 1")
+        if self.relative_demand_weight_min > self.relative_demand_weight_max:
+            raise ValueError("relative_demand_weight_min must be <= relative_demand_weight_max")
+        if self.quantity_variation_pct_min < 0:
+            raise ValueError("quantity_variation_pct_min must be >= 0")
+        if self.quantity_variation_pct_min > self.quantity_variation_pct_max:
+            raise ValueError("quantity_variation_pct_min must be <= quantity_variation_pct_max")
+        if not 0 <= self.max_bulk_order_share <= 1:
+            raise ValueError("max_bulk_order_share must be between 0 and 1")
+        if not self.allowed_order_multiples or any(value < 1 for value in self.allowed_order_multiples):
+            raise ValueError("allowed_order_multiples must contain positive integers")
+        if self.max_material_share_per_horizon is not None and not 0 < self.max_material_share_per_horizon <= 1:
+            raise ValueError("max_material_share_per_horizon must be between 0 and 1")
 
 
 @dataclass(frozen=True)

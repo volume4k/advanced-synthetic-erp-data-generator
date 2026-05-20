@@ -152,6 +152,18 @@ _Avoid_: Actual arrival date, runtime receipt date, warehouse arrival
 A per-material price center used to sample realistic target prices inside configured price guardrails.
 _Avoid_: Fixed price, raw price range, case price
 
+**Material Demand Profile**:
+A per-material horizon profile used by the **Trace Generator** to allocate configured materials to exact **Process Cases**.
+_Avoid_: Material mix, material probability, material prompt output
+
+**Relative Demand Weight**:
+A positive integer emitted for a configured material that the **Trace Generator** normalizes into exact material counts.
+_Avoid_: Probability, percentage, share
+
+**Quantity Profile**:
+A per-material order-quantity model containing typical quantity, variation, bulk share, and order multiple inside configured hard quantity guardrails.
+_Avoid_: Quantity range, random amount, SAP quantity
+
 **Actor Day Profile**:
 One date-specific timing profile for a **Synthetic Actor** derived from its baseline realism model and daily workload.
 _Avoid_: Daily actor criteria, day mood, runtime delay profile
@@ -203,11 +215,17 @@ _Avoid_: Actor, business user, persona
 - An **Execution Trace** contains one or more **Actor Sessions**.
 - A **Synthetic Actor** maps to exactly one **Technical SAP User** during execution.
 - A **Synthetic Actor** may have **Realism Guardrails** that limit its **Compiled Realism Criteria**.
-- **Compiled Realism Criteria** can contain **Demand Patterns**, **Price Anchors**, and **Actor Day Profiles**.
+- **Compiled Realism Criteria** can contain **Demand Patterns**, **Price Anchors**, **Material Demand Profiles**, and **Actor Day Profiles**.
 - A **Demand Pattern** produces one or more **Demand Releases**.
 - A **Process Case** has exactly one **Demand Release**.
 - A **Process Case** has exactly one **Requested Delivery Date**.
 - A **Price Anchor** belongs to exactly one configured material.
+- A **Material Demand Profile** belongs to exactly one configured material.
+- A **Material Demand Profile** has exactly one **Relative Demand Weight**.
+- A **Material Demand Profile** has exactly one **Quantity Profile**.
+- The **Trace Generator** normalizes **Relative Demand Weights** into exact material assignments before writing the **Execution Trace**.
+- The **Trace Generator** samples process-case quantities from **Quantity Profiles** before writing the **Execution Trace**.
+- The **Trace Executor** does not normalize material demand, sample quantities, or perform scheduling math.
 - A **Workload Intensity** can influence one or more **Actor Day Profiles**.
 - A **Technical SAP User** may back multiple **Synthetic Actors**.
 - Scheduling prevents one **Technical SAP User** from running multiple **Planned Steps** at the same time.

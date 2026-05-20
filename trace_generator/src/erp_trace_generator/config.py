@@ -284,6 +284,20 @@ def _realism_settings(item: dict[str, Any]) -> RealismSettings:
         max_daily_price_trend_pct=float(item.get("maxDailyPriceTrendPct", 0.01)),
         max_workload_delay_multiplier_boost=float(item.get("maxWorkloadDelayMultiplierBoost", 0.25)),
         max_workload_workday_deviation_hours_boost=float(item.get("maxWorkloadWorkdayDeviationHoursBoost", 0.5)),
+        relative_demand_weight_min=int(item.get("relativeDemandWeightMin", 1)),
+        relative_demand_weight_max=int(item.get("relativeDemandWeightMax", 100)),
+        quantity_variation_pct_min=float(item.get("quantityVariationPctMin", 0.05)),
+        quantity_variation_pct_max=float(item.get("quantityVariationPctMax", 0.5)),
+        max_bulk_order_share=float(item.get("maxBulkOrderShare", 0.35)),
+        allowed_order_multiples=tuple(int(value) for value in item.get("allowedOrderMultiples", [1, 5, 10, 25, 50])),
+        max_material_share_per_horizon=(
+            None
+            if item.get("maxMaterialSharePerHorizon") is None
+            else float(item["maxMaterialSharePerHorizon"])
+        ),
+        require_all_active_materials_in_demand_profile=bool(
+            item.get("requireAllActiveMaterialsInDemandProfile", True)
+        ),
     )
 
 

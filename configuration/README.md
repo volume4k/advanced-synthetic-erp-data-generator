@@ -130,7 +130,7 @@ This means `create_purchase_requisition` must happen before `create_purchase_ord
 
 Keep trace-planning settings in Pkl. `run_settings.pkl` defines FIFO scheduling, core working hours, pause ranges, deterministic step-duration ranges, inter-step waiting-time ranges, storage-location labels, logical post-processing export groups, and optional realism compiler settings.
 
-When `runSettings.realism.enabled` is `true`, `erp-trace-generate` calls an OpenAI-compatible local LLM endpoint before scheduling. Realism v2 asks the LLM for compact actor baseline models, per-material price anchors, and daily demand patterns; the trace generator expands exact process cases deterministically from those models.
+When `runSettings.realism.enabled` is `true`, `erp-trace-generate` calls an OpenAI-compatible local LLM endpoint before scheduling. Realism v2 asks the LLM for compact actor baseline models, per-material price anchors, material demand profiles, quantity profiles, and daily demand patterns; the trace generator expands exact process cases deterministically from those models.
 
 Configure the endpoint with:
 
@@ -144,7 +144,32 @@ The trace-generator CLI reads these values from `configuration/.env` by default.
 
 Validated compiler output is cached in `configuration/build/realism-criteria.<hash>.json`. The cache is only a performance optimization; generated execution traces and manifests contain the runtime and post-processing fields they need.
 
-Demand patterns must sum to `caseCount`. The generator expands them into demand releases, requested delivery dates, and anchored prices inside the hard master-data guardrails.
+Demand patterns must sum to `caseCount`. The trace generator expands them into demand releases, requested delivery dates, material assignments, order quantities, and anchored prices inside the hard master-data guardrails.
+
+Material assignment is controlled by **Material Demand Profiles**, not by daily demand patterns. Each active material must appear once in the LLM response by default. The LLM emits a positive `relative_demand_weight`; the trace generator normalizes those weights into exact process-case counts, shuffles assignments with `schedulerSeed`, and rejects missing, duplicate, or unexpected material IDs. Use `maxMaterialSharePerHorizon` to cap one material's horizon share when a run should force diversity.
+
+Quantity generation is controlled by each material's **Quantity Profile**. The LLM proposes `typical_order_quantity`, `quantity_variation_pct`, `bulk_order_share`, and `order_multiple`. The trace generator samples the final process-case quantity, rounds to the order multiple, and clamps to the material's hard `quantityMin` and `quantityMax`. Configure guardrails in `run_settings.pkl`:
+
+```pkl
+realism {
+  relativeDemandWeightMin = 1
+  relativeDemandWeightMax = 100
+  quantityVariationPctMin = 0.05
+  quantityVariationPctMax = 0.5
+  maxBulkOrderShare = 0.35
+  allowedOrderMultiples {
+    1
+    5
+    10
+    25
+    50
+  }
+  maxMaterialSharePerHorizon = 0.35
+  requireAllActiveMaterialsInDemandProfile = true
+}
+```
+
+The trace executor does not know material demand profiles, normalize weights, sample quantities, or do scheduling math. It only receives the final execution trace fields such as material, vendor, quantity, target price, requested delivery date, planned synthetic time, and human delay profile.
 
 ## Build YAML
 
