@@ -32,6 +32,7 @@ const state = {
   calendarMode: "month",
   calendarCursorDate: "",
   calendarActorId: "",
+  expandedCalendarDays: new Set(),
   ganttZoom: 0.35,
 };
 
@@ -460,16 +461,22 @@ function renderMonthCalendar(events, cursor, actor) {
         .map((day) => {
           const key = isoDate(day);
           const dayEvents = grouped.get(key) || [];
-          const visible = dayEvents.slice(0, 3);
+          const expandedKey = calendarDayExpansionKey(actor.id, key);
+          const isExpanded = state.expandedCalendarDays.has(expandedKey);
+          const visible = isExpanded ? dayEvents : dayEvents.slice(0, 3);
           return `
-            <section class="month-day ${day.getUTCMonth() === currentMonth ? "" : "muted-day"}">
+            <section class="month-day ${day.getUTCMonth() === currentMonth ? "" : "muted-day"} ${isExpanded ? "expanded" : ""}">
               <header>
                 <span>${escapeHtml(day.getUTCDate())}</span>
                 ${dayEvents.length ? `<strong>${dayEvents.length}</strong>` : ""}
               </header>
               <div class="month-events">
                 ${visible.map((event) => renderCalendarPill(event, actor)).join("")}
-                ${dayEvents.length > visible.length ? `<span class="calendar-more">+${dayEvents.length - visible.length} more</span>` : ""}
+                ${
+                  dayEvents.length > 3
+                    ? `<button type="button" class="calendar-more" data-calendar-day="${escapeAttr(key)}">${isExpanded ? "Show fewer" : `+${dayEvents.length - visible.length} more`}</button>`
+                    : ""
+                }
               </div>
             </section>
           `;
@@ -1006,6 +1013,7 @@ function bindEvents() {
     state.selectedNodeId = "";
     state.calendarActorId = "";
     state.calendarCursorDate = "";
+    state.expandedCalendarDays.clear();
     render();
   });
 
@@ -1087,12 +1095,26 @@ function bindEvents() {
 
   document.querySelector("#calendarActorSelect")?.addEventListener("change", (event) => {
     state.calendarActorId = event.target.value;
+    state.expandedCalendarDays.clear();
     render();
   });
 
   document.querySelectorAll("[data-calendar-mode]").forEach((button) => {
     button.addEventListener("click", () => {
       state.calendarMode = button.dataset.calendarMode;
+      state.expandedCalendarDays.clear();
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-calendar-day]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = calendarDayExpansionKey(state.calendarActorId, button.dataset.calendarDay);
+      if (state.expandedCalendarDays.has(key)) {
+        state.expandedCalendarDays.delete(key);
+      } else {
+        state.expandedCalendarDays.add(key);
+      }
       render();
     });
   });
@@ -1208,6 +1230,7 @@ function addArtifacts(parsed, messages) {
   state.selectedNodeId = "";
   state.calendarActorId = "";
   state.calendarCursorDate = "";
+  state.expandedCalendarDays.clear();
   render();
 }
 
@@ -1498,6 +1521,7 @@ function shiftCalendar(direction) {
   const current = parseIsoDate(state.calendarCursorDate) || new Date();
   if (direction === "today") {
     state.calendarCursorDate = isoDate(new Date());
+    state.expandedCalendarDays.clear();
     return;
   }
   const next = new Date(current);
@@ -1507,6 +1531,11 @@ function shiftCalendar(direction) {
     next.setUTCMonth(next.getUTCMonth() + (direction === "next" ? 1 : -1), 1);
   }
   state.calendarCursorDate = isoDate(next);
+  state.expandedCalendarDays.clear();
+}
+
+function calendarDayExpansionKey(actorId, dateKey) {
+  return `${actorId || "actor"}:${dateKey || "date"}`;
 }
 
 function compareEnrichedByManifestTime(left, right) {

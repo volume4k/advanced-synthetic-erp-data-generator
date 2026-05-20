@@ -919,6 +919,11 @@ button.compact {
   padding: 9px;
 }
 
+.month-day.expanded {
+  min-height: 238px;
+  background: #fbfdfc;
+}
+
 .month-day.muted-day {
   background: #f4f7f6;
 }
@@ -994,9 +999,22 @@ button.compact {
 }
 
 .calendar-more {
+  width: max-content;
+  min-height: 24px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
   color: var(--muted);
+  padding: 2px 4px;
   font-size: 11px;
   font-weight: 800;
+  text-align: left;
+}
+
+.calendar-more:hover {
+  border-color: var(--border);
+  background: var(--panel-soft);
+  color: var(--accent-strong);
 }
 
 .week-calendar {
