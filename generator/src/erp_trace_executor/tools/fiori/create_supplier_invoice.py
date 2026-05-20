@@ -6,7 +6,7 @@ import re
 from time import monotonic
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
@@ -17,6 +17,8 @@ from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, format_number, 
 
 
 INVOICE_LINK_PATTERN = re.compile(r"(\d+)/(\d{4})")
+BALANCE_NOT_ZERO_PATTERN = re.compile(r"Saldo\s+ist\s+ungleich\s+null", re.IGNORECASE)
+NET_AMOUNT_TEXTBOX_NAME = re.compile(r"Nettobetrag|Netto\s*betrag", re.IGNORECASE)
 SUPPLIER_INVOICE_READY_TIMEOUT_MS = 90_000
 SUPPLIER_INVOICE_READY_POLL_MS = 1_000
 
@@ -24,11 +26,26 @@ SUPPLIER_INVOICE_READY_POLL_MS = 1_000
 class CreateSupplierInvoiceInput(BaseModel):
     """Input values for creating a supplier invoice against a purchase order."""
 
+    model_config = ConfigDict(extra="forbid")
+
     invoice_date: FioriDate
     invoicing_party: str
-    gross_amount: float = Field(gt=0)
+    invoice_amount: float = Field(gt=0)
     purchase_order: str
     tax_code: str = "XI"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_legacy_gross_amount(cls, value: object) -> object:
+        if not isinstance(value, dict) or "gross_amount" not in value:
+            return value
+
+        migrated = dict(value)
+        legacy_amount = migrated.pop("gross_amount")
+        if "invoice_amount" in migrated and migrated["invoice_amount"] != legacy_amount:
+            raise ValueError("invoice_amount and legacy gross_amount must match when both are provided")
+        migrated.setdefault("invoice_amount", legacy_amount)
+        return migrated
 
 
 class SapSupplierInvoiceFlow:
@@ -53,11 +70,11 @@ class SapSupplierInvoiceFlow:
         page.get_by_role("textbox", name="Rechnungsdatum").press("Tab")
         page.get_by_role("textbox", name="Buchungsdatum").press("Tab")
 
-        gross_amount = page.get_by_role("textbox", name="Bruttobetrag", exact=True)
-        gross_amount.click()
-        gross_amount.press("ControlOrMeta+a")
-        gross_amount.fill(format_number(params.gross_amount))
-        gross_amount.press("Enter")
+        net_amount = page.get_by_role("textbox", name=NET_AMOUNT_TEXTBOX_NAME)
+        net_amount.click()
+        net_amount.press("ControlOrMeta+a")
+        net_amount.fill(format_number(params.invoice_amount))
+        net_amount.press("Enter")
 
         self._fill_textbox(page, "Rechnungssteller", params.invoicing_party)
         page.get_by_role("textbox", name="Rechnungssteller").press("Enter")
@@ -73,6 +90,7 @@ class SapSupplierInvoiceFlow:
         tax_code.press("Enter")
 
         page.get_by_role("button", name="Prüfen").click()
+        self._raise_if_balance_not_zero(page, params)
         self._delay("review_save_post", 1.5)
         page.get_by_role("button", name="Buchen").click()
 
@@ -87,7 +105,7 @@ class SapSupplierInvoiceFlow:
             "invoice_date": invoice_date,
             "requested_invoice_date": params.invoice_date,
             "invoicing_party": params.invoicing_party,
-            "gross_amount": params.gross_amount,
+            "invoice_amount": params.invoice_amount,
             "purchase_order": params.purchase_order,
             "tax_code": params.tax_code,
         }
@@ -139,6 +157,19 @@ class SapSupplierInvoiceFlow:
         textbox.click()
         textbox.press("ControlOrMeta+a")
         textbox.fill(value)
+
+    def _raise_if_balance_not_zero(self, page, params: CreateSupplierInvoiceInput) -> None:
+        messages = page.handle_messages()
+        for message in messages:
+            message_text = str(getattr(message, "text", ""))
+            if BALANCE_NOT_ZERO_PATTERN.search(message_text):
+                raise ToolExecutionError(
+                    "Supplier invoice balance is not zero after SAP check; "
+                    f"purchase_order={params.purchase_order}; "
+                    f"invoice_amount={params.invoice_amount}; "
+                    f"tax_code={params.tax_code}; "
+                    f"sap_message={message_text}"
+                )
 
 
 def run_create_supplier_invoice(
