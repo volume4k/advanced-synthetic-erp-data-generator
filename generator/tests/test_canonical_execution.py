@@ -166,6 +166,17 @@ def test_canonical_loader_rejects_v01_traces(tmp_path: Path) -> None:
         load_canonical_trace(path)
 
 
+def test_canonical_loader_accepts_requested_delivery_date_on_cases(tmp_path: Path) -> None:
+    payload = _canonical_payload()
+    payload["cases"][0]["requested_delivery_date"] = "2026-06-01"
+    path = tmp_path / "trace.execution-trace.yaml"
+    _write_yaml(path, payload)
+
+    trace = load_canonical_trace(path)
+
+    assert trace.cases[0].requested_delivery_date == "2026-06-01"
+
+
 def test_canonical_loader_rejects_wave_planned_step_refs_without_planned_steps(tmp_path: Path) -> None:
     payload = _canonical_payload()
     payload["execution_schedule"]["waves"][0]["planned_steps"][0]["planned_step_id"] = "missing-node"

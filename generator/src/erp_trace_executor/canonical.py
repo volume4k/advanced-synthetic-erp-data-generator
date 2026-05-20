@@ -34,6 +34,7 @@ class CanonicalCase(CanonicalModel):
     case_id: str
     process_type: str
     case_scenario_type: str
+    requested_delivery_date: str | None = None
     line_items: list[dict[str, Any]] = Field(default_factory=list)
 
 
