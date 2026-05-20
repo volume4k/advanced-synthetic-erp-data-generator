@@ -470,6 +470,40 @@ button.compact {
   background: var(--actor-bg);
 }
 
+.gantt-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-wash);
+  padding: 10px 12px;
+}
+
+.gantt-toolbar strong {
+  min-width: 52px;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gantt-toolbar span:not(.field-label) {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.zoom-control {
+  display: grid;
+  gap: 6px;
+  width: min(340px, 100%);
+}
+
+.zoom-control input[type="range"] {
+  accent-color: var(--accent);
+}
+
 .gantt-scroll,
 .matrix-scroll {
   width: 100%;
@@ -486,7 +520,7 @@ button.compact {
 .gantt-axis,
 .gantt-row {
   display: grid;
-  grid-template-columns: 270px minmax(900px, 1fr);
+  grid-template-columns: 270px minmax(0, 1fr);
 }
 
 .gantt-axis {

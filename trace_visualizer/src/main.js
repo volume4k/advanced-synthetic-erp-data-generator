@@ -32,6 +32,7 @@ const state = {
   calendarMode: "month",
   calendarCursorDate: "",
   calendarActorId: "",
+  ganttZoom: 1,
 };
 
 let graph = null;
@@ -248,8 +249,9 @@ function renderCaseGantt(model) {
     return renderBlank("No matching Process Cases", "Search did not match case, actor, step, material, or vendor data.");
   }
 
-  const ticks = buildTimeTicks(model.timeRange, 8);
-  const boardWidth = ganttBoardWidth(model.timeRange);
+  const ticks = buildTimeTicks(model.timeRange, Math.round(8 * state.ganttZoom));
+  const boardWidth = ganttBoardWidth(model.timeRange, state.ganttZoom);
+  const zoomPercent = Math.round(state.ganttZoom * 100);
 
   return `
     <div class="section-title">
@@ -262,8 +264,16 @@ function renderCaseGantt(model) {
     <div class="actor-legend">
       ${model.actors.map((actor) => renderActorLegend(actor)).join("")}
     </div>
+    <div class="gantt-toolbar">
+      <label class="zoom-control">
+        <span class="field-label">Gantt Zoom</span>
+        <input id="ganttZoom" type="range" min="0.55" max="2.2" step="0.05" value="${escapeAttr(state.ganttZoom)}" />
+      </label>
+      <strong>${zoomPercent}%</strong>
+      <span>Zoom out for full-horizon overview; zoom in for step-level inspection.</span>
+    </div>
     <div class="gantt-scroll">
-      <div class="gantt-board" style="min-width:${boardWidth}px">
+      <div class="gantt-board" style="width:max(100%, ${boardWidth}px)">
         <div class="gantt-axis">
           <div class="gantt-axis-rail">Process Case</div>
           <div class="gantt-axis-track">
@@ -1040,6 +1050,11 @@ function bindEvents() {
     render();
   });
 
+  document.querySelector("#ganttZoom")?.addEventListener("input", (event) => {
+    state.ganttZoom = Number(event.target.value);
+    render();
+  });
+
   document.querySelector("#calendarActorSelect")?.addEventListener("change", (event) => {
     state.calendarActorId = event.target.value;
     render();
@@ -1542,9 +1557,9 @@ function stepBarGeometry(step, range) {
   };
 }
 
-function ganttBoardWidth(range) {
+function ganttBoardWidth(range, zoom) {
   const days = Math.max(1, Math.ceil(range.durationMs / 86_400_000));
-  return Math.max(1240, days * 180);
+  return Math.max(980, Math.round(days * 180 * zoom));
 }
 
 function buildTimeTicks(range, desiredCount) {
