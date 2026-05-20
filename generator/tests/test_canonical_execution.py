@@ -358,14 +358,18 @@ def test_canonical_executor_logs_registry_and_skips_failed_case(tmp_path: Path, 
         "C001_A2",
     ]
     events = _read_jsonl(tmp_path / "RUN_CANONICAL.execution-log.jsonl")
-    assert [event["event_type"] for event in events if event["event_type"].startswith("planned_step_")] == [
-        "planned_step_started",
-        "planned_step_succeeded",
-        "planned_step_started",
-        "planned_step_failed",
-        "planned_step_started",
-        "planned_step_succeeded",
-        "planned_step_skipped",
+    assert [
+        (event["event_type"], event.get("planned_step_id"))
+        for event in events
+        if event["event_type"].startswith("planned_step_")
+    ] == [
+        ("planned_step_started", "C001_A1"),
+        ("planned_step_started", "C002_A1"),
+        ("planned_step_succeeded", "C001_A1"),
+        ("planned_step_failed", "C002_A1"),
+        ("planned_step_started", "C001_A2"),
+        ("planned_step_skipped", "C002_A2"),
+        ("planned_step_succeeded", "C001_A2"),
     ]
     assert any(event["event_type"] == "case_failed" and event["case_id"] == "C002" for event in events)
     registry_entries = _read_jsonl(tmp_path / "RUN_CANONICAL.object-registry.jsonl")

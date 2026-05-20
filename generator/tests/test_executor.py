@@ -156,6 +156,22 @@ def _trace_from_records(records: list[ExecutionTaskRecord], *, run_id: str = "RU
     )
 
 
+def _trace_from_records_with_waves(records: list[ExecutionTaskRecord], waves: list[list[str]]) -> CanonicalTrace:
+    payload = _trace_from_records(records).model_dump(mode="json")
+    payload["execution_schedule"]["waves"] = [
+        {
+            "wave_id": f"W{index:03d}",
+            "sequence_no": index,
+            "planned_steps": [
+                {"planned_step_id": planned_step_id, "startup_order": startup_order}
+                for startup_order, planned_step_id in enumerate(planned_step_ids, start=1)
+            ],
+        }
+        for index, planned_step_ids in enumerate(waves, start=1)
+    ]
+    return CanonicalTrace.model_validate(payload)
+
+
 def _init_from_records(
     records: list[ExecutionTaskRecord],
     *,
@@ -335,6 +351,59 @@ def _noop_registry(calls: list[str] | None = None) -> ToolRegistry:
     return registry
 
 
+def _parallel_probe_registry(events: list[tuple[str, str]], barrier: threading.Barrier) -> ToolRegistry:
+    registry = ToolRegistry()
+    lock = threading.Lock()
+
+    def run_tool(context, _params: NoInput) -> ToolResult:
+        planned_step_id = context.record.planned_step_id
+        with lock:
+            events.append(("started", planned_step_id))
+        try:
+            barrier.wait(timeout=1)
+        except threading.BrokenBarrierError as exc:
+            raise AssertionError("wave planned steps did not overlap") from exc
+        with lock:
+            events.append(("finished", planned_step_id))
+        return ToolResult(
+            planned_step_id=planned_step_id,
+            actor_session_id=context.record.actor_session_id,
+            tool=context.record.tool,
+            data={"success": True, "status": "done"},
+        )
+
+    registry.register(ToolSpec(name="test.parallel_probe", input_model=NoInput, run=run_tool))
+    return registry
+
+
+def _parallel_failure_registry(events: list[tuple[str, str]], barrier: threading.Barrier) -> ToolRegistry:
+    registry = ToolRegistry()
+    lock = threading.Lock()
+
+    def run_tool(context, _params: NoInput) -> ToolResult:
+        planned_step_id = context.record.planned_step_id
+        with lock:
+            events.append(("started", planned_step_id))
+        if planned_step_id in {"C001_A1", "C002_A1"}:
+            try:
+                barrier.wait(timeout=1)
+            except threading.BrokenBarrierError as exc:
+                raise AssertionError("wave planned steps did not overlap") from exc
+        if planned_step_id == "C001_A1":
+            raise RuntimeError("planned failure")
+        with lock:
+            events.append(("finished", planned_step_id))
+        return ToolResult(
+            planned_step_id=planned_step_id,
+            actor_session_id=context.record.actor_session_id,
+            tool=context.record.tool,
+            data={"success": True, "status": "done"},
+        )
+
+    registry.register(ToolSpec(name="test.parallel_failure", input_model=NoInput, run=run_tool))
+    return registry
+
+
 class ThreadedFakeContext:
     def __init__(self, record: ExecutionTaskRecord, pool: ThreadPoolExecutor) -> None:
         self.record = record
@@ -458,6 +527,103 @@ def test_executor_collects_parallel_login_failures_before_failing_run(tmp_path, 
     assert any(event["event_type"] == "run_failed" and "buyer-a-session" in event["error"] for event in events)
 
 
+def test_executor_runs_wave_planned_steps_in_parallel(tmp_path, monkeypatch):
+    records = [
+        _record(
+            "C001_A1",
+            tool="test.parallel_probe",
+            synthetic_actor_id="buyer-a",
+            actor_session_id="buyer-a-session",
+            case_id="P2P_C001",
+        ),
+        _record(
+            "C002_A1",
+            tool="test.parallel_probe",
+            synthetic_actor_id="buyer-b",
+            actor_session_id="buyer-b-session",
+            case_id="P2P_C002",
+        ),
+    ]
+    events: list[tuple[str, str]] = []
+    barrier = threading.Barrier(2)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = _run_canonical_records(
+            executor=TraceExecutor(registry=_parallel_probe_registry(events, barrier)),
+            records=records,
+            tmp_path=tmp_path,
+            monkeypatch=monkeypatch,
+            context_factory=lambda record: ThreadedFakeContext(record, pool),
+        )
+
+    assert [event[0] for event in events[:2]] == ["started", "started"]
+    assert [result.planned_step_id for result in results if not result.planned_step_id.startswith("init-login")] == [
+        "C001_A1",
+        "C002_A1",
+    ]
+
+
+def test_parallel_wave_failure_skips_only_failed_case_later_steps(tmp_path, monkeypatch):
+    records = [
+        _record(
+            "C001_A1",
+            tool="test.parallel_failure",
+            synthetic_actor_id="buyer-a",
+            actor_session_id="buyer-a-session",
+            case_id="P2P_C001",
+        ),
+        _record(
+            "C002_A1",
+            tool="test.parallel_failure",
+            synthetic_actor_id="buyer-b",
+            actor_session_id="buyer-b-session",
+            case_id="P2P_C002",
+        ),
+        _record(
+            "C001_A2",
+            tool="test.parallel_failure",
+            synthetic_actor_id="buyer-a",
+            actor_session_id="buyer-a-session",
+            case_id="P2P_C001",
+        ),
+        _record(
+            "C002_A2",
+            tool="test.parallel_failure",
+            synthetic_actor_id="buyer-b",
+            actor_session_id="buyer-b-session",
+            case_id="P2P_C002",
+        ),
+    ]
+    trace = _trace_from_records_with_waves(records, [["C001_A1", "C002_A1"], ["C001_A2", "C002_A2"]])
+    events: list[tuple[str, str]] = []
+    barrier = threading.Barrier(2)
+    monkeypatch.setattr(executor_module, "run_login", _fake_login)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = TraceExecutor(registry=_parallel_failure_registry(events, barrier)).execute_canonical(
+            trace,
+            init=_init_from_records(records),
+            context_factory=lambda record: ThreadedFakeContext(record, pool),
+            evidence_writer=ExecutionEvidenceWriter(tmp_path, run_id=trace.run_id),
+        )
+
+    assert [event[0] for event in events[:2]] == ["started", "started"]
+    assert [result.planned_step_id for result in results if not result.planned_step_id.startswith("init-login")] == [
+        "C002_A1",
+        "C002_A2",
+    ]
+    assert ("started", "C001_A2") not in events
+    assert ("started", "C002_A2") in events
+    event_types_by_step = [
+        (event["event_type"], event.get("planned_step_id"))
+        for event in _read_events(tmp_path)
+        if event.get("planned_step_id") in {"C001_A1", "C001_A2", "C002_A1", "C002_A2"}
+    ]
+    assert ("planned_step_failed", "C001_A1") in event_types_by_step
+    assert ("planned_step_skipped", "C001_A2") in event_types_by_step
+    assert ("planned_step_succeeded", "C002_A2") in event_types_by_step
+
+
 def test_executor_logs_unknown_tools_as_planned_step_failure(tmp_path, monkeypatch):
     contexts: list[ExecutionTaskRecord] = []
     record = _record("planned-step-1", tool="missing.tool")
@@ -516,11 +682,14 @@ def test_executor_resolves_process_scoped_state_variables_before_validation(tmp_
         ),
     ]
 
-    results = _run_canonical_records(
-        executor=TraceExecutor(registry=_state_test_registry(captured_inputs)),
-        records=records,
-        tmp_path=tmp_path,
-        monkeypatch=monkeypatch,
+    trace = _trace_from_records_with_waves(records, [["C042_A1"], ["C042_A2"]])
+    monkeypatch.setattr(executor_module, "run_login", _fake_login)
+
+    results = TraceExecutor(registry=_state_test_registry(captured_inputs)).execute_canonical(
+        trace,
+        init=_init_from_records(records),
+        context_factory=lambda record: SimpleNamespace(record=record, **record.model_dump()),
+        evidence_writer=ExecutionEvidenceWriter(tmp_path, run_id=trace.run_id),
     )
 
     assert [result.tool for result in results] == [
@@ -938,6 +1107,44 @@ def test_browser_session_manager_reuses_session_ids():
         assert first == second
         assert other != first
         assert session_manager.active_session_count() == 2
+
+
+def test_browser_session_manager_serializes_same_actor_session_operations():
+    events: list[str] = []
+    first_started = threading.Event()
+    release_first = threading.Event()
+    second_started = threading.Event()
+
+    def first_operation(_session):
+        events.append("first-started")
+        first_started.set()
+        assert release_first.wait(timeout=1)
+        events.append("first-finished")
+
+    def second_operation(_session):
+        events.append("second-started")
+        second_started.set()
+        events.append("second-finished")
+
+    with BrowserSessionManager() as session_manager:
+        first = session_manager.submit_for_session(
+            actor_session_id="session-1",
+            synthetic_actor_id="user-1",
+            operation=first_operation,
+        )
+        assert first_started.wait(timeout=2)
+        second = session_manager.submit_for_session(
+            actor_session_id="session-1",
+            synthetic_actor_id="user-1",
+            operation=second_operation,
+        )
+
+        assert not second_started.wait(timeout=0.1)
+        release_first.set()
+        first.result()
+        second.result()
+
+    assert events == ["first-started", "first-finished", "second-started", "second-finished"]
 
 
 def test_browser_session_manager_rejects_mixed_users_for_same_session():
