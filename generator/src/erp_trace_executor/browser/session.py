@@ -217,13 +217,14 @@ class _ActorSessionWorker:
 
     def _close_resources(self, *, browser: Browser | None, playwright: Playwright | None) -> None:
         if self._session is not None:
-            try:
+            with suppress(Exception):
                 self._session.context.close()
-            finally:
-                self._session = None
+            self._session = None
 
         if browser is not None:
-            browser.close()
+            with suppress(Exception):
+                browser.close()
 
         if playwright is not None:
-            playwright.stop()
+            with suppress(Exception):
+                playwright.stop()
