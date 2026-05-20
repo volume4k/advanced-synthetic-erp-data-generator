@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
-from erp_trace_executor.fiori_types import FioriDate
+from erp_trace_executor.fiori_types import FioriDate, runtime_safe_fiori_date
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
 from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, format_number, noop_delay, runtime_delay_callback
@@ -40,6 +40,7 @@ class SapSupplierInvoiceFlow:
 
     def create(self, params: CreateSupplierInvoiceInput) -> dict[str, str | float]:
         page = self._page
+        invoice_date = runtime_safe_fiori_date(params.invoice_date)
 
         self._delay("app_open_search", 1.5)
         page.get_by_role("button", name="Suche öffnen").click()
@@ -48,7 +49,7 @@ class SapSupplierInvoiceFlow:
         self._discard_existing_draft_if_present(page)
 
         self._delay("form_section_fill", 1.0)
-        self._fill_textbox(page, "Rechnungsdatum", params.invoice_date)
+        self._fill_textbox(page, "Rechnungsdatum", invoice_date)
         page.get_by_role("textbox", name="Rechnungsdatum").press("Tab")
         page.get_by_role("textbox", name="Buchungsdatum").press("Tab")
 
@@ -83,7 +84,8 @@ class SapSupplierInvoiceFlow:
         return {
             "supplier_invoice": invoice,
             "fiscal_year": fiscal_year,
-            "invoice_date": params.invoice_date,
+            "invoice_date": invoice_date,
+            "requested_invoice_date": params.invoice_date,
             "invoicing_party": params.invoicing_party,
             "gross_amount": params.gross_amount,
             "purchase_order": params.purchase_order,

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
-from erp_trace_executor.fiori_types import FioriCurrency, FioriDate
+from erp_trace_executor.fiori_types import FioriCurrency, FioriDate, runtime_safe_fiori_date
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
 from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, noop_delay, runtime_delay_callback
@@ -52,14 +52,16 @@ class SapSendPaymentFlow:
 
     def create(self, params: SendPaymentInput) -> dict[str, str | float]:
         page = self._page
+        posting_document_date = runtime_safe_fiori_date(params.posting_document_date)
+        posting_date = runtime_safe_fiori_date(params.posting_date) if params.posting_date is not None else None
 
         self._delay("app_open_search", 1.5)
         self._open_payment_app(page)
         self._delay("form_section_fill", 1.0)
         self._fill_textbox_if_visible(page, "Buchungskreis", params.company_code)
-        self._fill_textbox(page, "Buchungsbelegdatum", params.posting_document_date, commit=True)
-        if params.posting_date is not None:
-            self._fill_textbox(page, "Buchungsdatum", params.posting_date, commit=True)
+        self._fill_textbox(page, "Buchungsbelegdatum", posting_document_date, commit=True)
+        if posting_date is not None:
+            self._fill_textbox(page, "Buchungsdatum", posting_date, commit=True)
         self._fill_supplier(page, params.supplier)
 
         page.get_by_role("button", name="Posten anzeigen").click()
@@ -76,8 +78,10 @@ class SapSendPaymentFlow:
         return {
             "payment_document": payment_document,
             "company_code": params.company_code,
-            "posting_document_date": params.posting_document_date,
-            "posting_date": params.posting_date or "",
+            "posting_document_date": posting_document_date,
+            "requested_posting_document_date": params.posting_document_date,
+            "posting_date": posting_date or "",
+            "requested_posting_date": params.posting_date or "",
             "supplier": params.supplier,
             "accounting_document": params.accounting_document,
             "general_ledger_account": params.general_ledger_account,
