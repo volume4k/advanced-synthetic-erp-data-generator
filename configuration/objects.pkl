@@ -70,7 +70,7 @@ class RealismCompilerSettings {
   quantityVariationPctMin: Float(this >= 0) = 0.05
   quantityVariationPctMax: Float(this >= quantityVariationPctMin) = 0.5
   maxBulkOrderShare: Float(this >= 0 && this <= 1) = 0.35
-  allowedOrderMultiples: Listing<Int(this >= 1)> = new Listing { 1; 5; 10; 25; 50 }
+  allowedOrderMultiples: Listing<Int(this >= 1)> = new Listing { 1; 5; 10; 20; 25; 50 }
   maxMaterialSharePerHorizon: Float(this > 0 && this <= 1)? = null
   requireAllActiveMaterialsInDemandProfile: Boolean = true
 }

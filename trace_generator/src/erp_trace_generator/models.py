@@ -200,7 +200,7 @@ class RealismSettings:
     quantity_variation_pct_min: float = 0.05
     quantity_variation_pct_max: float = 0.5
     max_bulk_order_share: float = 0.35
-    allowed_order_multiples: tuple[int, ...] = (1, 5, 10, 25, 50)
+    allowed_order_multiples: tuple[int, ...] = (1, 5, 10, 20, 25, 50)
     max_material_share_per_horizon: float | None = None
     require_all_active_materials_in_demand_profile: bool = True
 

@@ -157,10 +157,11 @@ realism {
   quantityVariationPctMin = 0.05
   quantityVariationPctMax = 0.5
   maxBulkOrderShare = 0.35
-  allowedOrderMultiples {
+  allowedOrderMultiples = new Listing {
     1
     5
     10
+    20
     25
     50
   }
