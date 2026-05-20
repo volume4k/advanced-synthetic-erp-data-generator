@@ -52,6 +52,10 @@ _Avoid_: Report, table dump, export group
 The final dataset produced by the post-processor after applying planned timing, actor projection, labels, and failure policy.
 _Avoid_: Final output, generated data, reconciled export
 
+**Synthetic Timestamp Projection**:
+A post-processing transformation that replaces SAP export timestamp fields with planned synthetic timestamps in the synthetic dataset.
+_Avoid_: Timestamp rewrite, runtime timestamp, physical order fix
+
 **Execution Evidence**:
 The logical set of runtime artifacts produced by an execution run.
 _Avoid_: Canonical evidence file, combined evidence file, output bundle
@@ -198,6 +202,7 @@ _Avoid_: Actor, business user, persona
 - A **Trace Executor** consumes exactly one **Execution Trace** for an **Execution Run**.
 - A **Post-Processor** consumes an **Execution Trace**, a **Post-Processing Manifest**, **Execution Evidence**, and **SAP Exports**.
 - A **Post-Processor** produces a **Synthetic Dataset**.
+- A **Post-Processor** applies **Synthetic Timestamp Projection** when producing a **Synthetic Dataset**.
 - A **Process Definition** produces one or more **Process Cases** in an **Execution Trace**.
 - A **Process Definition** contains one or more **Process Dependencies**.
 - **Configured Master Data** constrains the process cases generated from a process definition.
