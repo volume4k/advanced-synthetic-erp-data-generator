@@ -32,7 +32,7 @@ const state = {
   calendarMode: "month",
   calendarCursorDate: "",
   calendarActorId: "",
-  ganttZoom: 1,
+  ganttZoom: 0.35,
 };
 
 let graph = null;
@@ -267,13 +267,13 @@ function renderCaseGantt(model) {
     <div class="gantt-toolbar">
       <label class="zoom-control">
         <span class="field-label">Gantt Zoom</span>
-        <input id="ganttZoom" type="range" min="0.55" max="2.2" step="0.05" value="${escapeAttr(state.ganttZoom)}" />
+        <input id="ganttZoom" type="range" min="0.18" max="2.6" step="0.02" value="${escapeAttr(state.ganttZoom)}" />
       </label>
-      <strong>${zoomPercent}%</strong>
+      <strong id="ganttZoomValue">${zoomPercent}%</strong>
       <span>Zoom out for full-horizon overview; zoom in for step-level inspection.</span>
     </div>
     <div class="gantt-scroll">
-      <div class="gantt-board" style="width:max(100%, ${boardWidth}px)">
+      <div class="gantt-board" data-gantt-board style="width:max(100%, ${boardWidth}px)">
         <div class="gantt-axis">
           <div class="gantt-axis-rail">Process Case</div>
           <div class="gantt-axis-track">
@@ -1051,9 +1051,39 @@ function bindEvents() {
   });
 
   document.querySelector("#ganttZoom")?.addEventListener("input", (event) => {
-    state.ganttZoom = Number(event.target.value);
-    render();
+    updateGanttZoom(Number(event.target.value), false);
   });
+
+  document.querySelector("#ganttZoom")?.addEventListener("change", (event) => {
+    updateGanttZoom(Number(event.target.value), true);
+  });
+
+  document.querySelector("#ganttZoom")?.addEventListener("pointerup", (event) => {
+    updateGanttZoom(Number(event.target.value), true);
+  });
+
+  document.querySelector("#ganttZoom")?.addEventListener("keyup", (event) => {
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") {
+      updateGanttZoom(Number(event.target.value), true);
+    }
+  });
+
+  function updateGanttZoom(value, shouldRender) {
+    state.ganttZoom = clamp(value, 0.18, 2.6);
+    const activeModel = getActiveModel();
+    const board = document.querySelector("[data-gantt-board]");
+    const label = document.querySelector("#ganttZoomValue");
+    if (activeModel?.timeRange && board) {
+      board.style.width = `max(100%, ${ganttBoardWidth(activeModel.timeRange, state.ganttZoom)}px)`;
+    }
+    if (label) {
+      label.textContent = `${Math.round(state.ganttZoom * 100)}%`;
+    }
+    if (!shouldRender) {
+      return;
+    }
+    render();
+  }
 
   document.querySelector("#calendarActorSelect")?.addEventListener("change", (event) => {
     state.calendarActorId = event.target.value;
@@ -1559,7 +1589,7 @@ function stepBarGeometry(step, range) {
 
 function ganttBoardWidth(range, zoom) {
   const days = Math.max(1, Math.ceil(range.durationMs / 86_400_000));
-  return Math.max(980, Math.round(days * 180 * zoom));
+  return Math.max(560, Math.round(days * 180 * zoom));
 }
 
 function buildTimeTicks(range, desiredCount) {

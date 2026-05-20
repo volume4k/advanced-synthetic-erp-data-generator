@@ -497,11 +497,53 @@ button.compact {
 .zoom-control {
   display: grid;
   gap: 6px;
-  width: min(340px, 100%);
+  width: min(460px, 100%);
 }
 
 .zoom-control input[type="range"] {
+  appearance: none;
+  height: 28px;
+  margin: 0;
   accent-color: var(--accent);
+  background: transparent;
+  cursor: grab;
+}
+
+.zoom-control input[type="range"]:active {
+  cursor: grabbing;
+}
+
+.zoom-control input[type="range"]::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-soft), #d8e2df);
+}
+
+.zoom-control input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -8px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 4px 12px rgba(31, 51, 48, 0.22);
+}
+
+.zoom-control input[type="range"]::-moz-range-track {
+  height: 8px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-soft), #d8e2df);
+}
+
+.zoom-control input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 4px 12px rgba(31, 51, 48, 0.22);
 }
 
 .gantt-scroll,
