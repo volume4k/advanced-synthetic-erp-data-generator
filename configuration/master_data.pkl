@@ -1,10 +1,10 @@
 import "objects.pkl"
 
-// Global Bike LEARN-902 U.S. trading-goods master data for MI00.
+// Global Bike LEARN-800 U.S. trading-goods master data for MI00.
 // All entries are configured for plant MI00, purchasing org US00, currency USD, and storage location TG00.
 // TG00 is Trading Goods in the Global Bike documentation.
-// User suffix rule applied here: 1000 catalogue materials become 1902, and 1### teaching-case materials become 1902.
-// Supplier suffix rule applied here: U.S. base suppliers such as 101000 become 101902 for LEARN-902.
+// User suffix rule applied here: 1000 catalogue materials become 1800, and 1### teaching-case materials become 1800.
+// Supplier suffix rule applied here: U.S. base suppliers such as 101000 become 101800 for LEARN-800.
 //
 // Evidence levels in comments:
 // explicit: the material and supplier pairing is shown in a case, exercise, or challenge.
@@ -12,13 +12,13 @@ import "objects.pkl"
 // inferred: the material and supplier both exist in Global Bike docs, but the pairing is inferred from product category.
 
 masterData: Listing<objects.MasterDataEntry> = new Listing {
-  // EPAD1902, Elbow pads. Explicit SD00 source: supplier 103###, material EPAD1###, price 40 USD in WM I.
-  // Added 101902 as inferred variation because Olympic Protective Gear is the documented protective-gear supplier.
+  // EPAD1800, Elbow pads. Explicit SD00 source: supplier 103###, material EPAD1###, price 40 USD in WM I.
+  // Added 101800 as inferred variation because Olympic Protective Gear is the documented protective-gear supplier.
   new objects.MasterDataEntry {
-    materialId = "EPAD1902"
+    materialId = "EPAD1800"
     validVendors {
-      "103902"
-      "101902"
+      "103800"
+      "101800"
     }
     validPlants {
       "MI00"
@@ -38,13 +38,13 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     deliveryLeadTimeMaxDays = 21
   }
 
-  // RKIT1902, Repair kit. Catalogue material only.
+  // RKIT1800, Repair kit. Catalogue material only.
   // Vendors are inferred from the U.S. supplier catalogue: Redwood Kits and Rapids Nuts n Bolts.
   new objects.MasterDataEntry {
-    materialId = "RKIT1902"
+    materialId = "RKIT1800"
     validVendors {
-      "112902"
-      "108902"
+      "112800"
+      "108800"
     }
     validPlants {
       "MI00"
@@ -64,13 +64,13 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     deliveryLeadTimeMaxDays = 21
   }
 
-  // OHMT1902, Off-road helmet. Explicit MI00 source: OHMT1999 with supplier 101999, price 25 USD in MM exercises.
-  // Added 107902 as inferred variation because Spy Gear is a documented U.S. supplier and supplies RHMT1### in WM I challenge.
+  // OHMT1800, Off-road helmet. Explicit MI00 source: OHMT1999 with supplier 101999, price 25 USD in MM exercises.
+  // Added 107800 as inferred variation because Spy Gear is a documented U.S. supplier and supplies RHMT1### in WM I challenge.
   new objects.MasterDataEntry {
-    materialId = "OHMT1902"
+    materialId = "OHMT1800"
     validVendors {
-      "101902"
-      "107902"
+      "101800"
+      "107800"
     }
     validPlants {
       "MI00"
@@ -90,13 +90,13 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     deliveryLeadTimeMaxDays = 21
   }
 
-  // KPAD1902, Knee pads. Explicit SD00 source: supplier 103###, material KPAD1###, price 40 USD in WM I.
-  // Added 101902 as inferred variation because Olympic Protective Gear is the documented protective-gear supplier.
+  // KPAD1800, Knee pads. Explicit SD00 source: supplier 103###, material KPAD1###, price 40 USD in WM I.
+  // Added 101800 as inferred variation because Olympic Protective Gear is the documented protective-gear supplier.
   new objects.MasterDataEntry {
-    materialId = "KPAD1902"
+    materialId = "KPAD1800"
     validVendors {
-      "103902"
-      "101902"
+      "103800"
+      "101800"
     }
     validPlants {
       "MI00"
@@ -116,13 +116,13 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     deliveryLeadTimeMaxDays = 21
   }
 
-  // PUMP1902, Pump. Catalogue material PUMP1000. Repo-backed supplier variation uses 107902.
-  // Added 108902 as inferred variation because Rapids Nuts n Bolts is a documented U.S. supplier of small bike components.
+  // PUMP1800, Pump. Catalogue material PUMP1000. Repo-backed supplier variation uses 107800.
+  // Added 108800 as inferred variation because Rapids Nuts n Bolts is a documented U.S. supplier of small bike components.
   new objects.MasterDataEntry {
-    materialId = "PUMP1902"
+    materialId = "PUMP1800"
     validVendors {
-      "107902"
-      "108902"
+      "107800"
+      "108800"
     }
     validPlants {
       "MI00"
@@ -142,13 +142,13 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     deliveryLeadTimeMaxDays = 21
   }
 
-  // RHMT1902, Road helmet. Explicit MI00 source: RHMT1999 with supplier 101999, price 25 USD in MM exercises.
+  // RHMT1800, Road helmet. Explicit MI00 source: RHMT1999 with supplier 101999, price 25 USD in MM exercises.
   // Explicit SD00 source: RHMT1### with supplier 107###, price 27 USD in WM I challenge.
   new objects.MasterDataEntry {
-    materialId = "RHMT1902"
+    materialId = "RHMT1800"
     validVendors {
-      "101902"
-      "107902"
+      "101800"
+      "107800"
     }
     validPlants {
       "MI00"
@@ -168,13 +168,13 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     deliveryLeadTimeMaxDays = 21
   }
 
-  // SHRT1902, T-shirt. Catalogue material only.
+  // SHRT1800, T-shirt. Catalogue material only.
   // Vendors are inferred from the U.S. supplier catalogue because no explicit shirt purchasing pair was found.
   new objects.MasterDataEntry {
-    materialId = "SHRT1902"
+    materialId = "SHRT1800"
     validVendors {
-      "110902"
-      "109902"
+      "110800"
+      "109800"
     }
     validPlants {
       "MI00"
@@ -194,13 +194,13 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     deliveryLeadTimeMaxDays = 21
   }
 
-  // FAID1902, First-aid kit. Catalogue material only.
+  // FAID1800, First-aid kit. Catalogue material only.
   // Vendors are inferred from the U.S. supplier catalogue and protective-gear category.
   new objects.MasterDataEntry {
-    materialId = "FAID1902"
+    materialId = "FAID1800"
     validVendors {
-      "101902"
-      "112902"
+      "101800"
+      "112800"
     }
     validPlants {
       "MI00"
@@ -220,13 +220,13 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     deliveryLeadTimeMaxDays = 21
   }
 
-  // BOTL1902, Water bottle. Explicit SD00 source: BOTL1### with supplier 107###, price 11 USD in WM I challenge.
-  // Added 110902 as inferred variation from the U.S. supplier catalogue.
+  // BOTL1800, Water bottle. Explicit SD00 source: BOTL1### with supplier 107###, price 11 USD in WM I challenge.
+  // Added 110800 as inferred variation from the U.S. supplier catalogue.
   new objects.MasterDataEntry {
-    materialId = "BOTL1902"
+    materialId = "BOTL1800"
     validVendors {
-      "107902"
-      "110902"
+      "107800"
+      "110800"
     }
     validPlants {
       "MI00"
@@ -246,13 +246,13 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     deliveryLeadTimeMaxDays = 21
   }
 
-  // CAGE1902, Bottle cage. Catalogue material only.
+  // CAGE1800, Bottle cage. Catalogue material only.
   // Vendors are inferred from the U.S. supplier catalogue: aluminum products and small bike components.
   new objects.MasterDataEntry {
-    materialId = "CAGE1902"
+    materialId = "CAGE1800"
     validVendors {
-      "106902"
-      "108902"
+      "106800"
+      "108800"
     }
     validPlants {
       "MI00"
@@ -272,13 +272,15 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     deliveryLeadTimeMaxDays = 21
   }
 
-  // CHLK1902, Chain lock. Explicit MI00 MM source: material CHLK1###, TG00, bidders Dallas Bike Basics and Spy Gear.
+  // CHLK1800, Chain lock. Explicit MI00 MM source: material CHLK1###, TG00, bidders Dallas Bike Basics and Spy Gear.
   // Documented RFQ prices: Dallas Bike Basics 36.50 USD, Spy Gear 35.00 USD.
+  // Added 1003070 Mid-West Supply as a valid LEARN-800 supplier for this material.
   new objects.MasterDataEntry {
-    materialId = "CHLK1902"
+    materialId = "CHLK1800"
     validVendors {
-      "103902"
-      "107902"
+      "103800"
+      "107800"
+      "1003070"
     }
     validPlants {
       "MI00"
@@ -298,13 +300,15 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     deliveryLeadTimeMaxDays = 30
   }
 
-  // CHSP1902, Chain Lock Security Pro. Explicit MI00 MM challenge source: material CHSP1###.
+  // CHSP1800, Chain Lock Security Pro. Explicit MI00 MM challenge source: material CHSP1###.
   // Documented bidders: Boomtown Tire & Wheel 102### at 26 USD, Space Bike Composites 105### at 25.50 USD.
+  // Added 1003070 Mid-West Supply as a valid LEARN-800 supplier for this material.
   new objects.MasterDataEntry {
-    materialId = "CHSP1902"
+    materialId = "CHSP1800"
     validVendors {
-      "102902"
-      "105902"
+      "102800"
+      "105800"
+      "1003070"
     }
     validPlants {
       "MI00"
