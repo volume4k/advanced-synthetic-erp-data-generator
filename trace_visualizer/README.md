@@ -26,11 +26,15 @@ Files are parsed in the browser. Trace content is not uploaded to a backend.
 
 ## Views
 
-- Timeline: one row per case, ordered by planned synthetic time.
+- Case Gantt: one row per Process Case with manifest planned timestamps and case material/vendor/quantity facts.
+- Wave Matrix: Execution Waves top-to-bottom with Synthetic Actors as columns.
+- Actor Calendar: Outlook-style month/week calendar for one Synthetic Actor at a time.
 - Graph: Cytoscape dependency graph from `dependency_graph.dependencies`.
 - Sessions: technical and virtual user mapping.
 - Cases: input cases and line items.
 - Manifest: timestamp policy, actor projection, object lineage, expected keys, date overrides, exports, failed case policy.
 - Raw: parsed execution trace and manifest JSON.
 
-Click any timeline or graph planned step to inspect planned step inputs, required SAP object keys, labels, schedule position, dependencies, and matching manifest records.
+Time-based views use `planned_step_timestamps` from the Post-Processing Manifest as their source of truth. The Execution Trace joins actor, case, material, vendor, quantity, and price details.
+
+Click any Gantt bar, Wave Matrix card, calendar event, or graph Planned Step to inspect procurement facts, schedule facts, manifest timestamps, inputs, required SAP object keys, labels, dependencies, and matching manifest records.
