@@ -25,7 +25,13 @@ WORKLOAD_FACTORS = {"low": -0.5, "normal": 0.0, "high": 1.0}
 
 
 class RealismLLMClient(Protocol):
-    def complete_json(self, prompt: str) -> str:
+    def complete_json(
+        self,
+        prompt: str,
+        *,
+        response_schema: type[BaseModel] | None = None,
+        schema_name: str | None = None,
+    ) -> str:
         """Return a JSON object as text."""
 
 
@@ -154,17 +160,29 @@ class OpenAICompatibleLLMClient:
         model: str | None = None,
         api_key: str | None = None,
         timeout_seconds: int = 60,
+        use_json_schema_response_format: bool | None = None,
     ) -> None:
         self._base_url = (base_url or os.environ.get("REALISM_LLM_BASE_URL") or "").rstrip("/")
         self._model = model or os.environ.get("REALISM_LLM_MODEL")
         self._api_key = api_key if api_key is not None else os.environ.get("REALISM_LLM_API_KEY")
         self._timeout_seconds = timeout_seconds
+        self._use_json_schema_response_format = (
+            use_json_schema_response_format
+            if use_json_schema_response_format is not None
+            else os.environ.get("REALISM_LLM_RESPONSE_FORMAT_JSON_SCHEMA", "").lower() in {"1", "true", "yes"}
+        )
         if not self._base_url:
             raise TraceGenerationError("REALISM_LLM_BASE_URL is required when realism compilation is enabled")
         if not self._model:
             raise TraceGenerationError("REALISM_LLM_MODEL is required when realism compilation is enabled")
 
-    def complete_json(self, prompt: str) -> str:
+    def complete_json(
+        self,
+        prompt: str,
+        *,
+        response_schema: type[BaseModel] | None = None,
+        schema_name: str | None = None,
+    ) -> str:
         payload = {
             "model": self._model,
             "messages": [
@@ -179,6 +197,15 @@ class OpenAICompatibleLLMClient:
             ],
             "temperature": 0.0,
         }
+        if response_schema is not None and self._use_json_schema_response_format:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema_name or response_schema.__name__,
+                    "strict": True,
+                    "schema": _inline_local_json_schema_refs(response_schema.model_json_schema()),
+                },
+            }
         body = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self._api_key:
@@ -427,9 +454,14 @@ class RealismCompiler:
         detail = f": {last_error}" if last_error else ""
         raise TraceGenerationError(f"Could not compile demand releases for {day}{detail}")
 
-    def _complete_json(self, prompt: str) -> str:
+    def _complete_json(
+        self,
+        prompt: str,
+        response_schema: type[BaseModel] | None = None,
+        schema_name: str | None = None,
+    ) -> str:
         self._llm_request_count += 1
-        return self._client.complete_json(prompt)
+        return self._client.complete_json(prompt, response_schema=response_schema, schema_name=schema_name)
 
     def _actor_criteria_from_json(self, raw_response: str, actor: Actor) -> ActorRealismCriteria:
         payload = _normalize_actor_payload(_load_json_object(raw_response), actor)
@@ -507,6 +539,8 @@ class RealismCompiler:
 
     def _demand_patterns_from_json(self, raw_response: str) -> list[DemandPattern]:
         payload = _load_json_object(raw_response)
+        if "patterns" in payload:
+            payload = {"patterns": payload["patterns"]}
         response = HorizonDemandResponse.model_validate(payload)
         total = sum(pattern.case_count for pattern in response.patterns)
         if total != self._config.run_settings.case_count:
@@ -1191,8 +1225,41 @@ def _load_json_object(raw_response: str) -> dict:
     text = _strip_json_markdown_fence(raw_response.strip())
     payload = json.loads(text)
     if not isinstance(payload, dict):
-        raise TraceGenerationError("Realism LLM response must be a JSON object")
+        raise TraceGenerationError(
+            "Realism LLM response must be a JSON object; "
+            f"got {type(payload).__name__}: {_preview_text(text)}"
+        )
     return payload
+
+
+def _preview_text(value: str, *, limit: int = 240) -> str:
+    compact = " ".join(value.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[:limit]}..."
+
+
+def _inline_local_json_schema_refs(schema: dict) -> dict:
+    definitions = schema.get("$defs", {})
+
+    def inline(value):
+        if isinstance(value, dict):
+            ref = value.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/$defs/"):
+                definition_name = ref.removeprefix("#/$defs/")
+                definition = definitions.get(definition_name)
+                if isinstance(definition, dict):
+                    return inline(definition)
+            return {
+                key: inline(item)
+                for key, item in value.items()
+                if key != "$defs"
+            }
+        if isinstance(value, list):
+            return [inline(item) for item in value]
+        return value
+
+    return inline(schema)
 
 
 def _normalize_actor_payload(payload: dict, actor: Actor) -> dict:
