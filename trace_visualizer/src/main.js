@@ -488,7 +488,6 @@ function renderMonthCalendar(events, cursor, actor) {
 
 function renderWeekCalendar(events, cursor, actor) {
   const days = weekDays(cursor);
-  const grouped = groupEventsByDate(events);
   const startHour = 7;
   const endHour = 19;
   const hourHeight = 74;
@@ -504,7 +503,7 @@ function renderWeekCalendar(events, cursor, actor) {
       </div>
       ${days
         .map((day) => {
-          const dayEvents = grouped.get(isoDate(day)) || [];
+          const dayEvents = eventSegmentsForDay(events, day);
           return `
             <div class="week-day-column" style="height:${gridHeight}px">
               ${Array.from({ length: endHour - startHour }, (_, index) => `<i style="top:${index * hourHeight}px"></i>`).join("")}
@@ -535,8 +534,10 @@ function renderCalendarPill(event, actor) {
 
 function renderWeekEvent(event, actor, startHour, endHour, hourHeight) {
   const selected = event.step.plannedStepId === state.selectedNodeId ? "selected" : "";
-  const startMinutes = minutesFromArtifactTime(event.step.plannedStart) - startHour * 60;
-  const endMinutes = minutesFromArtifactTime(event.step.plannedEnd) - startHour * 60;
+  const segmentStart = Number.isFinite(event.segmentStartMs) ? new Date(event.segmentStartMs) : null;
+  const segmentEnd = Number.isFinite(event.segmentEndMs) ? new Date(event.segmentEndMs) : null;
+  const startMinutes = (segmentStart ? minutesFromDate(segmentStart) : minutesFromArtifactTime(event.step.plannedStart)) - startHour * 60;
+  const endMinutes = (segmentEnd ? minutesFromDate(segmentEnd) : minutesFromArtifactTime(event.step.plannedEnd)) - startHour * 60;
   const top = Math.max(0, Math.min((endHour - startHour) * hourHeight - 24, (startMinutes / 60) * hourHeight));
   const height = Math.max(30, Math.min((endHour - startHour) * hourHeight - top, ((endMinutes - startMinutes) / 60) * hourHeight));
   return `
@@ -547,7 +548,7 @@ function renderWeekEvent(event, actor, startHour, endHour, hourHeight) {
       style="top:${top}px;height:${height}px;--actor-bg:${actor.color.bg};--actor-soft:${actor.color.soft};--actor-border:${actor.color.border}"
       title="${escapeAttr(stepTitle(event.step))}"
     >
-      <strong>${escapeHtml(formatTime(event.step.plannedStart))}</strong>
+      <strong>${escapeHtml(segmentStart ? formatTime(segmentStart.toISOString()) : formatTime(event.step.plannedStart))}</strong>
       <span>${escapeHtml(event.step.caseId)} ${escapeHtml(shortStepType(event.step.stepType))}</span>
       <em>${escapeHtml(event.step.lineItem.material_id || "")} ${escapeHtml(event.step.lineItem.quantity ?? "")}</em>
     </button>
@@ -1649,6 +1650,19 @@ function groupEventsByDate(events) {
   return grouped;
 }
 
+function eventSegmentsForDay(events, day) {
+  const dayStartMs = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate());
+  const dayEndMs = dayStartMs + 86_400_000;
+  return events
+    .filter((event) => event.step.startMs < dayEndMs && event.step.endMs > dayStartMs)
+    .map((event) => ({
+      ...event,
+      segmentStartMs: Math.max(event.step.startMs, dayStartMs),
+      segmentEndMs: Math.min(event.step.endMs, dayEndMs),
+    }))
+    .sort((left, right) => left.segmentStartMs - right.segmentStartMs || String(left.step.plannedStepId).localeCompare(String(right.step.plannedStepId)));
+}
+
 function monthGridDays(cursor) {
   const monthStart = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), 1));
   const start = startOfWeek(monthStart);
@@ -1701,6 +1715,10 @@ function minutesFromArtifactTime(value) {
     return 0;
   }
   return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function minutesFromDate(value) {
+  return value.getUTCHours() * 60 + value.getUTCMinutes();
 }
 
 function shortStepType(value) {

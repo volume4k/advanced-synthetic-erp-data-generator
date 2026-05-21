@@ -205,6 +205,16 @@ def test_realism_compiler_retries_llm_request_failure(tmp_path: Path) -> None:
     assert "Validation failed: temporary disconnect" in client.prompts[1]
 
 
+def test_realism_compiler_rejects_duplicate_price_anchor_materials(tmp_path: Path) -> None:
+    config = _load_config(tmp_path, _base_config_with_second_material())
+    client = FakeRealismClient([
+        _price_anchor_profiles_response(("MA025", 20.0), ("MA025", 21.0), ("MB025", 35.0))
+    ])
+
+    with pytest.raises(TraceGenerationError, match=r"duplicates=\['MA025'\]"):
+        RealismCompiler(config=config, client=client, cache_dir=tmp_path, max_retries=1).compile_price_anchors()
+
+
 def test_openai_client_reads_timeout_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REALISM_LLM_TIMEOUT_SECONDS", "240")
 
@@ -447,7 +457,7 @@ def test_realism_compiler_rejects_invalid_quantity_profile(tmp_path: Path) -> No
         ]
     )
 
-    with pytest.raises(TraceGenerationError, match="typical_order_quantity.*MA025"):
+    with pytest.raises(TraceGenerationError, match=r"typical_order_quantity.*MA025"):
         RealismCompiler(config=config, client=client, cache_dir=tmp_path, max_retries=1).compile_material_demand_profiles()
 
 
@@ -543,6 +553,40 @@ def test_realism_compiler_accepts_horizon_pattern_with_prompt_echo_keys(tmp_path
 
     assert len(patterns) == 1
     assert patterns[0].case_count == 2
+
+
+def test_realism_compiler_rejects_duplicate_demand_pattern_dates(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["caseCount"] = 4
+    config = _load_config(tmp_path, payload)
+    response = json.dumps(
+        {
+            "patterns": [
+                {
+                    "date": "2026-05-18",
+                    "case_count": 2,
+                    "workload_intensity": "normal",
+                    "release_windows": [{"start": "08:00", "end": "10:00", "share": 1.0}],
+                    "lead_time_mix": [{"days": 5, "share": 1.0}],
+                },
+                {
+                    "date": "2026-05-18",
+                    "case_count": 2,
+                    "workload_intensity": "high",
+                    "release_windows": [{"start": "10:00", "end": "11:00", "share": 1.0}],
+                    "lead_time_mix": [{"days": 5, "share": 1.0}],
+                },
+            ],
+        }
+    )
+
+    with pytest.raises(TraceGenerationError, match=r"duplicate demand pattern date '2026-05-18'"):
+        RealismCompiler(
+            config=config,
+            client=FakeRealismClient([response]),
+            cache_dir=tmp_path,
+            max_retries=1,
+        ).compile_horizon_demand_patterns()
 
 
 def test_realism_compiler_rejects_horizon_pattern_that_cannot_finish(tmp_path: Path) -> None:
@@ -645,7 +689,7 @@ def test_realism_compiler_rejects_invalid_horizon_pattern_share(tmp_path: Path) 
         ]
     )
 
-    with pytest.raises(TraceGenerationError, match="release_windows shares must sum to 1.0"):
+    with pytest.raises(TraceGenerationError, match=r"release_windows shares must sum to 1\.0"):
         RealismCompiler(config=config, client=client, cache_dir=tmp_path, max_retries=1).compile()
 
 

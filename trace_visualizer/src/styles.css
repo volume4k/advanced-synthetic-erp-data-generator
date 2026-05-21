@@ -16,7 +16,8 @@
   --error-bg: #ffe9e4;
   --error-text: #89311f;
   --shadow: 0 18px 50px rgba(31, 51, 48, 0.08);
-  --mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
+  --mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Mono", "Consolas", monospace;
+
   color: var(--text);
   background:
     radial-gradient(circle at 18% 0%, rgba(47, 127, 117, 0.08), transparent 32rem),

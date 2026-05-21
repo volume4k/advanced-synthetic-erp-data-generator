@@ -19,7 +19,7 @@ from erp_trace_generator.fraud import FRAUD_TRANSFORMERS, register_fraud_transfo
 from erp_trace_generator.generator import generate_trace_artifacts
 from erp_trace_generator.models import CasePlan, FraudScenario, InputBinding, MasterDataEntry, MinuteRange, PlannedStep, ProcessStep
 from erp_trace_generator.planning import plan_cases, plan_steps, plan_waves
-from erp_trace_generator.realism import ActorRealismCriteria, CompiledRealismCriteria, DemandRelease
+from erp_trace_generator.realism import ActorRealismCriteria, CompiledRealismCriteria, DemandRelease, default_demand_releases
 from erp_trace_generator.schema_export import schema_output_paths
 from erp_trace_generator.timeline import TimelinePlanner
 
@@ -632,6 +632,47 @@ def test_plan_cases_sets_gross_amount_from_quantity_and_target_price(tmp_path: P
     assert cases[1].gross_amount == 80.0
 
 
+def test_plan_cases_preserves_explicit_empty_demand_releases(tmp_path: Path) -> None:
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, _base_config())
+    config = load_generation_config(config_path)
+
+    with pytest.raises(ValueError, match="demand_releases must match configured case_count"):
+        plan_cases(config, Random(17), demand_releases=[])
+
+
+def test_default_demand_releases_roll_across_working_hours(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["caseCount"] = 4
+    payload["runSettings"]["runHorizonDays"] = 2
+    payload["runSettings"]["workingHours"]["coreEnd"] = "09:00"
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+
+    releases = default_demand_releases(config)
+
+    assert [release.release_time.isoformat() for release in releases] == [
+        "2026-05-18T08:00:00+02:00",
+        "2026-05-18T08:30:00+02:00",
+        "2026-05-19T08:00:00+02:00",
+        "2026-05-19T08:30:00+02:00",
+    ]
+
+
+def test_default_demand_releases_fail_when_horizon_has_too_few_slots(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["caseCount"] = 3
+    payload["runSettings"]["runHorizonDays"] = 1
+    payload["runSettings"]["workingHours"]["coreEnd"] = "09:00"
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+
+    with pytest.raises(TraceGenerationError, match="default demand releases cannot fit caseCount"):
+        default_demand_releases(config)
+
+
 def test_binding_resolver_reports_invalid_literal_casts() -> None:
     case = CasePlan(
         case_id="C001",
@@ -739,6 +780,7 @@ def test_manifest_actor_projection_uses_planned_actor_session_ids(tmp_path: Path
 
     manifest = _post_processing_manifest(config, [case], [planned_step], "RUN_TEST", "config-hash")
 
+    assert manifest["realism_criteria_hash"] is None
     assert manifest["actor_projection"] == [
         {
             "synthetic_actor_id": "procurement_01",
@@ -992,6 +1034,18 @@ def test_plan_cases_excludes_blocked_materials_without_release_material(tmp_path
     assert {case.material_id for case in cases} == {"MB026"}
 
 
+def test_config_deduplicates_blocked_materials_before_all_materials_check(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["realism"] = {"blockedMaterials": ["MA025", "MA025"]}
+    payload["masterData"].append({**payload["masterData"][0], "materialId": "MB026"})
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    config = load_generation_config(config_path)
+
+    assert config.run_settings.realism.blocked_materials == ("MA025", "MA025")
+
+
 def test_wave_scheduler_waits_for_all_dependency_parents(tmp_path: Path) -> None:
     payload = _base_config()
     payload["processes"][0]["dependencies"] = [
@@ -1198,6 +1252,7 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
     execution_trace = yaml.safe_load(artifacts.execution_trace_path.read_text(encoding="utf-8"))
     assert execution_trace["trace_version"] == "0.2"
     assert execution_trace["run_id"] == "RUN_TEST_001"
+    assert execution_trace["realism_criteria_hash"] == execution_trace["llm_metadata"]["realism_criteria_hash"]
     assert execution_trace["actor_sessions"] == [
         {
             "actor_session_id": "procurement_01-session",
@@ -1290,6 +1345,7 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
     ExecutionTraceArtifact.model_validate(execution_trace)
     PostProcessingManifestArtifact.model_validate(manifest)
     assert manifest["run_id"] == "RUN_TEST_001"
+    assert manifest["realism_criteria_hash"] == execution_trace["realism_criteria_hash"]
     assert manifest["timestamp_policy"]["source"] == "planned_synthetic_time"
     assert [item["id"] for item in manifest["post_processing_exports"]] == [
         "change_documents",

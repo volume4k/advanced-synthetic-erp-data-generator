@@ -64,7 +64,7 @@ class SapSupplierInvoiceFlow:
         gross_amount.fill(format_number(params.gross_amount))
         gross_amount.press("Enter")
 
-        self._fill_tax_code_if_empty(page, params.tax_code)
+        self._set_tax_code(page, params.tax_code)
 
         page.get_by_role("button", name="Prüfen").click()
         self._delay("review_save_post", 1.5)
@@ -140,14 +140,20 @@ class SapSupplierInvoiceFlow:
             return
         close_button.click()
 
-    def _fill_tax_code_if_empty(self, page, value: str) -> None:
+    def _set_tax_code(self, page, value: str) -> None:
         tax_code = page.get_by_role("textbox", name="Steuerkennzeichen")
         tax_code.wait_for(state="visible")
-        if str(tax_code.input_value()).strip():
+        if str(tax_code.input_value()).strip() == value:
             return
         tax_code.click()
+        tax_code.press("ControlOrMeta+a")
         tax_code.fill(value)
         tax_code.press("Enter")
+        current_value = str(tax_code.input_value()).strip()
+        if current_value != value:
+            raise ToolExecutionError(
+                f"Failed to set supplier invoice tax code to '{value}'; current value is '{current_value}'"
+            )
 
 
 def run_create_supplier_invoice(

@@ -52,7 +52,6 @@ def _validated_manifest(payload: dict[str, Any]) -> dict[str, Any]:
     validated = PostProcessingManifestArtifact.model_validate(payload).model_dump(
         mode="json",
         by_alias=True,
-        exclude_none=True,
     )
     _validate_manifest_links(validated)
     return validated
@@ -95,6 +94,7 @@ def _execution_trace(
         "config_hash": config_hash,
         "tool_catalog_hash": tool_catalog_hash,
         "trace_generator_version": "0.1.0",
+        "realism_criteria_hash": realism_criteria.criteria_hash,
         "llm_metadata": {**realism_criteria.llm_metadata, "seed": seed},
         "actor_sessions": _session_records(config, planned_steps, realism_criteria),
         "cases": [_case_record(case) for case in cases],
@@ -145,6 +145,7 @@ def _post_processing_manifest(
         "manifest_version": "0.2",
         "run_id": run_id,
         "config_hash": config_hash,
+        "realism_criteria_hash": realism_criteria.criteria_hash if realism_criteria is not None else None,
         "timestamp_policy": {
             "source": "planned_synthetic_time",
             "preserve_process_order": True,
@@ -191,8 +192,6 @@ def _post_processing_manifest(
             "source_artifacts": ["execution_log", "object_registry"],
         },
     }
-    if realism_criteria is not None:
-        manifest["realism_criteria_hash"] = realism_criteria.criteria_hash
     return manifest
 
 
@@ -201,7 +200,11 @@ def _case_record(case: CasePlan) -> dict[str, Any]:
         "case_id": case.case_id,
         "process_type": case.process_type,
         "case_scenario_type": case.case_scenario_type,
-        "requested_delivery_date": (case.requested_delivery_date or case.delivery_date).isoformat(),
+        "requested_delivery_date": (
+            case.requested_delivery_date.isoformat()
+            if case.requested_delivery_date is not None
+            else None
+        ),
         "line_items": [
             {
                 "line_id": f"{case.case_id}_L1",

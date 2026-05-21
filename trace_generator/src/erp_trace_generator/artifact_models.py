@@ -114,6 +114,7 @@ class ExecutionTraceArtifact(ArtifactModel):
     config_hash: str
     tool_catalog_hash: str
     trace_generator_version: str
+    realism_criteria_hash: str | None
     llm_metadata: dict[str, Any]
     actor_sessions: list[TraceActorSession]
     cases: list[TraceCase]
@@ -186,7 +187,7 @@ class PostProcessingManifestArtifact(ArtifactModel):
     manifest_version: str
     run_id: str
     config_hash: str
-    realism_criteria_hash: str | None = None
+    realism_criteria_hash: str | None
     timestamp_policy: TimestampPolicy
     actor_projection: list[ActorProjection]
     case_scenario_types: list[CaseScenarioType]

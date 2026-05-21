@@ -98,6 +98,7 @@ class CanonicalTrace(CanonicalModel):
     config_hash: str
     tool_catalog_hash: str
     trace_generator_version: str
+    realism_criteria_hash: str | None = None
     llm_metadata: dict[str, Any]
     actor_sessions: list[CanonicalActorSession] = Field(min_length=1)
     cases: list[CanonicalCase]

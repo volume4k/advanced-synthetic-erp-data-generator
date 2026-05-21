@@ -77,6 +77,7 @@ class TimelinePlanner:
                 current_start = boundaries.pause_end
                 continue
             current_start = datetime.combine(current_start.date() + timedelta(days=1), self._work_start, self._tz)
+            continue
 
     def _boundaries_for(self, day: date, actor_criteria=None) -> _DayBoundaries:
         key = (_actor_key(actor_criteria), day)

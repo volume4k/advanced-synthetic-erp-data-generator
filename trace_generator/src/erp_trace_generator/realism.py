@@ -440,6 +440,17 @@ class RealismCompiler:
     def _price_anchors_from_json(self, raw_response: str) -> dict[str, PriceAnchor]:
         payload = _load_json_object(raw_response)
         response = PriceAnchorResponse.model_validate(payload)
+        returned_material_ids = [item.material_id for item in response.material_prices]
+        duplicates = sorted(
+            material_id
+            for material_id in set(returned_material_ids)
+            if returned_material_ids.count(material_id) > 1
+        )
+        if duplicates:
+            raise TraceGenerationError(
+                "price anchor response must include each configured material id exactly once; "
+                f"duplicates={duplicates}"
+            )
         anchors = {item.material_id: item for item in response.material_prices}
         active_master_data = self._active_master_data()
         expected_material_ids = [entry.material_id for entry in active_master_data]
@@ -510,6 +521,7 @@ class RealismCompiler:
         if "patterns" in payload:
             payload = {"patterns": payload["patterns"]}
         response = HorizonDemandResponse.model_validate(payload)
+        seen_dates: set[str] = set()
         total = sum(pattern.case_count for pattern in response.patterns)
         if total != self._config.run_settings.case_count:
             raise TraceGenerationError(
@@ -517,6 +529,9 @@ class RealismCompiler:
             )
         run_end_exclusive = self._config.run_settings.run_start_date + timedelta(days=self._config.run_settings.run_horizon_days)
         for pattern in response.patterns:
+            if pattern.date in seen_dates:
+                raise TraceGenerationError(f"duplicate demand pattern date '{pattern.date}'")
+            seen_dates.add(pattern.date)
             pattern_date = date.fromisoformat(pattern.date)
             if not self._config.run_settings.run_start_date <= pattern_date < run_end_exclusive:
                 raise TraceGenerationError(f"demand pattern date '{pattern.date}' is outside run horizon")
@@ -1128,19 +1143,46 @@ def compile_realism_criteria(
 def default_demand_releases(config: GenerationConfig) -> list[DemandRelease]:
     active_master_data = _active_master_data(config)
     tz = ZoneInfo(config.run_settings.target_timezone)
-    start = datetime.combine(
+    slot = datetime.combine(
         config.run_settings.run_start_date,
         time.fromisoformat(config.run_settings.working_hours.core_start),
         tz,
     )
-    return [
-        DemandRelease(
-            case_id=f"C{index:03d}",
-            release_time=start + timedelta(minutes=30 * (index - 1)),
-            material_id=active_master_data[(index - 1) % len(active_master_data)].material_id,
+    run_end_exclusive = config.run_settings.run_start_date + timedelta(days=config.run_settings.run_horizon_days)
+    releases: list[DemandRelease] = []
+    for index in range(1, config.run_settings.case_count + 1):
+        slot = _next_default_release_slot(config, slot, run_end_exclusive, tz)
+        releases.append(
+            DemandRelease(
+                case_id=f"C{index:03d}",
+                release_time=slot,
+                material_id=active_master_data[(index - 1) % len(active_master_data)].material_id,
+            )
         )
-        for index in range(1, config.run_settings.case_count + 1)
-    ]
+        slot += timedelta(minutes=30)
+    return releases
+
+
+def _next_default_release_slot(
+    config: GenerationConfig,
+    candidate: datetime,
+    run_end_exclusive: date,
+    tz: ZoneInfo,
+) -> datetime:
+    work_start = time.fromisoformat(config.run_settings.working_hours.core_start)
+    work_end = time.fromisoformat(config.run_settings.working_hours.core_end)
+    current = candidate if candidate.tzinfo is not None else candidate.replace(tzinfo=tz)
+    while current.date() < run_end_exclusive:
+        day_start = datetime.combine(current.date(), work_start, tz)
+        day_end = datetime.combine(current.date(), work_end, tz)
+        if current < day_start:
+            return day_start
+        if current < day_end:
+            return current
+        current = datetime.combine(current.date() + timedelta(days=1), work_start, tz)
+    raise TraceGenerationError(
+        "default demand releases cannot fit caseCount into configured run horizon and working hours"
+    )
 
 
 def _criteria_payload(

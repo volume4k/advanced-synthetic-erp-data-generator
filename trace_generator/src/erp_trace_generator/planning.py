@@ -15,7 +15,7 @@ from erp_trace_generator.timeline import TimelinePlanner
 
 
 def plan_cases(config: GenerationConfig, rng: Random, *, demand_releases: list[DemandRelease] | None = None) -> list[CasePlan]:
-    releases = demand_releases or default_demand_releases(config)
+    releases = demand_releases if demand_releases is not None else default_demand_releases(config)
     if len(releases) != config.run_settings.case_count:
         raise ValueError("demand_releases must match configured case_count")
     cases: list[CasePlan] = []

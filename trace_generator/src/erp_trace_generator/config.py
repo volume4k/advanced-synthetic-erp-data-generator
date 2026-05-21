@@ -319,14 +319,15 @@ def _validate(config: GenerationConfig) -> None:
     if missing_processes:
         raise TraceGenerationError(f"Active process type not configured: {sorted(missing_processes)}")
     master_material_ids = {item.material_id for item in config.master_data}
+    blocked_material_ids = set(config.run_settings.realism.blocked_materials)
     unknown_blocked_materials = sorted(
-        set(config.run_settings.realism.blocked_materials) - master_material_ids
+        blocked_material_ids - master_material_ids
     )
     if unknown_blocked_materials:
         raise TraceGenerationError(
             f"runSettings.realism.blockedMaterials references unknown material(s): {unknown_blocked_materials}"
         )
-    if len(config.run_settings.realism.blocked_materials) >= len(config.master_data):
+    if len(blocked_material_ids) >= len(master_material_ids):
         raise TraceGenerationError("runSettings.realism.blockedMaterials cannot block all configured materials")
 
     actor_ids = {actor.id for actor in config.actors}

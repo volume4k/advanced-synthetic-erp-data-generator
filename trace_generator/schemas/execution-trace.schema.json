@@ -507,6 +507,17 @@
       "title": "Llm Metadata",
       "type": "object"
     },
+    "realism_criteria_hash": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Realism Criteria Hash"
+    },
     "run_id": {
       "title": "Run Id",
       "type": "string"
@@ -533,6 +544,7 @@
     "config_hash",
     "tool_catalog_hash",
     "trace_generator_version",
+    "realism_criteria_hash",
     "llm_metadata",
     "actor_sessions",
     "cases",
