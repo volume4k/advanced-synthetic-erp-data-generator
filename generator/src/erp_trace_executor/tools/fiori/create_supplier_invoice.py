@@ -18,7 +18,6 @@ from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, format_number, 
 
 INVOICE_LINK_PATTERN = re.compile(r"(\d+)/(\d{4})")
 BALANCE_NOT_ZERO_PATTERN = re.compile(r"Saldo\s+ist\s+ungleich\s+null", re.IGNORECASE)
-NET_AMOUNT_TEXTBOX_NAME = re.compile(r"Nettobetrag|Netto\s*betrag", re.IGNORECASE)
 SUPPLIER_INVOICE_READY_TIMEOUT_MS = 90_000
 SUPPLIER_INVOICE_READY_POLL_MS = 1_000
 
@@ -70,11 +69,11 @@ class SapSupplierInvoiceFlow:
         page.get_by_role("textbox", name="Rechnungsdatum").press("Tab")
         page.get_by_role("textbox", name="Buchungsdatum").press("Tab")
 
-        net_amount = page.get_by_role("textbox", name=NET_AMOUNT_TEXTBOX_NAME)
-        net_amount.click()
-        net_amount.press("ControlOrMeta+a")
-        net_amount.fill(format_number(params.invoice_amount))
-        net_amount.press("Enter")
+        gross_amount = page.get_by_role("textbox", name="Bruttobetrag", exact=True)
+        gross_amount.click()
+        gross_amount.press("ControlOrMeta+a")
+        gross_amount.fill(format_number(params.invoice_amount))
+        gross_amount.press("Enter")
 
         self._fill_textbox(page, "Rechnungssteller", params.invoicing_party)
         page.get_by_role("textbox", name="Rechnungssteller").press("Enter")
