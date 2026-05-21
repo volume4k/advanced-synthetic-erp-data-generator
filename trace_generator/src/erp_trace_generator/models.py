@@ -312,10 +312,6 @@ class CasePlan:
     requested_delivery_date: date | None = None
     case_scenario_type: str = "NORMAL"
 
-    @property
-    def invoice_amount(self) -> float:
-        return self.gross_amount
-
 
 @dataclass
 class PlannedStep:

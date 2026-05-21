@@ -15,15 +15,9 @@ from erp_trace_executor.tooling import ToolSpec
 from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, noop_delay, runtime_delay_callback
 
 MATERIAL_DOCUMENT_LINK_PATTERN = re.compile(r"Materialbeleg\s+(\d+)/?")
-MATERIAL_VALUATION_LOCK_PATTERN = re.compile(
-    r"Bewertungsdaten\s+zum\s+Material\s+(?P<material>\S+)\s+sind\s+von\s+Benutzer\s+(?P<user>\S+)\s+gesperrt",
-    re.IGNORECASE,
-)
 NO_SELECTABLE_POSITION_PATTERN = re.compile(
     r"Beleg\s+\d+\s+enthält keine wählbare Position"
 )
-MATERIAL_VALUATION_LOCK_RETRIES = 3
-MATERIAL_VALUATION_LOCK_RETRY_DELAY_MS = 30_000
 STORAGE_LOCATION_CELL_SELECTOR = '[id*="idStorageLocation_inputCell"][id$="-inner"]'
 STORAGE_LOCATION_OPTION_SELECTOR = 'span[id*="idStorageLocation"]'
 StorageLocation = Literal["Finished Goods", "Trading Goods", "Miscellaneous", "Returns"]
@@ -80,7 +74,11 @@ class SapGoodsReceiptFlow:
             STORAGE_LOCATION_OPTION_SELECTOR, has_text=params.storage_location
         ).first.click()
         self._delay("review_save_post", 1.5)
-        material_document = self._post_with_material_lock_retry(page, params)
+        page.get_by_role("button", name="Buchen", exact=True).click()
+
+        success_dialog = page.locator('[role="dialog"]', has_text="Materialbeleg").first
+        success_dialog.wait_for(state="visible")
+        material_document = _extract_material_document(success_dialog.inner_text())
 
         page.get_by_role("button", name="OK").click()
         return {
@@ -99,43 +97,6 @@ class SapGoodsReceiptFlow:
         raise ToolExecutionError(
             f"Purchase order '{purchase_order}' contains no selectable goods receipt position: {message.inner_text()}"
         )
-
-    def _post_with_material_lock_retry(self, page, params: CreateGoodsReceiptInput) -> str:
-        last_lock: tuple[str, str, str] | None = None
-        for attempt in range(1, MATERIAL_VALUATION_LOCK_RETRIES + 1):
-            page.get_by_role("button", name="Buchen", exact=True).click()
-            success_dialog = page.locator('[role="dialog"]', has_text="Materialbeleg").first
-            try:
-                success_dialog.wait_for(state="visible", recover_fiori_messages=False)
-                return _extract_material_document(success_dialog.inner_text())
-            except PlaywrightTimeoutError as exc:
-                lock = self._material_valuation_lock_message(page)
-                if lock is None:
-                    raise
-                last_lock = lock
-                if attempt < MATERIAL_VALUATION_LOCK_RETRIES:
-                    page.wait_for_timeout(MATERIAL_VALUATION_LOCK_RETRY_DELAY_MS)
-                    continue
-                material_id, locking_user, message_text = lock
-                raise ToolExecutionError(
-                    "Material valuation data stayed locked while posting goods receipt; "
-                    f"purchase_order={params.purchase_order}; "
-                    f"material_id={material_id}; "
-                    f"locking_user={locking_user}; "
-                    f"attempts={MATERIAL_VALUATION_LOCK_RETRIES}; "
-                    f"sap_message={message_text}"
-                ) from exc
-        assert last_lock is not None
-        raise AssertionError("unreachable material valuation lock retry state")
-
-    def _material_valuation_lock_message(self, page) -> tuple[str, str, str] | None:
-        messages = page.handle_messages()
-        for message in messages:
-            message_text = str(getattr(message, "text", ""))
-            match = MATERIAL_VALUATION_LOCK_PATTERN.search(message_text)
-            if match is not None:
-                return match.group("material"), match.group("user"), message_text
-        return None
 
 
 def run_create_goods_receipt(

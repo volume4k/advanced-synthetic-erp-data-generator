@@ -158,9 +158,9 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
           value = "vendor_id"
         }
         new objects.ToolInputBinding {
-          field = "invoice_amount"
+          field = "gross_amount"
           source = "derived"
-          value = "invoice_amount"
+          value = "gross_amount"
         }
         new objects.ToolInputBinding {
           field = "purchase_order"
@@ -223,7 +223,7 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
         new objects.ToolInputBinding {
           field = "amount"
           source = "derived"
-          value = "invoice_amount"
+          value = "gross_amount"
         }
         new objects.ToolInputBinding {
           field = "currency"

@@ -112,7 +112,7 @@ Active steps must have a tool, bindings for every required tool input, and at le
 
 `plannedDateInputBindings` hold planned date inputs for the canonical trace and post-processing manifest. Use them when SAP runtime either cannot accept the planned date, as with goods receipt, or when post-processing needs a stable planned date contract.
 
-Supported binding sources are `literal`, `master_data`, `case`, `planned_date`, `prior_output`, and `derived`. Supported derived values in v1 are `invoice_amount`, `gross_amount` as a legacy alias, `fiori_delivery_date`, `fiori_payment_posting_date`, and `storage_location_label`.
+Supported binding sources are `literal`, `master_data`, `case`, `planned_date`, `prior_output`, and `derived`. Supported derived values in v1 are `gross_amount`, `fiori_delivery_date`, `fiori_payment_posting_date`, and `storage_location_label`.
 
 Dependencies define process-step ordering:
 

@@ -163,7 +163,7 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
     requiredInputFields {
       "invoice_date"
       "invoicing_party"
-      "invoice_amount"
+      "gross_amount"
       "purchase_order"
     }
     inputProperties {
@@ -180,7 +180,7 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
         defaultValue = null
       }
       new objects.ToolInputProperty {
-        name = "invoice_amount"
+        name = "gross_amount"
         schemaType = "number"
         required = true
         defaultValue = null

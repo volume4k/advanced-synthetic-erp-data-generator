@@ -152,7 +152,7 @@ def _base_config() -> dict:
             ),
             "fiori.create_supplier_invoice": _tool(
                 "fiori.create_supplier_invoice",
-                ["invoice_date", "invoicing_party", "invoice_amount", "purchase_order"],
+                ["invoice_date", "invoicing_party", "gross_amount", "purchase_order"],
             ),
             "fiori.send_payment": _tool(
                 "fiori.send_payment",
@@ -264,7 +264,7 @@ def _input_bindings(step_type: str) -> list[dict]:
         "enter_incoming_invoice": [
             _binding("invoice_date", "derived", "fiori_delivery_date"),
             _binding("invoicing_party", "master_data", "vendor_id"),
-            _binding("invoice_amount", "derived", "invoice_amount"),
+            _binding("gross_amount", "derived", "gross_amount"),
             _binding("purchase_order", "prior_output", "purchase_order.po_number"),
             _binding("tax_code", "literal", "XI"),
         ],
@@ -275,7 +275,7 @@ def _input_bindings(step_type: str) -> list[dict]:
             _binding("supplier", "master_data", "vendor_id"),
             _binding("accounting_document", "prior_output", "supplier_invoice.invoice_number"),
             _binding("general_ledger_account", "literal", "1800000"),
-            _binding("amount", "derived", "invoice_amount"),
+            _binding("amount", "derived", "gross_amount"),
             _binding("currency", "master_data", "currency"),
         ],
     }[step_type]
@@ -577,7 +577,6 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
             InputBinding("sample_step", "purchase_order", "prior_output", "purchase_order.po_number"),
             InputBinding("sample_step", "price_unit", "literal", "1", "int"),
             InputBinding("sample_step", "amount", "derived", "gross_amount"),
-            InputBinding("sample_step", "invoice_amount", "derived", "invoice_amount"),
             InputBinding("sample_step", "document_date", "derived", "fiori_delivery_date"),
             InputBinding("sample_step", "storage_location", "derived", "storage_location_label"),
         ),
@@ -595,7 +594,6 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
         "purchase_order": "$purchase_order.po_number",
         "price_unit": 1,
         "amount": 200.0,
-        "invoice_amount": 200.0,
         "document_date": "05/18/2026",
         "storage_location": "Trading Goods",
     }
@@ -605,7 +603,7 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
     }
 
 
-def test_plan_cases_sets_invoice_amount_from_quantity_and_target_price(tmp_path: Path) -> None:
+def test_plan_cases_sets_gross_amount_from_quantity_and_target_price(tmp_path: Path) -> None:
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, _base_config())
     config = load_generation_config(config_path)
@@ -632,8 +630,8 @@ def test_plan_cases_sets_invoice_amount_from_quantity_and_target_price(tmp_path:
         ],
     )
 
-    assert cases[0].invoice_amount == 86.42
-    assert cases[1].invoice_amount == 80.0
+    assert cases[0].gross_amount == 86.42
+    assert cases[1].gross_amount == 80.0
 
 
 def test_binding_resolver_reports_invalid_literal_casts() -> None:
