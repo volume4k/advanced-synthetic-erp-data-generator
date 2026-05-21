@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel, ConfigDict
 
 from erp_trace_executor.context import ExecutionContext
@@ -43,13 +43,7 @@ class SapGoodsReceiptFlow:
         page = self._page
 
         self._delay("app_open_search", 1.5)
-        page.get_by_role("button", name="Suche öffnen").click()
-        page.get_by_role("searchbox", name="Suchen").fill(
-            "Wareneingang zu Einkaufsbeleg buchen"
-        )
-        page.get_by_role("gridcell", name="Wareneingang zu Einkaufsbeleg").locator(
-            "b"
-        ).click(retry_on_next_wait=True)
+        self._open_goods_receipt_app(page)
 
         purchase_order = page.get_by_role("textbox", name="Einkaufsbeleg")
         purchase_order.wait_for(state="visible")
@@ -96,6 +90,34 @@ class SapGoodsReceiptFlow:
 
         raise ToolExecutionError(
             f"Purchase order '{purchase_order}' contains no selectable goods receipt position: {message.inner_text()}"
+        )
+
+    def _open_goods_receipt_app(self, page) -> None:
+        app_url = f"{page.url.split('#', 1)[0]}#PurchaseOrder-createGR&/"
+        page.goto(app_url)
+        try:
+            page.get_by_role("textbox", name="Einkaufsbeleg").wait_for(
+                state="visible",
+                timeout=30_000,
+            )
+            return
+        except PlaywrightTimeoutError:
+            pass
+
+        page.get_by_role("button", name="Suche öffnen").click()
+        page.get_by_role("searchbox", name="Suchen").fill(
+            "Wareneingang zu Einkaufsbeleg buchen"
+        )
+        tile = page.get_by_role("gridcell", name="Wareneingang zu Einkaufsbeleg").locator("b")
+        try:
+            tile.click(timeout=60_000, retry_on_next_wait=True)
+        except PlaywrightError as exc:
+            if "Timeout" not in str(exc):
+                raise
+            page.goto(app_url)
+        page.get_by_role("textbox", name="Einkaufsbeleg").wait_for(
+            state="visible",
+            timeout=90_000,
         )
 
 
