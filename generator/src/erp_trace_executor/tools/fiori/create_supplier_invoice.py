@@ -53,7 +53,9 @@ class SapSupplierInvoiceFlow:
         page.get_by_role("textbox", name="Rechnungsdatum").press("Enter")
 
         self._fill_textbox(page, "Bestellung/Lieferplan", params.purchase_order)
+        self._delay("form_section_fill", 1.0)
         page.get_by_role("textbox", name="Bestellung/Lieferplan").press("Enter")
+        self._delay("form_section_fill", 1.0)
         self._click_close_if_present(page)
 
         gross_amount = page.get_by_role("textbox", name="Bruttobetrag", exact=True)
