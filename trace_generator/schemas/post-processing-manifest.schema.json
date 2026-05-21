@@ -120,7 +120,10 @@
           "type": "string"
         },
         "runtime_value_policy": {
-          "const": "sap_current_date",
+          "enum": [
+            "sap_current_date",
+            "executor_current_date"
+          ],
           "title": "Runtime Value Policy",
           "type": "string"
         },
@@ -316,6 +319,17 @@
       "title": "Post Processing Exports",
       "type": "array"
     },
+    "realism_criteria_hash": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Realism Criteria Hash"
+    },
     "required_sap_object_keys": {
       "items": {
         "$ref": "#/$defs/RequiredSapObjectKeys"
@@ -335,6 +349,7 @@
     "manifest_version",
     "run_id",
     "config_hash",
+    "realism_criteria_hash",
     "timestamp_policy",
     "actor_projection",
     "case_scenario_types",

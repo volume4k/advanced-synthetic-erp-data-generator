@@ -1,62 +1,103 @@
 import "objects.pkl"
 
+// Global Bike U.S. P2P actor pool.
+// Source: 05 Materialwirtschaft Fallstudie MM v4.3.1, Prozessübersicht.
+// The same names also appear in the MM data sheet.
+// Actors are fixed to MI00 because this file is intended for a Miami P2P run.
 actors: Listing<objects.SyntheticActor> = new Listing {
   new objects.SyntheticActor {
-    id = "procurement_01"
-    displayName = "Dieter Einkauf"
-    role = "procurement"
+    id = "inventory_manager_mi00"
+    displayName = "Wilton Saban"
+    role = "inventory_manager"
     timezone = "America/New_York"
     workLocation = "MI00"
-    speedFactor = 1.2
+    personaDescription = ""
+    delayMultiplier = 1.15
+    runtimeDelayCapSeconds = 4.0
     realismProfile {
-      workerType = "relaxed procurement clerk"
-      workingHoursDeviation = -2.5
-      pauseCharacteristicsIndex = 12
+      workerType = "inventory manager"
+      workingHoursDeviation = -0.5
+      pauseCharacteristicsIndex = 10
     }
-    exposeInFinalDatasetAs = "procurement_01"
+    realismGuardrails {
+      delayMultiplierMin = 0.9
+      delayMultiplierMax = 1.7
+      workdayDeviationHoursMin = -1.5
+      workdayDeviationHoursMax = 1.0
+      pauseDurationMinutesMin = 25
+      pauseDurationMinutesMax = 75
+      runtimeDelayCapSecondsMin = 2.0
+      runtimeDelayCapSecondsMax = 6.0
+    }
+    exposeInFinalDatasetAs = "inventory_manager_mi00"
     capabilities {
       new objects.ActorCapability {
         processType = "procure_to_pay"
         stepTypes {
           "create_purchase_requisition"
+        }
+      }
+    }
+  }
+  new objects.SyntheticActor {
+    id = "buyer_mi00"
+    displayName = "Alberto Conti"
+    role = "buyer"
+    timezone = "America/New_York"
+    workLocation = "MI00"
+    personaDescription = ""
+    delayMultiplier = 1.0
+    runtimeDelayCapSeconds = 4.0
+    realismProfile {
+      workerType = "purchasing employee"
+      workingHoursDeviation = 0.0
+      pauseCharacteristicsIndex = 9
+    }
+    realismGuardrails {
+      delayMultiplierMin = 0.8
+      delayMultiplierMax = 1.6
+      workdayDeviationHoursMin = -1.0
+      workdayDeviationHoursMax = 1.5
+      pauseDurationMinutesMin = 20
+      pauseDurationMinutesMax = 70
+      runtimeDelayCapSecondsMin = 1.5
+      runtimeDelayCapSecondsMax = 6.0
+    }
+    exposeInFinalDatasetAs = "buyer_mi00"
+    capabilities {
+      new objects.ActorCapability {
+        processType = "procure_to_pay"
+        stepTypes {
           "create_purchase_order"
         }
       }
     }
   }
   new objects.SyntheticActor {
-    id = "procurement_manager_01"
-    displayName = "Marta Freigabe"
-    role = "procurement_manager"
+    id = "goods_receipt_clerk_mi00"
+    displayName = "Tatiana Karsova"
+    role = "goods_receipt_clerk"
     timezone = "America/New_York"
     workLocation = "MI00"
-    speedFactor = 0.9
+    personaDescription = ""
+    delayMultiplier = 1.3
+    runtimeDelayCapSeconds = 5.0
     realismProfile {
-      workerType = "busy procurement manager"
-      workingHoursDeviation = 1.0
-      pauseCharacteristicsIndex = 8
+      workerType = "goods receipt clerk"
+      workingHoursDeviation = -0.75
+      pauseCharacteristicsIndex = 11
     }
-    exposeInFinalDatasetAs = "procurement_manager_01"
-    capabilities {
-      new objects.ActorCapability {
-        processType = "procure_to_pay"
-        stepTypes {}
-      }
+    realismGuardrails {
+      delayMultiplierMin = 1.0
+      delayMultiplierMax = 2.1
+      workdayDeviationHoursMin = -1.5
+      workdayDeviationHoursMax = 0.5
+      pauseDurationMinutesMin = 25
+      pauseDurationMinutesMax = 80
+      runtimeDelayCapSecondsMin = 2.0
+      runtimeDelayCapSecondsMax = 7.0
     }
-  }
-  new objects.SyntheticActor {
-    id = "warehouse_01"
-    displayName = "Werner Lager"
-    role = "warehouse"
-    timezone = "America/New_York"
-    workLocation = "MI00"
-    speedFactor = 1.1
-    realismProfile {
-      workerType = "routine warehouse clerk"
-      workingHoursDeviation = -1.0
-      pauseCharacteristicsIndex = 10
-    }
-    exposeInFinalDatasetAs = "warehouse_01"
+    exposeInFinalDatasetAs = "goods_receipt_clerk_mi00"
     capabilities {
       new objects.ActorCapability {
         processType = "procure_to_pay"
@@ -67,18 +108,30 @@ actors: Listing<objects.SyntheticActor> = new Listing {
     }
   }
   new objects.SyntheticActor {
-    id = "accounts_payable_01"
-    displayName = "Anna Kreditoren"
-    role = "accounts_payable"
+    id = "accounts_payable_clerk_mi00"
+    displayName = "Silvia Cassano"
+    role = "accounts_payable_clerk"
     timezone = "America/New_York"
     workLocation = "MI00"
-    speedFactor = 1.0
+    personaDescription = ""
+    delayMultiplier = 1.05
+    runtimeDelayCapSeconds = 4.0
     realismProfile {
-      workerType = "structured accounts payable clerk"
-      workingHoursDeviation = 0.5
+      workerType = "accounts payable clerk"
+      workingHoursDeviation = 0.25
       pauseCharacteristicsIndex = 9
     }
-    exposeInFinalDatasetAs = "accounts_payable_01"
+    realismGuardrails {
+      delayMultiplierMin = 0.8
+      delayMultiplierMax = 1.7
+      workdayDeviationHoursMin = -0.75
+      workdayDeviationHoursMax = 1.75
+      pauseDurationMinutesMin = 20
+      pauseDurationMinutesMax = 75
+      runtimeDelayCapSecondsMin = 1.5
+      runtimeDelayCapSecondsMax = 6.0
+    }
+    exposeInFinalDatasetAs = "accounts_payable_clerk_mi00"
     capabilities {
       new objects.ActorCapability {
         processType = "procure_to_pay"

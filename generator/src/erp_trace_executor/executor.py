@@ -80,6 +80,8 @@ class TraceExecutor:
 
             for wave in trace.execution_schedule.waves:
                 evidence_writer.log_event("wave_started", wave_id=wave.wave_id, wave_sequence_no=wave.sequence_no)
+                wave_tasks: list[_PlannedStepTask] = []
+                failed_wave_steps: list[tuple[_PlannedStepTask, Exception]] = []
                 for scheduled_step in sorted(wave.planned_steps, key=lambda item: item.startup_order):
                     planned_step = planned_steps_by_id[scheduled_step.planned_step_id]
                     case = cases_by_id[planned_step.case_id]
@@ -100,11 +102,12 @@ class TraceExecutor:
                     context = None
                     try:
                         spec, params, parent_references, context = self._prepare_canonical_node(record, context_factory)
-                        result = _run_context_operation(
+                        future = _submit_context_operation(
                             context,
-                            lambda active_context: self._run_tool_with_message_capture(active_context, spec, params),
+                            lambda active_context, record=record, spec=spec, params=params, planned_step=planned_step: (
+                                self._run_prepared_canonical_step(record, active_context, spec, params, planned_step)
+                            ),
                         )
-                        _validate_required_sap_object_keys(planned_step, result)
                     except KeyboardInterrupt:
                         evidence_writer.log_event("planned_step_interrupted", **event_meta)
                         evidence_writer.log_event("run_interrupted", **event_meta)
@@ -142,7 +145,51 @@ class TraceExecutor:
                                 evidence_writer.log_event("run_failed", error=_safe_error_text(reset_exc), **event_meta)
                                 raise
                         continue
+                    wave_tasks.append(
+                        _PlannedStepTask(
+                            record=record,
+                            planned_step=planned_step,
+                            case_scenario_type=case.case_scenario_type,
+                            event_meta=event_meta,
+                            parent_references=parent_references,
+                            context=context,
+                            future=future,
+                        )
+                    )
 
+                for task in wave_tasks:
+                    try:
+                        result = task.future.result()
+                    except KeyboardInterrupt:
+                        evidence_writer.log_event("planned_step_interrupted", **task.event_meta)
+                        evidence_writer.log_event("run_interrupted", **task.event_meta)
+                        raise
+                    except Exception as exc:
+                        failed_cases.add(task.planned_step.case_id)
+                        if isinstance(exc, _ToolOperationError):
+                            original_exc = exc.original
+                            sap_messages = exc.sap_messages
+                        else:
+                            original_exc = exc
+                            sap_messages = self._capture_fiori_messages_from_context(task.context)
+                        evidence_writer.log_event(
+                            "planned_step_failed",
+                            error=_safe_error_text(original_exc),
+                            sap_messages=sap_messages,
+                            **task.event_meta,
+                        )
+                        evidence_writer.log_event(
+                            "case_failed",
+                            error=_safe_error_text(original_exc),
+                            sap_messages=sap_messages,
+                            **task.event_meta,
+                        )
+                        failed_wave_steps.append((task, original_exc))
+                        continue
+
+                    record = task.record
+                    planned_step = task.planned_step
+                    event_meta = task.event_meta
                     results.append(result)
                     self._record_state_if_needed(record, result)
                     evidence_writer.log_event(
@@ -153,16 +200,35 @@ class TraceExecutor:
                     _write_object_registry_entries(
                         evidence_writer=evidence_writer,
                         node=planned_step,
-                        case_scenario_type=case.case_scenario_type,
+                        case_scenario_type=task.case_scenario_type,
                         result=result,
-                        parent_references=parent_references,
+                        parent_references=task.parent_references,
                     )
                     self._remember_home_url(record, result)
                     _run_context_operation(
-                        context,
-                        lambda active_context: self._return_home_after_tool(record, active_context, result),
+                        task.context,
+                        lambda active_context, record=record, result=result: (
+                            self._return_home_after_tool(record, active_context, result)
+                        ),
                     )
                     evidence_writer.log_event("planned_step_succeeded", **event_meta)
+
+                for task, original_exc in failed_wave_steps:
+                    if self._can_reset_home_after_failure_from_context(task.record, task.context):
+                        try:
+                            _run_context_operation(
+                                task.context,
+                                lambda active_context, record=task.record: self._return_home(record, active_context),
+                            )
+                        except Exception as reset_exc:
+                            evidence_writer.log_event(
+                                "home_reset_failed",
+                                error=_safe_error_text(reset_exc),
+                                failed_error=_safe_error_text(original_exc),
+                                **task.event_meta,
+                            )
+                            evidence_writer.log_event("run_failed", error=_safe_error_text(reset_exc), **task.event_meta)
+                            raise
                 evidence_writer.log_event("wave_completed", wave_id=wave.wave_id, wave_sequence_no=wave.sequence_no)
 
             evidence_writer.log_event("run_completed", failed_case_count=len(failed_cases))
@@ -265,7 +331,10 @@ class TraceExecutor:
             synthetic_actor_id=init_user.synthetic_actor_id,
             tool="fiori.login",
             input={},
-            meta={"kind": "init"},
+            meta={
+                "kind": "init",
+                **_human_delay_profile_meta(init_user.human_delay_profile),
+            },
             line_number=line_number,
         )
 
@@ -343,6 +412,18 @@ class TraceExecutor:
                 original=exc,
                 sap_messages=self._capture_fiori_messages(context),
             ) from exc
+
+    def _run_prepared_canonical_step(
+        self,
+        record: ExecutionTaskRecord,
+        context: Any,
+        spec: Any,
+        params: Any,
+        planned_step: CanonicalPlannedStep,
+    ) -> ToolResult:
+        result = self._run_tool_with_message_capture(context, spec, params)
+        _validate_required_sap_object_keys(planned_step, result)
+        return result
 
     def _capture_fiori_messages(self, context: Any) -> list[dict[str, str]]:
         if context is None or not hasattr(context, "get_browser_session"):
@@ -476,6 +557,17 @@ def _canonical_planned_step_to_record(node: CanonicalPlannedStep, meta: dict[str
 
 
 @dataclass(frozen=True)
+class _PlannedStepTask:
+    record: ExecutionTaskRecord
+    planned_step: CanonicalPlannedStep
+    case_scenario_type: str
+    event_meta: dict[str, Any]
+    parent_references: list[dict[str, Any]]
+    context: Any
+    future: Future[ToolResult]
+
+
+@dataclass(frozen=True)
 class _LoginTask:
     record: ExecutionTaskRecord
     future: Future[ToolResult]
@@ -569,6 +661,7 @@ def _canonical_event_meta(
     wave_sequence_no: int,
     startup_order: int,
 ) -> dict[str, Any]:
+    session = next((item for item in trace.actor_sessions if item.actor_session_id == node.actor_session_id), None)
     return {
         "run_id": trace.run_id,
         "wave_id": wave_id,
@@ -585,7 +678,14 @@ def _canonical_event_meta(
         "planned_synthetic_start": node.planned_synthetic_time.start,
         "planned_synthetic_end": node.planned_synthetic_time.end,
         "required_sap_object_keys": node.required_sap_object_keys,
+        **_human_delay_profile_meta(session.human_delay_profile if session is not None else None),
     }
+
+
+def _human_delay_profile_meta(profile: Any) -> dict[str, Any]:
+    if profile is None:
+        return {}
+    return {"human_delay_profile": profile.model_dump(mode="json")}
 
 
 def _validate_required_sap_object_keys(node: CanonicalPlannedStep, result: ToolResult) -> None:

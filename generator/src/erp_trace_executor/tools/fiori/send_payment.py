@@ -9,9 +9,10 @@ from pydantic import BaseModel, Field
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
-from erp_trace_executor.fiori_types import FioriCurrency, FioriDate
+from erp_trace_executor.fiori_types import FioriCurrency, FioriDate, runtime_safe_fiori_date
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
+from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, noop_delay, runtime_delay_callback
 
 
 PAYMENT_APP_NAME = "Ausgangszahlungen buchen"
@@ -45,17 +46,22 @@ class SendPaymentInput(BaseModel):
 class SapSendPaymentFlow:
     """Recorded SAP Fiori outgoing payment flow using a Fiori-aware page."""
 
-    def __init__(self, page) -> None:
+    def __init__(self, page, delay: RuntimeDelay = noop_delay) -> None:
         self._page = page
+        self._delay = delay
 
     def create(self, params: SendPaymentInput) -> dict[str, str | float]:
         page = self._page
+        posting_document_date = runtime_safe_fiori_date(params.posting_document_date)
+        posting_date = runtime_safe_fiori_date(params.posting_date) if params.posting_date is not None else None
 
+        self._delay("app_open_search", 1.5)
         self._open_payment_app(page)
+        self._delay("form_section_fill", 1.0)
         self._fill_textbox_if_visible(page, "Buchungskreis", params.company_code)
-        self._fill_textbox(page, "Buchungsbelegdatum", params.posting_document_date, commit=True)
-        if params.posting_date is not None:
-            self._fill_textbox(page, "Buchungsdatum", params.posting_date, commit=True)
+        self._fill_textbox(page, "Buchungsbelegdatum", posting_document_date, commit=True)
+        if posting_date is not None:
+            self._fill_textbox(page, "Buchungsdatum", posting_date, commit=True)
         self._fill_supplier(page, params.supplier)
 
         page.get_by_role("button", name="Posten anzeigen").click()
@@ -65,14 +71,17 @@ class SapSendPaymentFlow:
         self._fill_textbox(page, "Betrag", _format_amount(params.amount), commit=True)
         self._fill_currency_if_visible(page, params.currency)
 
+        self._delay("review_save_post", 1.5)
         page.get_by_role("button", name="Buchen", exact=True).click()
         payment_document = self._wait_for_payment_document(page)
 
         return {
             "payment_document": payment_document,
             "company_code": params.company_code,
-            "posting_document_date": params.posting_document_date,
-            "posting_date": params.posting_date or "",
+            "posting_document_date": posting_document_date,
+            "requested_posting_document_date": params.posting_document_date,
+            "posting_date": posting_date or "",
+            "requested_posting_date": params.posting_date or "",
             "supplier": params.supplier,
             "accounting_document": params.accounting_document,
             "general_ledger_account": params.general_ledger_account,
@@ -193,7 +202,7 @@ def run_send_payment(
     params: SendPaymentInput,
 ) -> ToolResult:
     page = context.get_fiori_page()
-    payment_data = SapSendPaymentFlow(page).create(params)
+    payment_data = SapSendPaymentFlow(page, delay=runtime_delay_callback(context)).create(params)
 
     return ToolResult(
         planned_step_id=context.record.planned_step_id,

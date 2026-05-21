@@ -166,6 +166,17 @@ def test_canonical_loader_rejects_v01_traces(tmp_path: Path) -> None:
         load_canonical_trace(path)
 
 
+def test_canonical_loader_accepts_requested_delivery_date_on_cases(tmp_path: Path) -> None:
+    payload = _canonical_payload()
+    payload["cases"][0]["requested_delivery_date"] = "2026-06-01"
+    path = tmp_path / "trace.execution-trace.yaml"
+    _write_yaml(path, payload)
+
+    trace = load_canonical_trace(path)
+
+    assert trace.cases[0].requested_delivery_date == "2026-06-01"
+
+
 def test_canonical_loader_rejects_wave_planned_step_refs_without_planned_steps(tmp_path: Path) -> None:
     payload = _canonical_payload()
     payload["execution_schedule"]["waves"][0]["planned_steps"][0]["planned_step_id"] = "missing-node"
@@ -205,6 +216,23 @@ def test_build_init_from_sessions_preserves_login_selectors() -> None:
     assert init.users[0].password_selector == "#pass"
     assert init.users[0].submit_selector == "#submit"
     assert init.users[0].success_selector == "#done"
+
+
+def test_build_init_from_sessions_preserves_human_delay_profile() -> None:
+    payload = _canonical_payload()
+    payload["actor_sessions"][0]["human_delay_profile"] = {
+        "delay_multiplier": 2.0,
+        "runtime_delay_cap_seconds": 2.5,
+    }
+    trace = CanonicalTrace.model_validate(payload)
+
+    init = build_init_from_actor_sessions(
+        trace,
+        {"SAP_USER_1_UN": "BUYER1", "SAP_USER_1_PW": "secret", "SAP_URL": "https://sap.example.test"},
+    )
+
+    assert init.users[0].human_delay_profile.delay_multiplier == 2.0
+    assert init.users[0].human_delay_profile.runtime_delay_cap_seconds == 2.5
 
 
 @pytest.mark.parametrize(
@@ -330,14 +358,18 @@ def test_canonical_executor_logs_registry_and_skips_failed_case(tmp_path: Path, 
         "C001_A2",
     ]
     events = _read_jsonl(tmp_path / "RUN_CANONICAL.execution-log.jsonl")
-    assert [event["event_type"] for event in events if event["event_type"].startswith("planned_step_")] == [
-        "planned_step_started",
-        "planned_step_succeeded",
-        "planned_step_started",
-        "planned_step_failed",
-        "planned_step_started",
-        "planned_step_succeeded",
-        "planned_step_skipped",
+    assert [
+        (event["event_type"], event.get("planned_step_id"))
+        for event in events
+        if event["event_type"].startswith("planned_step_")
+    ] == [
+        ("planned_step_started", "C001_A1"),
+        ("planned_step_started", "C002_A1"),
+        ("planned_step_succeeded", "C001_A1"),
+        ("planned_step_failed", "C002_A1"),
+        ("planned_step_started", "C001_A2"),
+        ("planned_step_skipped", "C002_A2"),
+        ("planned_step_succeeded", "C001_A2"),
     ]
     assert any(event["event_type"] == "case_failed" and event["case_id"] == "C002" for event in events)
     registry_entries = _read_jsonl(tmp_path / "RUN_CANONICAL.object-registry.jsonl")

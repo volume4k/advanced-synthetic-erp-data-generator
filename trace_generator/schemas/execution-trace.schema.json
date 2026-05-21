@@ -82,6 +82,27 @@
       "title": "ExecutionWave",
       "type": "object"
     },
+    "HumanDelayProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "delay_multiplier": {
+          "exclusiveMinimum": 0,
+          "title": "Delay Multiplier",
+          "type": "number"
+        },
+        "runtime_delay_cap_seconds": {
+          "minimum": 0,
+          "title": "Runtime Delay Cap Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "delay_multiplier",
+        "runtime_delay_cap_seconds"
+      ],
+      "title": "HumanDelayProfile",
+      "type": "object"
+    },
     "PlannedSyntheticTime": {
       "additionalProperties": false,
       "properties": {
@@ -127,6 +148,17 @@
         "actor_session_id": {
           "title": "Actor Session Id",
           "type": "string"
+        },
+        "human_delay_profile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HumanDelayProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "login_url_env_var": {
           "title": "Login Url Env Var",
@@ -229,6 +261,18 @@
         "process_type": {
           "title": "Process Type",
           "type": "string"
+        },
+        "requested_delivery_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requested Delivery Date"
         }
       },
       "required": [
@@ -463,6 +507,17 @@
       "title": "Llm Metadata",
       "type": "object"
     },
+    "realism_criteria_hash": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Realism Criteria Hash"
+    },
     "run_id": {
       "title": "Run Id",
       "type": "string"
@@ -489,6 +544,7 @@
     "config_hash",
     "tool_catalog_hash",
     "trace_generator_version",
+    "realism_criteria_hash",
     "llm_metadata",
     "actor_sessions",
     "cases",

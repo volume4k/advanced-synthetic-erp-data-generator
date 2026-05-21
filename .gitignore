@@ -15,4 +15,5 @@ __pycache__/
 
 # Generated configuration output
 configuration/build/
+generator/build/
 trace_generator/build/

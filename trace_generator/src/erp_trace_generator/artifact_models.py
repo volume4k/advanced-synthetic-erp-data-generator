@@ -31,7 +31,13 @@ class TraceCase(ArtifactModel):
     case_id: str
     process_type: str
     case_scenario_type: str
+    requested_delivery_date: str | None = None
     line_items: list[TraceLineItem]
+
+
+class HumanDelayProfile(ArtifactModel):
+    delay_multiplier: float = Field(gt=0)
+    runtime_delay_cap_seconds: float = Field(ge=0)
 
 
 class TraceActorSession(ArtifactModel):
@@ -45,6 +51,7 @@ class TraceActorSession(ArtifactModel):
     password_selector: str | None = None
     submit_selector: str | None = None
     success_selector: str | None = None
+    human_delay_profile: HumanDelayProfile | None = None
 
 
 class PlannedSyntheticTime(ArtifactModel):
@@ -107,6 +114,7 @@ class ExecutionTraceArtifact(ArtifactModel):
     config_hash: str
     tool_catalog_hash: str
     trace_generator_version: str
+    realism_criteria_hash: str | None
     llm_metadata: dict[str, Any]
     actor_sessions: list[TraceActorSession]
     cases: list[TraceCase]
@@ -170,7 +178,7 @@ class PlannedDateInputOverride(ArtifactModel):
     object_type: str
     field: str
     planned_value: str
-    runtime_value_policy: Literal["sap_current_date"]
+    runtime_value_policy: Literal["sap_current_date", "executor_current_date"]
     source: Literal["planned_date_inputs"]
     reason: str
 
@@ -179,6 +187,7 @@ class PostProcessingManifestArtifact(ArtifactModel):
     manifest_version: str
     run_id: str
     config_hash: str
+    realism_criteria_hash: str | None
     timestamp_policy: TimestampPolicy
     actor_projection: list[ActorProjection]
     case_scenario_types: list[CaseScenarioType]

@@ -24,6 +24,18 @@ class RealismProfile {
   pauseCharacteristicsIndex: Int
 }
 
+/// Hard bounds used to validate LLM-generated actor realism.
+class RealismGuardrails {
+  delayMultiplierMin: Float(this > 0) = 0.5
+  delayMultiplierMax: Float(this >= delayMultiplierMin) = 3.0
+  workdayDeviationHoursMin: Float = -1.0
+  workdayDeviationHoursMax: Float(this >= workdayDeviationHoursMin) = 1.0
+  pauseDurationMinutesMin: Int(this >= 0) = 30
+  pauseDurationMinutesMax: Int(this >= pauseDurationMinutesMin) = 75
+  runtimeDelayCapSecondsMin: Float(this >= 0) = 0.5
+  runtimeDelayCapSecondsMax: Float(this >= runtimeDelayCapSecondsMin) = 10.0
+}
+
 /// Inclusive minute range sampled by the trace generator.
 class MinuteRange {
   min: Int(this >= 0)
@@ -40,6 +52,30 @@ class WorkingHoursConfig {
   pauseWindowEnd: String(this.length > 0) = "13:30"
   pauseDurationMinutesMin: Int(this >= 0) = 30
   pauseDurationMinutesMax: Int(this >= pauseDurationMinutesMin) = 75
+}
+
+/// LLM realism compiler settings. Disabled keeps trace generation deterministic without LLM calls.
+class RealismCompilerSettings {
+  enabled: Boolean = false
+  maxRetries: Int(this >= 1) = 3
+  cacheDir: String(this.length > 0) = "configuration/build"
+  dailyCaseCountMin: Int(this >= 0) = 0
+  dailyCaseCountMax: Int(this >= dailyCaseCountMin) = 10000
+  maxPriceVariationPct: Float(this >= 0) = 0.05
+  maxDailyPriceTrendPct: Float(this >= 0) = 0.01
+  maxWorkloadDelayMultiplierBoost: Float(this >= 0) = 0.25
+  maxWorkloadWorkdayDeviationHoursBoost: Float(this >= 0) = 0.5
+  relativeDemandWeightMin: Int(this >= 1) = 1
+  relativeDemandWeightMax: Int(this >= relativeDemandWeightMin) = 100
+  quantityVariationPctMin: Float(this >= 0) = 0.05
+  quantityVariationPctMax: Float(this >= quantityVariationPctMin) = 0.5
+  maxBulkOrderShare: Float(this >= 0 && this <= 1) = 0.35
+  allowedOrderMultiples: Listing<Int(this >= 1)> = new Listing { 1; 5; 10; 20; 25; 50 }
+  maxMaterialSharePerHorizon: Float(this > 0 && this <= 1)? = null
+  requireAllActiveMaterialsInDemandProfile: Boolean = true
+  materialValuationLockEnabled: Boolean = true
+  materialValuationLockBufferSeconds: Int(this >= 0) = 120
+  blockedMaterials: Listing<String(this.length > 0)> = new Listing {}
 }
 
 /// Waiting-time range between two process steps.
@@ -89,8 +125,11 @@ class SyntheticActor {
   role: String(this.length > 0)
   timezone: String(this.length > 0)
   workLocation: String(this.length > 0)
-  speedFactor: Float(this > 0)
+  personaDescription: String
+  delayMultiplier: Float(this > 0)
+  runtimeDelayCapSeconds: Float(this >= 0)
   realismProfile: RealismProfile
+  realismGuardrails: RealismGuardrails = new RealismGuardrails {}
   exposeInFinalDatasetAs: String(this.length > 0)
   capabilities: Listing<ActorCapability>
 }
@@ -134,7 +173,7 @@ class ProcessDefinition {
   dependencies: Listing<ProcessDependency>
 }
 
-/// Valid master-data combination and sampling ranges.
+/// Valid master-data combination and hard sampling guardrails.
 class MasterDataEntry {
   materialId: String(this.length > 0)
   validVendors: Listing<String>
@@ -177,4 +216,5 @@ class RunSettings {
   interStepDelayMinutes: Listing<InterStepDelayRange> = new Listing {}
   storageLocationLabels: Mapping<String, String> = new Mapping {}
   postProcessingExportGroups: Listing<PostProcessingExportGroup> = new Listing {}
+  realism: RealismCompilerSettings = new RealismCompilerSettings {}
 }

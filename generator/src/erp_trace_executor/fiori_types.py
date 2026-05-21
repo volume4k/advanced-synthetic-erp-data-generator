@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 
 from pydantic import AfterValidator
@@ -33,6 +33,17 @@ def validate_fiori_date(value: str) -> str:
     except ValueError as exc:
         raise ValueError("Fiori date must be a valid calendar date") from exc
 
+    return value
+
+
+def runtime_safe_fiori_date(value: str, today: date | None = None) -> str:
+    """Return a SAP-runtime-safe Fiori date without changing trace chronology metadata."""
+
+    validate_fiori_date(value)
+    current_date = today or date.today()
+    requested_date = datetime.strptime(value, "%m/%d/%Y").date()
+    if requested_date > current_date:
+        return current_date.strftime("%m/%d/%Y")
     return value
 
 

@@ -118,5 +118,7 @@ _CASE_VALUE_ALIASES = {
     "quantity": "quantity",
     "target_price": "target_price",
     "targetPrice": "target_price",
+    "gross_amount": "gross_amount",
+    "grossAmount": "gross_amount",
     "currency": "currency",
 }

@@ -1,7 +1,7 @@
 import "objects.pkl"
 
 runSettings: objects.RunSettings = new objects.RunSettings {
-  caseCount = 3
+  caseCount = 50
   maxParallelActorSessions = 4
   targetTimezone = "America/New_York"
   activeProcessTypes {
@@ -11,6 +11,35 @@ runSettings: objects.RunSettings = new objects.RunSettings {
   runStartDate = "2026-05-18"
   runHorizonDays = 30
   queuePolicy = "fifo"
+  realism {
+    enabled = true
+    maxRetries = 3
+    cacheDir = "configuration/build"
+    dailyCaseCountMin = 0
+    dailyCaseCountMax = 10000
+    maxPriceVariationPct = 0.05
+    maxDailyPriceTrendPct = 0.01
+    maxWorkloadDelayMultiplierBoost = 0.25
+    maxWorkloadWorkdayDeviationHoursBoost = 0.5
+    relativeDemandWeightMin = 1
+    relativeDemandWeightMax = 100
+    quantityVariationPctMin = 0.05
+    quantityVariationPctMax = 0.5
+    maxBulkOrderShare = 0.35
+    allowedOrderMultiples = new Listing {
+      1
+      5
+      10
+      20
+      25
+      50
+    }
+    maxMaterialSharePerHorizon = 0.35
+    requireAllActiveMaterialsInDemandProfile = true
+    materialValuationLockEnabled = true
+    materialValuationLockBufferSeconds = 120
+    blockedMaterials = new Listing {}
+  }
   workingHours {
     coreStart = "08:00"
     coreEnd = "17:00"
@@ -72,6 +101,8 @@ runSettings: objects.RunSettings = new objects.RunSettings {
   storageLocationLabels {
     ["0001"] = "Finished Goods"
     ["0002"] = "Trading Goods"
+    ["FG00"] = "Finished Goods"
+    ["TG00"] = "Trading Goods"
   }
   postProcessingExportGroups {
     new objects.PostProcessingExportGroup {

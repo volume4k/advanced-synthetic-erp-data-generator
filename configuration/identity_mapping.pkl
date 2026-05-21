@@ -2,19 +2,19 @@ import "objects.pkl"
 
 identityMappings: Listing<objects.IdentityMapping> = new Listing {
   new objects.IdentityMapping {
-    syntheticActorId = "procurement_01"
+    syntheticActorId = "inventory_manager_mi00"
     technicalSapUserId = "TU_01"
   }
   new objects.IdentityMapping {
-    syntheticActorId = "procurement_manager_01"
-    technicalSapUserId = "TU_01"
+    syntheticActorId = "buyer_mi00"
+    technicalSapUserId = "TU_02"
   }
   new objects.IdentityMapping {
-    syntheticActorId = "warehouse_01"
-    technicalSapUserId = "TU_01"
+    syntheticActorId = "goods_receipt_clerk_mi00"
+    technicalSapUserId = "TU_03"
   }
   new objects.IdentityMapping {
-    syntheticActorId = "accounts_payable_01"
-    technicalSapUserId = "TU_01"
+    syntheticActorId = "accounts_payable_clerk_mi00"
+    technicalSapUserId = "TU_04"
   }
 }

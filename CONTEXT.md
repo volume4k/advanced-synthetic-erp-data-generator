@@ -52,6 +52,10 @@ _Avoid_: Report, table dump, export group
 The final dataset produced by the post-processor after applying planned timing, actor projection, labels, and failure policy.
 _Avoid_: Final output, generated data, reconciled export
 
+**Synthetic Timestamp Projection**:
+A post-processing transformation that replaces SAP export timestamp fields with planned synthetic timestamps in the synthetic dataset.
+_Avoid_: Timestamp rewrite, runtime timestamp, physical order fix
+
 **Execution Evidence**:
 The logical set of runtime artifacts produced by an execution run.
 _Avoid_: Canonical evidence file, combined evidence file, output bundle
@@ -128,6 +132,62 @@ _Avoid_: Object chain, lineage chain, relationship chain
 A planned business persona that owns synthetic work timing and final dataset identity.
 _Avoid_: User, account, technical user
 
+**Realism Guardrails**:
+Configured hard bounds that constrain LLM-generated timing and behavior values before the **Trace Generator** schedules planned work.
+_Avoid_: Prompt hints, soft preferences, unvalidated realism
+
+**Compiled Realism Criteria**:
+Validated structured realism data produced from natural-language descriptions and **Realism Guardrails** before scheduling.
+_Avoid_: Raw LLM answer, prompt output, schedule
+
+**Demand Pattern**:
+A compact daily demand shape that the **Trace Generator** expands into exact **Demand Releases**.
+_Avoid_: Demand batch, demand prompt, generated cases
+
+**Demand Release**:
+The planned moment when a **Process Case** becomes available for its first **Planned Step**.
+_Avoid_: Case start, order date, task start
+
+**Requested Delivery Date**:
+The requested warehouse delivery date used as the process case's planned delivery input and earliest goods-receipt gate.
+_Avoid_: Actual arrival date, runtime receipt date, warehouse arrival
+
+**Price Anchor**:
+A per-material price center used to sample realistic target prices inside configured price guardrails.
+_Avoid_: Fixed price, raw price range, case price
+
+**Material Demand Profile**:
+A per-material horizon profile used by the **Trace Generator** to allocate configured materials to exact **Process Cases**.
+_Avoid_: Material mix, material probability, material prompt output
+
+**Relative Demand Weight**:
+A positive integer emitted for a configured material that the **Trace Generator** normalizes into exact material counts.
+_Avoid_: Probability, percentage, share
+
+**Quantity Profile**:
+A per-material order-quantity model containing typical quantity, variation, bulk share, and order multiple inside configured hard quantity guardrails.
+_Avoid_: Quantity range, random amount, SAP quantity
+
+**Material Valuation Lock Key**:
+The `(plant, material_id)` resource used by the **Trace Generator** to keep lock-sensitive valuation postings out of the same **Execution Wave** and separated by a configured buffer.
+_Avoid_: SAP lock retry, browser wait, executor scheduling
+
+**Actor Day Profile**:
+One date-specific timing profile for a **Synthetic Actor** derived from its baseline realism model and daily workload.
+_Avoid_: Daily actor criteria, day mood, runtime delay profile
+
+**Workload Intensity**:
+A daily demand pressure category that can softly influence **Actor Day Profiles**.
+_Avoid_: Capacity, backlog, utilization
+
+**Human Delay Profile**:
+Runtime-safe actor behavior metadata that lets the **Trace Executor** apply bounded human-like delays without reading planning cache artifacts.
+_Avoid_: Speed factor, runtime prompt, tool input
+
+**Runtime Delay Marker**:
+A named point inside a **Browser Tool** where the **Trace Executor** may pause using the active actor's **Human Delay Profile**.
+_Avoid_: Sleep, artificial wait, SAP wait
+
 **Actor Capability**:
 The set of process steps a synthetic actor is allowed to perform.
 _Avoid_: Role, permission, assignment
@@ -146,6 +206,7 @@ _Avoid_: Actor, business user, persona
 - A **Trace Executor** consumes exactly one **Execution Trace** for an **Execution Run**.
 - A **Post-Processor** consumes an **Execution Trace**, a **Post-Processing Manifest**, **Execution Evidence**, and **SAP Exports**.
 - A **Post-Processor** produces a **Synthetic Dataset**.
+- A **Post-Processor** applies **Synthetic Timestamp Projection** when producing a **Synthetic Dataset**.
 - A **Process Definition** produces one or more **Process Cases** in an **Execution Trace**.
 - A **Process Definition** contains one or more **Process Dependencies**.
 - **Configured Master Data** constrains the process cases generated from a process definition.
@@ -162,6 +223,19 @@ _Avoid_: Actor, business user, persona
 - A **Planned Step** may have one or more **Planned Date Inputs**.
 - An **Execution Trace** contains one or more **Actor Sessions**.
 - A **Synthetic Actor** maps to exactly one **Technical SAP User** during execution.
+- A **Synthetic Actor** may have **Realism Guardrails** that limit its **Compiled Realism Criteria**.
+- **Compiled Realism Criteria** can contain **Demand Patterns**, **Price Anchors**, **Material Demand Profiles**, and **Actor Day Profiles**.
+- A **Demand Pattern** produces one or more **Demand Releases**.
+- A **Process Case** has exactly one **Demand Release**.
+- A **Process Case** has exactly one **Requested Delivery Date**.
+- A **Price Anchor** belongs to exactly one configured material.
+- A **Material Demand Profile** belongs to exactly one configured material.
+- A **Material Demand Profile** has exactly one **Relative Demand Weight**.
+- A **Material Demand Profile** has exactly one **Quantity Profile**.
+- The **Trace Generator** normalizes **Relative Demand Weights** into exact material assignments before writing the **Execution Trace**.
+- The **Trace Generator** samples process-case quantities from **Quantity Profiles** before writing the **Execution Trace**.
+- The **Trace Executor** does not normalize material demand, sample quantities, or perform scheduling math.
+- A **Workload Intensity** can influence one or more **Actor Day Profiles**.
 - A **Technical SAP User** may back multiple **Synthetic Actors**.
 - Scheduling prevents one **Technical SAP User** from running multiple **Planned Steps** at the same time.
 - An **Actor Session** belongs to exactly one **Synthetic Actor** and is authenticated through exactly one **Technical SAP User**.
@@ -173,6 +247,7 @@ _Avoid_: Actor, business user, persona
 - **Object Lineage** describes the expected SAP business object chain for one **Process Case**.
 - **Execution Evidence** includes the **Execution Log** and the **Object Registry**.
 - **Execution Evidence** provides runtime input for the **Post-Processing Manifest**.
+- A **Runtime Delay Marker** uses a **Human Delay Profile** from the **Execution Trace**, not the **Compiled Realism Criteria** cache.
 
 ## Example dialogue
 

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from erp_trace_executor.fiori_types import FioriCurrency, FioriDate
+from erp_trace_executor.fiori_types import FioriCurrency, FioriDate, runtime_safe_fiori_date
 
 
 class DateModel(BaseModel):
@@ -42,6 +44,15 @@ def test_fiori_date_rejects_invalid_dates(value: str):
 def test_fiori_date_rejects_non_string_values():
     with pytest.raises(ValidationError):
         DateModel.model_validate({"value": 20260509})
+
+
+def test_runtime_safe_fiori_date_keeps_past_or_current_date():
+    assert runtime_safe_fiori_date("05/19/2026", today=date(2026, 5, 20)) == "05/19/2026"
+    assert runtime_safe_fiori_date("05/20/2026", today=date(2026, 5, 20)) == "05/20/2026"
+
+
+def test_runtime_safe_fiori_date_clips_future_date_to_today():
+    assert runtime_safe_fiori_date("06/01/2026", today=date(2026, 5, 20)) == "05/20/2026"
 
 
 def test_fiori_currency_accepts_three_uppercase_letters():

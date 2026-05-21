@@ -12,7 +12,7 @@ from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.fiori_types import FioriDate
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
-from erp_trace_executor.tools.fiori.helpers import format_number
+from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, format_number, noop_delay, runtime_delay_callback
 from erp_trace_executor.tools.fiori.pages import FixtureFioriPage
 
 PURCHASE_REQUISITION_READY_TIMEOUT_MS = 90_000
@@ -36,17 +36,20 @@ class CreatePurchaseRequisitionInput(BaseModel):
 class SapPurchaseRequisitionFlow:
     """Recorded SAP Fiori purchase requisition flow using a Fiori-aware page."""
 
-    def __init__(self, page) -> None:
+    def __init__(self, page, delay: RuntimeDelay = noop_delay) -> None:
         self._page = page
+        self._delay = delay
 
     def create(self, params: CreatePurchaseRequisitionInput) -> dict[str, str | int]:
         page = self._page
 
+        self._delay("app_open_search", 1.5)
         page.get_by_role("button", name="Suche öffnen").click()
         page.get_by_role("searchbox", name="Suchen").fill("Bestellanforderung anle")
         page.get_by_text("Bestellanforderung anlegen").click()
         self._discard_existing_draft_if_present(page)
 
+        self._delay("form_section_fill", 1.0)
         material_field = self._open_new_position(page)
         material_field.click()
         material_field.fill(params.material)
@@ -81,6 +84,7 @@ class SapPurchaseRequisitionFlow:
         page.get_by_role("textbox", name="Buchungskreis").press("Tab")
         page.get_by_role("textbox", name="Werk").fill(params.plant)
         page.get_by_role("textbox", name="Werk").press("Enter")
+        self._delay("review_save_post", 1.5)
         page.get_by_role("button", name="Sichern", exact=True).click()
 
         page.get_by_role("textbox", name="Bewertungspreis", exact=True).click()
@@ -162,7 +166,10 @@ def run_create_purchase_requisition(
     if page.get_by_test_id("session-shell").is_visible():
         requisition_data = FixtureFioriPage(page).create_purchase_requisition(**params.model_dump())
     else:
-        requisition_data = SapPurchaseRequisitionFlow(context.get_fiori_page()).create(params)
+        requisition_data = SapPurchaseRequisitionFlow(
+            context.get_fiori_page(),
+            delay=runtime_delay_callback(context),
+        ).create(params)
 
     return ToolResult(
         planned_step_id=context.record.planned_step_id,
