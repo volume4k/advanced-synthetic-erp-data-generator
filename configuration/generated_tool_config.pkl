@@ -161,24 +161,11 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
     title = "Create Supplier Invoice"
     inputModel = "CreateSupplierInvoiceInput"
     requiredInputFields {
-      "invoice_date"
-      "invoicing_party"
       "gross_amount"
       "purchase_order"
+      "tax_code"
     }
     inputProperties {
-      new objects.ToolInputProperty {
-        name = "invoice_date"
-        schemaType = "string"
-        required = true
-        defaultValue = null
-      }
-      new objects.ToolInputProperty {
-        name = "invoicing_party"
-        schemaType = "string"
-        required = true
-        defaultValue = null
-      }
       new objects.ToolInputProperty {
         name = "gross_amount"
         schemaType = "number"
@@ -194,8 +181,8 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
       new objects.ToolInputProperty {
         name = "tax_code"
         schemaType = "string"
-        required = false
-        defaultValue = "XI"
+        required = true
+        defaultValue = null
       }
     }
   }

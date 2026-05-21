@@ -177,7 +177,7 @@ class PlannedDateInputOverride(ArtifactModel):
     object_type: str
     field: str
     planned_value: str
-    runtime_value_policy: Literal["sap_current_date"]
+    runtime_value_policy: Literal["sap_current_date", "executor_current_date"]
     source: Literal["planned_date_inputs"]
     reason: str
 

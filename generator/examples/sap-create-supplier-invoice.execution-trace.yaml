@@ -29,8 +29,6 @@ dependency_graph:
     technical_sap_user_id: TU_EXAMPLE
     actor_session_id: tour-user-1-session
     inputs:
-      invoice_date: 05/06/2026
-      invoicing_party: '107902'
       gross_amount: 1976
       purchase_order: '4500000002'
       tax_code: XI

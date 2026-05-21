@@ -105,8 +105,6 @@ dependency_graph:
     technical_sap_user_id: TU_EXAMPLE
     actor_session_id: tour-user-1-session
     inputs:
-      invoice_date: 05/09/2026
-      invoicing_party: '107902'
       gross_amount: 200
       purchase_order: $purchase_order.po_number
       tax_code: XI

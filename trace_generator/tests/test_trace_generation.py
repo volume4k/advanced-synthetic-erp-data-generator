@@ -152,7 +152,7 @@ def _base_config() -> dict:
             ),
             "fiori.create_supplier_invoice": _tool(
                 "fiori.create_supplier_invoice",
-                ["invoice_date", "invoicing_party", "gross_amount", "purchase_order"],
+                ["gross_amount", "purchase_order", "tax_code"],
             ),
             "fiori.send_payment": _tool(
                 "fiori.send_payment",
@@ -262,8 +262,6 @@ def _input_bindings(step_type: str) -> list[dict]:
             _binding("storage_location", "derived", "storage_location_label"),
         ],
         "enter_incoming_invoice": [
-            _binding("invoice_date", "derived", "fiori_delivery_date"),
-            _binding("invoicing_party", "master_data", "vendor_id"),
             _binding("gross_amount", "derived", "gross_amount"),
             _binding("purchase_order", "prior_output", "purchase_order.po_number"),
             _binding("tax_code", "literal", "XI"),
@@ -1271,6 +1269,19 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
         "document_date": "2026-05-23",
         "posting_date": "2026-05-23",
     }
+    invoice_node = next(
+        step
+        for step in execution_trace["dependency_graph"]["planned_steps"]
+        if step["case_id"] == "C001" and step["step_type"] == "enter_incoming_invoice"
+    )
+    assert invoice_node["inputs"] == {
+        "gross_amount": 200.0,
+        "purchase_order": "$purchase_order.po_number",
+        "tax_code": "XI",
+    }
+    assert invoice_node["planned_date_inputs"] == {
+        "invoice_date": "2026-05-23",
+    }
     assert execution_trace["execution_schedule"]["mode"] == "waves"
     assert execution_trace["execution_schedule"]["waves"][0]["planned_steps"][0]["planned_step_id"] == "C001_A1"
     assert execution_trace["validation_report"]["errors"] == []
@@ -1306,10 +1317,15 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
     } == {
         ("C001_A3", "document_date", "2026-05-23", "sap_current_date"),
         ("C001_A3", "posting_date", "2026-05-23", "sap_current_date"),
+        ("C001_A4", "invoice_date", "2026-05-23", "executor_current_date"),
         ("C002_A3", "document_date", "2026-05-23", "sap_current_date"),
         ("C002_A3", "posting_date", "2026-05-23", "sap_current_date"),
+        ("C002_A4", "invoice_date", "2026-05-23", "executor_current_date"),
     }
-    assert {item["step_type"] for item in manifest["planned_date_input_overrides"]} == {"post_goods_receipt"}
+    assert {item["step_type"] for item in manifest["planned_date_input_overrides"]} == {
+        "post_goods_receipt",
+        "enter_incoming_invoice",
+    }
 
     first_start = datetime.fromisoformat(execution_trace["dependency_graph"]["planned_steps"][0]["planned_synthetic_time"]["start"])
     second_start = datetime.fromisoformat(execution_trace["dependency_graph"]["planned_steps"][1]["planned_synthetic_time"]["start"])

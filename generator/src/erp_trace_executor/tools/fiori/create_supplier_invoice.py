@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from time import monotonic
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
-from erp_trace_executor.fiori_types import FioriDate, runtime_safe_fiori_date
 from erp_trace_executor.models import ToolResult, returned_object
 from erp_trace_executor.tooling import ToolSpec
 from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, format_number, noop_delay, runtime_delay_callback
@@ -24,11 +24,11 @@ SUPPLIER_INVOICE_READY_POLL_MS = 1_000
 class CreateSupplierInvoiceInput(BaseModel):
     """Input values for creating a supplier invoice against a purchase order."""
 
-    invoice_date: FioriDate
-    invoicing_party: str
+    model_config = ConfigDict(extra="forbid")
+
     gross_amount: float = Field(gt=0)
     purchase_order: str
-    tax_code: str = "XI"
+    tax_code: str = Field(min_length=1)
 
 
 class SapSupplierInvoiceFlow:
@@ -40,7 +40,7 @@ class SapSupplierInvoiceFlow:
 
     def create(self, params: CreateSupplierInvoiceInput) -> dict[str, str | float]:
         page = self._page
-        invoice_date = runtime_safe_fiori_date(params.invoice_date)
+        invoice_date = _today_fiori_date()
 
         self._delay("app_open_search", 1.5)
         page.get_by_role("button", name="Suche öffnen").click()
@@ -50,8 +50,11 @@ class SapSupplierInvoiceFlow:
 
         self._delay("form_section_fill", 1.0)
         self._fill_textbox(page, "Rechnungsdatum", invoice_date)
-        page.get_by_role("textbox", name="Rechnungsdatum").press("Tab")
-        page.get_by_role("textbox", name="Buchungsdatum").press("Tab")
+        page.get_by_role("textbox", name="Rechnungsdatum").press("Enter")
+
+        self._fill_textbox(page, "Bestellung/Lieferplan", params.purchase_order)
+        page.get_by_role("textbox", name="Bestellung/Lieferplan").press("Enter")
+        self._click_close_if_present(page)
 
         gross_amount = page.get_by_role("textbox", name="Bruttobetrag", exact=True)
         gross_amount.click()
@@ -59,18 +62,7 @@ class SapSupplierInvoiceFlow:
         gross_amount.fill(format_number(params.gross_amount))
         gross_amount.press("Enter")
 
-        self._fill_textbox(page, "Rechnungssteller", params.invoicing_party)
-        page.get_by_role("textbox", name="Rechnungssteller").press("Enter")
-
-        self._fill_textbox(page, "Bestellung/Lieferplan", params.purchase_order)
-        page.get_by_role("textbox", name="Bestellung/Lieferplan").press("Enter")
-        # This expected warning blocks the tax-code field until dismissed.
-        page.get_by_role("button", name="Schließen").click()
-
-        tax_code = page.get_by_role("textbox", name="Steuerkennzeichen")
-        tax_code.click()
-        tax_code.fill(params.tax_code)
-        tax_code.press("Enter")
+        self._fill_tax_code_if_empty(page, params.tax_code)
 
         page.get_by_role("button", name="Prüfen").click()
         self._delay("review_save_post", 1.5)
@@ -85,8 +77,6 @@ class SapSupplierInvoiceFlow:
             "supplier_invoice": invoice,
             "fiscal_year": fiscal_year,
             "invoice_date": invoice_date,
-            "requested_invoice_date": params.invoice_date,
-            "invoicing_party": params.invoicing_party,
             "gross_amount": params.gross_amount,
             "purchase_order": params.purchase_order,
             "tax_code": params.tax_code,
@@ -140,6 +130,23 @@ class SapSupplierInvoiceFlow:
         textbox.press("ControlOrMeta+a")
         textbox.fill(value)
 
+    def _click_close_if_present(self, page) -> None:
+        close_button = page.get_by_role("button", name="Schließen")
+        try:
+            close_button.wait_for(state="visible", timeout=3000)
+        except PlaywrightTimeoutError:
+            return
+        close_button.click()
+
+    def _fill_tax_code_if_empty(self, page, value: str) -> None:
+        tax_code = page.get_by_role("textbox", name="Steuerkennzeichen")
+        tax_code.wait_for(state="visible")
+        if str(tax_code.input_value()).strip():
+            return
+        tax_code.click()
+        tax_code.fill(value)
+        tax_code.press("Enter")
+
 
 def run_create_supplier_invoice(
     context: ExecutionContext,
@@ -179,3 +186,7 @@ def _extract_invoice(message: str) -> tuple[str, str]:
     if match is None:
         raise ValueError(f"Could not extract supplier invoice number from success link: {message}")
     return match.group(1), match.group(2)
+
+
+def _today_fiori_date(today: date | None = None) -> str:
+    return (today or date.today()).strftime("%m/%d/%Y")

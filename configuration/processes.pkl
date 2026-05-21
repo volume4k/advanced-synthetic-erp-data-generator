@@ -148,16 +148,6 @@ procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
       tool = toolRequirements["fiori.create_supplier_invoice"]
       inputBindings {
         new objects.ToolInputBinding {
-          field = "invoice_date"
-          source = "derived"
-          value = "fiori_delivery_date"
-        }
-        new objects.ToolInputBinding {
-          field = "invoicing_party"
-          source = "master_data"
-          value = "vendor_id"
-        }
-        new objects.ToolInputBinding {
           field = "gross_amount"
           source = "derived"
           value = "gross_amount"

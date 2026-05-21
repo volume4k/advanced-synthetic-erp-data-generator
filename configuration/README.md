@@ -112,6 +112,8 @@ Active steps must have a tool, bindings for every required tool input, and at le
 
 `plannedDateInputBindings` hold planned date inputs for the canonical trace and post-processing manifest. Use them when SAP runtime either cannot accept the planned date, as with goods receipt, or when post-processing needs a stable planned date contract.
 
+Supplier invoice uses this split deliberately: the trace executor fills SAP `Rechnungsdatum` with the executor's current date, while `plannedDateInputBindings.invoice_date` carries the planned synthetic invoice date for post-processing.
+
 Supported binding sources are `literal`, `master_data`, `case`, `planned_date`, `prior_output`, and `derived`. Supported derived values in v1 are `gross_amount`, `fiori_delivery_date`, `fiori_payment_posting_date`, and `storage_location_label`.
 
 Dependencies define process-step ordering:
