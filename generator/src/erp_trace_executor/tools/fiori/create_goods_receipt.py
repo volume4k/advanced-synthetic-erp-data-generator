@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel, ConfigDict
 
 from erp_trace_executor.context import ExecutionContext
@@ -58,9 +58,7 @@ class SapGoodsReceiptFlow:
             tile = page.get_by_role("gridcell", name="Wareneingang zu Einkaufsbeleg").locator("b")
             try:
                 tile.click(timeout=60_000, retry_on_next_wait=True)
-            except PlaywrightError as exc:
-                if "Timeout" not in str(exc):
-                    raise
+            except PlaywrightTimeoutError:
                 page.goto(app_url)
             page.get_by_role("textbox", name="Einkaufsbeleg").wait_for(
                 state="visible",
