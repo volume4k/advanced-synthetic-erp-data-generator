@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 
 import pytest
-from pydantic import BaseModel
 import yaml
 
 from erp_trace_generator import realism as realism_module
@@ -14,30 +13,16 @@ from erp_trace_generator.config import load_generation_config
 from erp_trace_generator.env import load_env_file, read_env_values
 from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.generator import generate_trace_artifacts
-from erp_trace_generator.realism import (
-    HorizonDemandResponse,
-    OpenAICompatibleLLMClient,
-    RealismCompiler,
-    RealismLLMClient,
-    _inline_local_json_schema_refs,
-)
+from erp_trace_generator.realism import OpenAICompatibleLLMClient, RealismCompiler, RealismLLMClient
 
 
 class FakeRealismClient(RealismLLMClient):
     def __init__(self, responses: list[str | Exception]) -> None:
         self.responses = list(responses)
         self.prompts: list[str] = []
-        self.schema_names: list[str | None] = []
 
-    def complete_json(
-        self,
-        prompt: str,
-        *,
-        response_schema: type[BaseModel] | None = None,
-        schema_name: str | None = None,
-    ) -> str:
+    def complete_json(self, prompt: str) -> str:
         self.prompts.append(prompt)
-        self.schema_names.append(schema_name)
         if not self.responses:
             raise AssertionError("unexpected LLM call")
         response = self.responses.pop(0)
@@ -220,53 +205,15 @@ def test_realism_compiler_retries_llm_request_failure(tmp_path: Path) -> None:
     assert "Validation failed: temporary disconnect" in client.prompts[1]
 
 
-def test_openai_client_sends_json_schema_response_format(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict[str, object] = {}
+def test_openai_client_reads_timeout_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REALISM_LLM_TIMEOUT_SECONDS", "240")
 
-    class FakeResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, traceback):
-            return False
-
-        def read(self) -> bytes:
-            return json.dumps({"choices": [{"message": {"content": "{}"}}]}).encode("utf-8")
-
-    def fake_urlopen(http_request, *, timeout: int):
-        captured["timeout"] = timeout
-        captured["payload"] = json.loads(http_request.data.decode("utf-8"))
-        return FakeResponse()
-
-    monkeypatch.setattr(realism_module.request, "urlopen", fake_urlopen)
     client = OpenAICompatibleLLMClient(
-        base_url="http://realism.local/",
+        base_url="http://realism.local",
         model="realism-model",
-        timeout_seconds=7,
-        use_json_schema_response_format=True,
     )
 
-    assert client.complete_json(
-        "{}",
-        response_schema=HorizonDemandResponse,
-        schema_name="horizon_demand_response",
-    ) == "{}"
-
-    payload = captured["payload"]
-    assert captured["timeout"] == 7
-    assert payload["response_format"]["type"] == "json_schema"
-    assert payload["response_format"]["json_schema"]["name"] == "horizon_demand_response"
-    assert payload["response_format"]["json_schema"]["strict"] is True
-    assert "patterns" in payload["response_format"]["json_schema"]["schema"]["properties"]
-
-
-def test_response_format_schema_inlines_local_refs() -> None:
-    schema = _inline_local_json_schema_refs(HorizonDemandResponse.model_json_schema())
-
-    assert "$defs" not in schema
-    patterns = schema["properties"]["patterns"]
-    assert "$ref" not in patterns["items"]
-    assert patterns["items"]["properties"]["release_windows"]["items"]["type"] == "object"
+    assert client._timeout_seconds == 240
 
 
 def test_realism_compiler_accepts_daily_demand_releases(tmp_path: Path) -> None:
@@ -564,6 +511,8 @@ def test_horizon_demand_prompt_lists_only_shared_lead_time_days(tmp_path: Path) 
 
     assert prompt["allowed_lead_time_days"] == [8, 9]
     assert prompt["guardrails"]["allowed_lead_time_days"] == [8, 9]
+    assert prompt["allowed_lead_time_days_by_pattern_date"]["2026-05-18"] == [8]
+    assert "2026-05-19" not in prompt["allowed_lead_time_days_by_pattern_date"]
     assert prompt["example_json_for_current_case_count"]["patterns"][0]["lead_time_mix"][0]["days"] == 8
 
 
@@ -594,6 +543,31 @@ def test_realism_compiler_accepts_horizon_pattern_with_prompt_echo_keys(tmp_path
 
     assert len(patterns) == 1
     assert patterns[0].case_count == 2
+
+
+def test_realism_compiler_rejects_horizon_pattern_that_cannot_finish(tmp_path: Path) -> None:
+    config = _load_config(tmp_path, _base_config())
+    response = json.dumps(
+        {
+            "patterns": [
+                {
+                    "date": "2026-05-27",
+                    "case_count": 2,
+                    "workload_intensity": "normal",
+                    "release_windows": [{"start": "08:00", "end": "10:00", "share": 1.0}],
+                    "lead_time_mix": [{"days": 5, "share": 1.0}],
+                }
+            ],
+        }
+    )
+
+    with pytest.raises(TraceGenerationError, match="no lead_time_mix days"):
+        RealismCompiler(
+            config=config,
+            client=FakeRealismClient([response]),
+            cache_dir=tmp_path,
+            max_retries=1,
+        ).compile_horizon_demand_patterns()
 
 
 def test_realism_compiler_expands_horizon_patterns_without_per_case_llm_calls(tmp_path: Path) -> None:
@@ -794,13 +768,7 @@ def test_cli_loads_default_env_file_before_realism_client(
             assert os.environ["REALISM_LLM_BASE_URL"] == "http://realism.local"
             assert os.environ["REALISM_LLM_MODEL"] == "realism-model"
 
-        def complete_json(
-            self,
-            prompt: str,
-            *,
-            response_schema: type[BaseModel] | None = None,
-            schema_name: str | None = None,
-        ) -> str:
+        def complete_json(self, prompt: str) -> str:
             if not responses:
                 raise AssertionError("unexpected LLM call")
             return responses.pop(0)

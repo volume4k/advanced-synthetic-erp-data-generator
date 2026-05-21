@@ -25,13 +25,7 @@ WORKLOAD_FACTORS = {"low": -0.5, "normal": 0.0, "high": 1.0}
 
 
 class RealismLLMClient(Protocol):
-    def complete_json(
-        self,
-        prompt: str,
-        *,
-        response_schema: type[BaseModel] | None = None,
-        schema_name: str | None = None,
-    ) -> str:
+    def complete_json(self, prompt: str) -> str:
         """Return a JSON object as text."""
 
 
@@ -159,30 +153,18 @@ class OpenAICompatibleLLMClient:
         base_url: str | None = None,
         model: str | None = None,
         api_key: str | None = None,
-        timeout_seconds: int = 60,
-        use_json_schema_response_format: bool | None = None,
+        timeout_seconds: int | None = None,
     ) -> None:
         self._base_url = (base_url or os.environ.get("REALISM_LLM_BASE_URL") or "").rstrip("/")
         self._model = model or os.environ.get("REALISM_LLM_MODEL")
         self._api_key = api_key if api_key is not None else os.environ.get("REALISM_LLM_API_KEY")
-        self._timeout_seconds = timeout_seconds
-        self._use_json_schema_response_format = (
-            use_json_schema_response_format
-            if use_json_schema_response_format is not None
-            else os.environ.get("REALISM_LLM_RESPONSE_FORMAT_JSON_SCHEMA", "").lower() in {"1", "true", "yes"}
-        )
+        self._timeout_seconds = timeout_seconds if timeout_seconds is not None else _llm_timeout_seconds_from_env()
         if not self._base_url:
             raise TraceGenerationError("REALISM_LLM_BASE_URL is required when realism compilation is enabled")
         if not self._model:
             raise TraceGenerationError("REALISM_LLM_MODEL is required when realism compilation is enabled")
 
-    def complete_json(
-        self,
-        prompt: str,
-        *,
-        response_schema: type[BaseModel] | None = None,
-        schema_name: str | None = None,
-    ) -> str:
+    def complete_json(self, prompt: str) -> str:
         payload = {
             "model": self._model,
             "messages": [
@@ -197,15 +179,6 @@ class OpenAICompatibleLLMClient:
             ],
             "temperature": 0.0,
         }
-        if response_schema is not None and self._use_json_schema_response_format:
-            payload["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": schema_name or response_schema.__name__,
-                    "strict": True,
-                    "schema": _inline_local_json_schema_refs(response_schema.model_json_schema()),
-                },
-            }
         body = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self._api_key:
@@ -454,14 +427,9 @@ class RealismCompiler:
         detail = f": {last_error}" if last_error else ""
         raise TraceGenerationError(f"Could not compile demand releases for {day}{detail}")
 
-    def _complete_json(
-        self,
-        prompt: str,
-        response_schema: type[BaseModel] | None = None,
-        schema_name: str | None = None,
-    ) -> str:
+    def _complete_json(self, prompt: str) -> str:
         self._llm_request_count += 1
-        return self._client.complete_json(prompt, response_schema=response_schema, schema_name=schema_name)
+        return self._client.complete_json(prompt)
 
     def _actor_criteria_from_json(self, raw_response: str, actor: Actor) -> ActorRealismCriteria:
         payload = _normalize_actor_payload(_load_json_object(raw_response), actor)
@@ -666,12 +634,32 @@ class RealismCompiler:
             )
 
     def _validate_pattern_lead_times(self, pattern: DemandPattern) -> None:
+        pattern_date = date.fromisoformat(pattern.date)
+        allowed_days = self._allowed_lead_time_days_for_pattern_date(pattern_date)
+        if not allowed_days:
+            raise TraceGenerationError(
+                f"demand pattern date '{pattern.date}' has no lead_time_mix days that can finish inside run horizon"
+            )
         for lead_time in pattern.lead_time_mix:
-            for material in self._active_master_data():
-                if not material.delivery_lead_time_min_days <= lead_time.days <= material.delivery_lead_time_max_days:
-                    raise TraceGenerationError(
-                        f"lead_time_mix days {lead_time.days} outside guardrails for material '{material.material_id}'"
-                    )
+            if lead_time.days not in allowed_days:
+                raise TraceGenerationError(
+                    f"lead_time_mix days {lead_time.days} for demand pattern date '{pattern.date}' "
+                    "is not allowed; use allowed_lead_time_days_by_pattern_date"
+                )
+
+    def _allowed_lead_time_days_for_pattern_date(self, pattern_date: date) -> list[int]:
+        run_end = self._config.run_settings.run_start_date + timedelta(days=self._config.run_settings.run_horizon_days - 1)
+        shared_days = _shared_lead_time_day_values(self._active_master_data())
+        return [lead_days for lead_days in shared_days if pattern_date + timedelta(days=lead_days + 1) <= run_end]
+
+    def _allowed_lead_time_days_by_pattern_date(self) -> dict[str, list[int]]:
+        result: dict[str, list[int]] = {}
+        for offset in range(self._config.run_settings.run_horizon_days):
+            pattern_date = self._config.run_settings.run_start_date + timedelta(days=offset)
+            allowed_days = self._allowed_lead_time_days_for_pattern_date(pattern_date)
+            if allowed_days:
+                result[pattern_date.isoformat()] = allowed_days
+        return result
 
     def _sample_target_price(
         self,
@@ -929,6 +917,7 @@ class RealismCompiler:
         run_end = run_start + timedelta(days=self._config.run_settings.run_horizon_days - 1)
         active_master_data = self._active_master_data()
         allowed_lead_time_days = _shared_lead_time_day_values(active_master_data)
+        allowed_lead_time_days_by_pattern_date = self._allowed_lead_time_days_by_pattern_date()
         example_lead_days = allowed_lead_time_days[0] if allowed_lead_time_days else _shared_lead_time_days(active_master_data)
         prompt = {
             "task": "Compile compact Demand Patterns for the whole run horizon. Do not output individual Process Cases.",
@@ -946,6 +935,9 @@ class RealismCompiler:
                 "Do not output material_mix; Material Demand Profiles own material assignment.",
                 "Every lead_time_mix day must be valid for every configured material because material assignment happens after demand expansion.",
                 "Use only days listed in allowed_lead_time_days for lead_time_mix.",
+                "Every Demand Pattern date must exist in allowed_lead_time_days_by_pattern_date.",
+                "For each Demand Pattern date, lead_time_mix days must come from allowed_lead_time_days_by_pattern_date[date].",
+                "Do not use late horizon dates when allowed_lead_time_days_by_pattern_date has no entry for that date.",
             ],
             "caseCount": self._config.run_settings.case_count,
             "run_horizon": {
@@ -973,6 +965,7 @@ class RealismCompiler:
                 "allowed_lead_time_days": allowed_lead_time_days,
             },
             "allowed_lead_time_days": allowed_lead_time_days,
+            "allowed_lead_time_days_by_pattern_date": allowed_lead_time_days_by_pattern_date,
             "required_json_shape": {
                 "patterns": [
                     {
@@ -1216,6 +1209,19 @@ def _active_master_data(config: GenerationConfig) -> tuple[MasterDataEntry, ...]
     return active
 
 
+def _llm_timeout_seconds_from_env() -> int:
+    raw_value = os.environ.get("REALISM_LLM_TIMEOUT_SECONDS")
+    if raw_value is None:
+        return 60
+    try:
+        timeout_seconds = int(raw_value)
+    except ValueError as exc:
+        raise TraceGenerationError("REALISM_LLM_TIMEOUT_SECONDS must be an integer") from exc
+    if timeout_seconds < 1:
+        raise TraceGenerationError("REALISM_LLM_TIMEOUT_SECONDS must be >= 1")
+    return timeout_seconds
+
+
 def _criteria_hash(payload: dict) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -1237,29 +1243,6 @@ def _preview_text(value: str, *, limit: int = 240) -> str:
     if len(compact) <= limit:
         return compact
     return f"{compact[:limit]}..."
-
-
-def _inline_local_json_schema_refs(schema: dict) -> dict:
-    definitions = schema.get("$defs", {})
-
-    def inline(value):
-        if isinstance(value, dict):
-            ref = value.get("$ref")
-            if isinstance(ref, str) and ref.startswith("#/$defs/"):
-                definition_name = ref.removeprefix("#/$defs/")
-                definition = definitions.get(definition_name)
-                if isinstance(definition, dict):
-                    return inline(definition)
-            return {
-                key: inline(item)
-                for key, item in value.items()
-                if key != "$defs"
-            }
-        if isinstance(value, list):
-            return [inline(item) for item in value]
-        return value
-
-    return inline(schema)
 
 
 def _normalize_actor_payload(payload: dict, actor: Actor) -> dict:
