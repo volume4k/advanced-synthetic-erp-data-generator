@@ -71,7 +71,7 @@ class SapSupplierInvoiceFlow:
         page.get_by_role("button", name="Buchen").click()
 
         invoice_link = page.locator("a", has_text=INVOICE_LINK_PATTERN).first
-        invoice_link.wait_for(state="visible")
+        invoice_link.wait_for(state="visible", timeout=SUPPLIER_INVOICE_READY_TIMEOUT_MS)
         invoice_text = invoice_link.inner_text()
         invoice, fiscal_year = _extract_invoice(invoice_text)
         self._click_no_if_present(page)
