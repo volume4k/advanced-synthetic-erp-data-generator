@@ -11,7 +11,12 @@ from pydantic import BaseModel, Field
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.fiori_types import FioriDate
 from erp_trace_executor.models import ToolResult, returned_object
-from erp_trace_executor.runtime_delay import RuntimeDelay, noop_delay, runtime_delay_callback
+from erp_trace_executor.runtime_delay import (
+    RuntimeDelay,
+    RuntimeDelayBounds,
+    noop_delay,
+    runtime_delay_callback,
+)
 from erp_trace_executor.tooling import ToolSpec
 from erp_trace_executor.tools.fiori.helpers import format_number
 from erp_trace_executor.tools.fiori.pages import FixtureFioriPage
@@ -44,7 +49,7 @@ class SapPurchaseRequisitionFlow:
     def create(self, params: CreatePurchaseRequisitionInput) -> dict[str, str | int]:
         page = self._page
 
-        self._delay("app_open_search", 1.5)
+        self._delay("app_open_search", 1.5, RuntimeDelayBounds(max_seconds=4.0))
         page.get_by_role("button", name="Suche öffnen").click()
         page.get_by_role("searchbox", name="Suchen").fill("Bestellanforderung anle")
         page.get_by_text("Bestellanforderung anlegen").click()
@@ -67,15 +72,18 @@ class SapPurchaseRequisitionFlow:
         page.get_by_role("textbox", name="Anforderungsmenge").fill(str(params.quantity))
         page.get_by_role("textbox", name="Anforderungsmenge").press("Tab")
 
+        self._delay("delivery_date_review", 0.8)
         page.get_by_label("Auswahl öffnen").click()
         page.get_by_role("textbox", name="Lieferdatum").dblclick()
         page.get_by_role("textbox", name="Lieferdatum").press("ControlOrMeta+a")
         page.get_by_role("textbox", name="Lieferdatum").fill(params.delivery_date)
         page.get_by_role("textbox", name="Lieferdatum").press("Enter")
         page.locator("#application-PurchaseRequisition-create-component---Freetext--simpleForm--Form--Grid").click()
+        self._delay("cart_review", 1.2)
         page.get_by_role("button", name="Zu Einkaufswagen hinzufügen").click()
 
         page.get_by_title("Navigation", exact=True).click()
+        self._delay("account_assignment_review", 1.3)
         page.get_by_role("textbox", name="Einkäufergruppe").click()
         page.get_by_role("textbox", name="Einkäufergruppe").fill(params.purchasing_group)
         page.get_by_role("textbox", name="Einkäufergruppe").press("Tab")
@@ -85,7 +93,7 @@ class SapPurchaseRequisitionFlow:
         page.get_by_role("textbox", name="Buchungskreis").press("Tab")
         page.get_by_role("textbox", name="Werk").fill(params.plant)
         page.get_by_role("textbox", name="Werk").press("Enter")
-        self._delay("review_save_post", 1.5)
+        self._delay("review_save_post", 1.5, RuntimeDelayBounds(min_seconds=0.5, max_seconds=6.0))
         page.get_by_role("button", name="Sichern", exact=True).click()
 
         page.get_by_role("textbox", name="Bewertungspreis", exact=True).click()
@@ -95,6 +103,7 @@ class SapPurchaseRequisitionFlow:
         page.get_by_role("button", name="Sichern", exact=True).click()
         page.get_by_role("button", name="Zurück").click()
         page.get_by_role("button", name="1").click()
+        self._delay("final_order_review", 2.0)
         page.get_by_role("button", name="Bestellen").click()
 
         requisition_link = page.locator("#idPRNoLinkId")

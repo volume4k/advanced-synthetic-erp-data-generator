@@ -35,11 +35,12 @@ class RuntimeDelay(Protocol):
         marker: str,
         base_seconds: float,
         bounds: RuntimeDelayBounds | None = None,
+        /,
     ) -> None: ...
 
 
 class RuntimeActionDelay(Protocol):
-    def __call__(self, action: str) -> None: ...
+    def __call__(self, action: str, /) -> None: ...
 
 
 def runtime_delay_callback(context) -> RuntimeDelay:
@@ -64,9 +65,10 @@ def noop_delay(
     _marker: str,
     _base_seconds: float,
     _bounds: RuntimeDelayBounds | None = None,
+    /,
 ) -> None:
     return None
 
 
-def noop_action_delay(_action: str) -> None:
+def noop_action_delay(_action: str, /) -> None:
     return None
