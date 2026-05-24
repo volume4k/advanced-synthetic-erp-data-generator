@@ -12,8 +12,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.models import ToolResult, returned_object
+from erp_trace_executor.runtime_delay import RuntimeDelay, noop_delay, runtime_delay_callback
 from erp_trace_executor.tooling import ToolSpec
-from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, format_number, noop_delay, runtime_delay_callback
+from erp_trace_executor.tools.fiori.helpers import format_number
 
 
 INVOICE_LINK_PATTERN = re.compile(r"(\d+)/(\d{4})")

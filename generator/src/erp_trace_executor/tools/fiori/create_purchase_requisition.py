@@ -11,8 +11,9 @@ from pydantic import BaseModel, Field
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.fiori_types import FioriDate
 from erp_trace_executor.models import ToolResult, returned_object
+from erp_trace_executor.runtime_delay import RuntimeDelay, noop_delay, runtime_delay_callback
 from erp_trace_executor.tooling import ToolSpec
-from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, format_number, noop_delay, runtime_delay_callback
+from erp_trace_executor.tools.fiori.helpers import format_number
 from erp_trace_executor.tools.fiori.pages import FixtureFioriPage
 
 PURCHASE_REQUISITION_READY_TIMEOUT_MS = 90_000

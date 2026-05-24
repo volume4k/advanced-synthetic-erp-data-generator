@@ -9,8 +9,9 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.models import ToolResult, returned_object
+from erp_trace_executor.runtime_delay import RuntimeDelay, noop_delay, runtime_delay_callback
 from erp_trace_executor.tooling import ToolSpec
-from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, format_number, noop_delay, runtime_delay_callback
+from erp_trace_executor.tools.fiori.helpers import format_number
 
 
 IFRAME_SELECTOR = 'iframe[name="application-PurchaseOrder-create-iframe"]'
