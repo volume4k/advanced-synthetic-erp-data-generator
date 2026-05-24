@@ -6,6 +6,7 @@ from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
 import logging
+import random
 from typing import TypeVar
 
 from pydantic import ValidationError
@@ -14,7 +15,12 @@ from erp_trace_executor.browser.session import BrowserSession, BrowserSessionMan
 from erp_trace_executor.fiori_messages import FioriMessageSink
 from erp_trace_executor.fiori_page import FioriPage
 from erp_trace_executor.models import ExecutionTaskRecord, HumanDelayProfile
-from erp_trace_executor.runtime_delay import RuntimeDelayBounds
+from erp_trace_executor.runtime_delay import (
+    DEFAULT_ACTION_DELAY_MAX_SECONDS,
+    DEFAULT_ACTION_DELAY_MIN_SECONDS,
+    RuntimeDelayBounds,
+    runtime_action_delay_callback,
+)
 
 ResultT = TypeVar("ResultT")
 FioriMessageSinkFactory = Callable[[ExecutionTaskRecord, BrowserSession], FioriMessageSink]
@@ -72,7 +78,11 @@ class ExecutionContext:
             if self.fiori_message_sink_factory is None
             else self.fiori_message_sink_factory(self.record, session)
         )
-        return FioriPage(session.page, message_sink=message_sink)
+        return FioriPage(
+            session.page,
+            message_sink=message_sink,
+            action_delay=runtime_action_delay_callback(self),
+        )
 
     def runtime_delay_marker(
         self,
@@ -81,6 +91,9 @@ class ExecutionContext:
         bounds: RuntimeDelayBounds | None = None,
     ) -> None:
         _runtime_delay_marker(self, marker, base_seconds, bounds)
+
+    def runtime_action_delay(self, action: str) -> None:
+        _runtime_action_delay(self, action)
 
 
 @dataclass(frozen=True)
@@ -112,7 +125,11 @@ class ActorSessionExecutionContext:
             if self.fiori_message_sink_factory is None
             else self.fiori_message_sink_factory(self.record, self.session)
         )
-        return FioriPage(self.session.page, message_sink=message_sink)
+        return FioriPage(
+            self.session.page,
+            message_sink=message_sink,
+            action_delay=runtime_action_delay_callback(self),
+        )
 
     def runtime_delay_marker(
         self,
@@ -121,6 +138,9 @@ class ActorSessionExecutionContext:
         bounds: RuntimeDelayBounds | None = None,
     ) -> None:
         _runtime_delay_marker(self, marker, base_seconds, bounds)
+
+    def runtime_action_delay(self, action: str) -> None:
+        _runtime_action_delay(self, action)
 
 
 def _runtime_delay_marker(
@@ -152,6 +172,35 @@ def _runtime_delay_marker(
             delay_seconds = max(delay_seconds, bounds.min_seconds)
         if bounds.max_seconds is not None:
             delay_seconds = min(delay_seconds, bounds.max_seconds)
+    if delay_seconds <= 0:
+        return
+    context.get_browser_session().page.wait_for_timeout(round(delay_seconds * 1000))
+
+
+def _runtime_action_delay(
+    context: ExecutionContext | ActorSessionExecutionContext,
+    action: str,
+) -> None:
+    profile_payload = context.record.meta.get("human_delay_profile")
+    if not profile_payload:
+        return
+    try:
+        profile = HumanDelayProfile.model_validate(profile_payload)
+    except ValidationError:
+        logger.warning(
+            "Skipping runtime action delay '%s' for planned step '%s' in actor session '%s': "
+            "invalid human_delay_profile metadata %r",
+            action,
+            context.record.planned_step_id,
+            context.record.actor_session_id,
+            profile_payload,
+        )
+        return
+    base_seconds = random.uniform(
+        DEFAULT_ACTION_DELAY_MIN_SECONDS,
+        DEFAULT_ACTION_DELAY_MAX_SECONDS,
+    )
+    delay_seconds = base_seconds * profile.delay_multiplier
     if delay_seconds <= 0:
         return
     context.get_browser_session().page.wait_for_timeout(round(delay_seconds * 1000))

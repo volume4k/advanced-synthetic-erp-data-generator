@@ -188,6 +188,10 @@ _Avoid_: Speed factor, runtime prompt, tool input
 A named point inside a **Browser Tool** where the **Trace Executor** may pause using the active actor's **Human Delay Profile** and optional marker-local bounds.
 _Avoid_: Sleep, artificial wait, SAP wait
 
+**Runtime Action Delay**:
+A small randomized pause after one human-like Fiori action such as click, double-click, key press, or field fill.
+_Avoid_: SAP wait, DOM quiet wait, marker delay
+
 **Actor Capability**:
 The set of process steps a synthetic actor is allowed to perform.
 _Avoid_: Role, permission, assignment
@@ -249,6 +253,15 @@ _Avoid_: Actor, business user, persona
 - **Execution Evidence** provides runtime input for the **Post-Processing Manifest**.
 - A **Runtime Delay Marker** uses a **Human Delay Profile** from the **Execution Trace**, not the **Compiled Realism Criteria** cache.
 - A **Runtime Delay Marker** may define its own runtime floor or cap instead of using actor-level runtime bounds.
+- A **Runtime Action Delay** also uses the active **Human Delay Profile**, but it is owned centrally by the Fiori page wrapper rather than by an individual tool marker.
+
+### Runtime-Realismus für Fiori-Aktionen
+
+Der Trace Executor unterscheidet zwischen Mikroverzögerungen und expliziten Laufzeitmarkern. Mikroverzögerungen werden zentral im Fiori-Wrapper nach jeder benutzerähnlichen Aktion wie Klicks, Tastendrücken oder Eingaben eingefügt. Die Dauer wird zufällig aus einem kleinen Sekundenbereich gewählt und anschließend mit dem Actor-spezifischen `delay_multiplier` skaliert.
+
+Explizite `_delay(...)` Marker bleiben für größere semantische Pausen zuständig, zum Beispiel für das Prüfen eines Formulars, das Orientieren in einer App oder das bewusste Innehalten vor dem Speichern. Mikroverzögerungen und explizite Marker überschreiben sich nicht, sondern addieren sich zu einem realistischeren Ausführungsverhalten.
+
+Technische Wartezeiten, die SAP Fiori stabilisieren, bleiben davon getrennt. Dadurch ist klar unterscheidbar, ob der Executor auf die Anwendung wartet oder ob menschliches Verhalten simuliert wird.
 
 ## Example dialogue
 
