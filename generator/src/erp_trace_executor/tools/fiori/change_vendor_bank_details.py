@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -17,12 +15,7 @@ from erp_trace_executor.tooling import ToolSpec
 BUSINESS_PARTNER_APP_HASH = "#BusinessPartner-manage"
 BUSINESS_PARTNER_READY_TIMEOUT_MS = 90_000
 BANK_DETAILS_TIMEOUT_MS = 30_000
-BANK_KEY_PATTERNS = (
-    re.compile(r"^Bankschlüssel$", re.IGNORECASE),
-    re.compile(r"^Bank Key$", re.IGNORECASE),
-    re.compile(r"^(SWIFT|BIC|SWIFT/BIC)$", re.IGNORECASE),
-    re.compile(r"(Bankschlüssel|Bank Key|SWIFT|BIC)", re.IGNORECASE),
-)
+BANK_KEY_LABEL = "Bankschlüssel"
 
 
 class VendorBankAccountCredentials(BaseModel):
@@ -55,7 +48,6 @@ class SapVendorBankDetailsFlow:
         page = self._page
         credentials = params.bank_account_credentials
 
-        self._delay("app_open_direct", 1.2)
         page.goto(f"{page.url.split('#', 1)[0]}{BUSINESS_PARTNER_APP_HASH}")
         business_partner = page.get_by_role("textbox", name="Geschäftspartner:")
         business_partner.wait_for(state="visible", timeout=BUSINESS_PARTNER_READY_TIMEOUT_MS)
@@ -111,20 +103,14 @@ class SapVendorBankDetailsFlow:
         textbox.fill(value)
 
     def _fill_bank_key(self, value: str) -> None:
-        for pattern in BANK_KEY_PATTERNS:
-            candidates = (
-                self._page.get_by_label(pattern).first,
-                self._page.get_by_role("textbox", name=pattern).first,
-            )
-            for candidate in candidates:
-                try:
-                    candidate.wait_for(state="visible", timeout=3000)
-                except PlaywrightTimeoutError:
-                    continue
-                self._fill_textbox(candidate, value)
-                return
-
-        raise ToolExecutionError("Could not locate visible bank key field for vendor bank details")
+        bank_key = self._page.get_by_label(BANK_KEY_LABEL).first
+        try:
+            bank_key.wait_for(state="visible", timeout=3000)
+        except PlaywrightTimeoutError as exc:
+            raise ToolExecutionError(
+                "Could not locate visible 'Bankschlüssel' field for vendor bank details"
+            ) from exc
+        self._fill_textbox(bank_key, value)
 
 
 def run_change_vendor_bank_details(
