@@ -4,6 +4,29 @@
 import "objects.pkl"
 
 toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
+  ["fiori.change_vendor_bank_details"] = new objects.ToolRequirement {
+    toolName = "fiori.change_vendor_bank_details"
+    title = "Change Vendor Bank Details"
+    inputModel = "ChangeVendorBankDetailsInput"
+    requiredInputFields {
+      "vendor_id"
+      "bank_account_credentials"
+    }
+    inputProperties {
+      new objects.ToolInputProperty {
+        name = "vendor_id"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "bank_account_credentials"
+        schemaType = "object"
+        required = true
+        defaultValue = null
+      }
+    }
+  }
   ["fiori.create_goods_receipt"] = new objects.ToolRequirement {
     toolName = "fiori.create_goods_receipt"
     title = "Create Goods Receipt"

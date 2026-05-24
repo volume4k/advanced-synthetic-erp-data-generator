@@ -1,0 +1,56 @@
+trace_version: '0.3'
+run_id: RUN_EXAMPLE_CHANGE_VENDOR_BANK_DETAILS
+config_hash: example
+tool_catalog_hash: example
+trace_generator_version: 0.1.0
+llm_metadata:
+  used: false
+  seed: 17
+actor_sessions:
+- actor_session_id: tour-user-1-session
+  synthetic_actor_id: tour-user-1
+  technical_sap_user_id: TU_EXAMPLE
+  username_env_var: SAP_USER_1_UN
+  password_env_var: SAP_USER_1_PW
+  login_url_env_var: SAP_URL
+  success_selector: '#userActionsMenuHeaderButton'
+cases:
+- case_id: EXAMPLE_CHANGE_VENDOR_BANK_DETAILS_001
+  process_type: procure_to_pay
+  case_scenario_type: NORMAL
+  line_items: []
+dependency_graph:
+  planned_steps:
+  - planned_step_id: planned-step-change-vendor-bank-details-001
+    case_id: EXAMPLE_CHANGE_VENDOR_BANK_DETAILS_001
+    step_type: change_vendor_bank_details
+    tool_name: fiori.change_vendor_bank_details
+    synthetic_actor_id: tour-user-1
+    technical_sap_user_id: TU_EXAMPLE
+    actor_session_id: tour-user-1-session
+    inputs:
+      vendor_id: '1003070'
+      bank_account_credentials:
+        bank_key: ABNAUS33XXX
+        account_number: '87654321'
+        account_owner: Jonas Schnepf
+    required_sap_object_keys: []
+    planned_date_inputs: {}
+    planned_synthetic_time:
+      start: '2026-05-18T08:00:00+02:00'
+      end: '2026-05-18T08:05:00+02:00'
+    labels:
+      step_label: normal
+  dependencies: []
+execution_schedule:
+  mode: waves
+  max_parallel_actor_sessions: 1
+  waves:
+  - wave_id: W001
+    sequence_no: 1
+    planned_steps:
+    - planned_step_id: planned-step-change-vendor-bank-details-001
+      startup_order: 1
+validation_report:
+  errors: []
+  warnings: []

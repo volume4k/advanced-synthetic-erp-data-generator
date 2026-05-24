@@ -80,6 +80,8 @@ def _title_from_tool_name(tool_name: str) -> str:
 def _schema_type(schema: dict[str, Any]) -> str:
     if "type" in schema:
         return str(schema["type"])
+    if "$ref" in schema:
+        return "object"
     if "anyOf" in schema:
         return " | ".join(_schema_type(item) for item in schema["anyOf"])
     return "unknown"
