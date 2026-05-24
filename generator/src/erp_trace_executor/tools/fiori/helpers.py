@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from math import isclose
-from typing import Callable
+
+from erp_trace_executor.runtime_delay import (
+    RuntimeDelay,
+    RuntimeDelayBounds,
+    noop_delay,
+    runtime_delay_callback,
+)
 
 
 def format_number(value: float) -> str:
@@ -13,17 +19,10 @@ def format_number(value: float) -> str:
     return str(value)
 
 
-RuntimeDelay = Callable[[str, float], None]
-
-
-def runtime_delay_callback(context) -> RuntimeDelay:
-    def delay(marker: str, base_seconds: float) -> None:
-        runtime_delay_marker = getattr(context, "runtime_delay_marker", None)
-        if callable(runtime_delay_marker):
-            runtime_delay_marker(marker, base_seconds)
-
-    return delay
-
-
-def noop_delay(_marker: str, _base_seconds: float) -> None:
-    return None
+__all__ = [
+    "RuntimeDelay",
+    "RuntimeDelayBounds",
+    "format_number",
+    "noop_delay",
+    "runtime_delay_callback",
+]

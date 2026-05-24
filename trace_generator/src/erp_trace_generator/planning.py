@@ -303,7 +303,6 @@ def _default_actor_criteria(config: GenerationConfig) -> dict[str, ActorRealismC
             delay_multiplier=actor.delay_multiplier,
             workday_deviation_hours=0.0,
             pause_duration_minutes=config.run_settings.working_hours.pause_duration_minutes_min,
-            runtime_delay_cap_seconds=actor.runtime_delay_cap_seconds,
         )
         for actor in config.actors
     }

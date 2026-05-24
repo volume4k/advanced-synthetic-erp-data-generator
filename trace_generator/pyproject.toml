@@ -15,6 +15,8 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+  # Tool contract tests import the executor registry from ../generator, whose Fiori tools import Playwright.
+  "playwright>=1.55,<2",
   "pytest>=8.4,<9",
 ]
 

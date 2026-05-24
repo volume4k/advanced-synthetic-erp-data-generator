@@ -181,11 +181,11 @@ A daily demand pressure category that can softly influence **Actor Day Profiles*
 _Avoid_: Capacity, backlog, utilization
 
 **Human Delay Profile**:
-Runtime-safe actor behavior metadata that lets the **Trace Executor** apply bounded human-like delays without reading planning cache artifacts.
+Runtime-safe actor delay multiplier that lets the **Trace Executor** scale human-like pauses without reading planning cache artifacts.
 _Avoid_: Speed factor, runtime prompt, tool input
 
 **Runtime Delay Marker**:
-A named point inside a **Browser Tool** where the **Trace Executor** may pause using the active actor's **Human Delay Profile**.
+A named point inside a **Browser Tool** where the **Trace Executor** may pause using the active actor's **Human Delay Profile** and optional marker-local bounds.
 _Avoid_: Sleep, artificial wait, SAP wait
 
 **Actor Capability**:
@@ -248,6 +248,7 @@ _Avoid_: Actor, business user, persona
 - **Execution Evidence** includes the **Execution Log** and the **Object Registry**.
 - **Execution Evidence** provides runtime input for the **Post-Processing Manifest**.
 - A **Runtime Delay Marker** uses a **Human Delay Profile** from the **Execution Trace**, not the **Compiled Realism Criteria** cache.
+- A **Runtime Delay Marker** may define its own runtime floor or cap instead of using actor-level runtime bounds.
 
 ## Example dialogue
 

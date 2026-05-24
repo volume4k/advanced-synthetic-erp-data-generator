@@ -22,8 +22,6 @@ class RealismGuardrails:
     workday_deviation_hours_max: float
     pause_duration_minutes_min: int
     pause_duration_minutes_max: int
-    runtime_delay_cap_seconds_min: float
-    runtime_delay_cap_seconds_max: float
 
     def __post_init__(self) -> None:
         if self.delay_multiplier_min > self.delay_multiplier_max:
@@ -32,8 +30,6 @@ class RealismGuardrails:
             raise ValueError("workday_deviation_hours_min must be <= workday_deviation_hours_max")
         if self.pause_duration_minutes_min > self.pause_duration_minutes_max:
             raise ValueError("pause_duration_minutes_min must be <= pause_duration_minutes_max")
-        if self.runtime_delay_cap_seconds_min > self.runtime_delay_cap_seconds_max:
-            raise ValueError("runtime_delay_cap_seconds_min must be <= runtime_delay_cap_seconds_max")
 
 
 @dataclass(frozen=True)
@@ -43,7 +39,6 @@ class Actor:
     timezone: str
     persona_description: str
     delay_multiplier: float
-    runtime_delay_cap_seconds: float
     realism_guardrails: RealismGuardrails
     expose_as: str
     capabilities: tuple[ActorCapability, ...]

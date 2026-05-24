@@ -37,7 +37,6 @@ class TraceCase(ArtifactModel):
 
 class HumanDelayProfile(ArtifactModel):
     delay_multiplier: float = Field(gt=0)
-    runtime_delay_cap_seconds: float = Field(ge=0)
 
 
 class TraceActorSession(ArtifactModel):

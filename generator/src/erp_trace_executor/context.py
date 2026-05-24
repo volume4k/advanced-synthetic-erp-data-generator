@@ -14,6 +14,7 @@ from erp_trace_executor.browser.session import BrowserSession, BrowserSessionMan
 from erp_trace_executor.fiori_messages import FioriMessageSink
 from erp_trace_executor.fiori_page import FioriPage
 from erp_trace_executor.models import ExecutionTaskRecord, HumanDelayProfile
+from erp_trace_executor.runtime_delay import RuntimeDelayBounds
 
 ResultT = TypeVar("ResultT")
 FioriMessageSinkFactory = Callable[[ExecutionTaskRecord, BrowserSession], FioriMessageSink]
@@ -73,8 +74,13 @@ class ExecutionContext:
         )
         return FioriPage(session.page, message_sink=message_sink)
 
-    def runtime_delay_marker(self, marker: str, base_seconds: float) -> None:
-        _runtime_delay_marker(self, marker, base_seconds)
+    def runtime_delay_marker(
+        self,
+        marker: str,
+        base_seconds: float,
+        bounds: RuntimeDelayBounds | None = None,
+    ) -> None:
+        _runtime_delay_marker(self, marker, base_seconds, bounds)
 
 
 @dataclass(frozen=True)
@@ -108,11 +114,21 @@ class ActorSessionExecutionContext:
         )
         return FioriPage(self.session.page, message_sink=message_sink)
 
-    def runtime_delay_marker(self, marker: str, base_seconds: float) -> None:
-        _runtime_delay_marker(self, marker, base_seconds)
+    def runtime_delay_marker(
+        self,
+        marker: str,
+        base_seconds: float,
+        bounds: RuntimeDelayBounds | None = None,
+    ) -> None:
+        _runtime_delay_marker(self, marker, base_seconds, bounds)
 
 
-def _runtime_delay_marker(context: ExecutionContext | ActorSessionExecutionContext, marker: str, base_seconds: float) -> None:
+def _runtime_delay_marker(
+    context: ExecutionContext | ActorSessionExecutionContext,
+    marker: str,
+    base_seconds: float,
+    bounds: RuntimeDelayBounds | None,
+) -> None:
     if base_seconds <= 0:
         return
     profile_payload = context.record.meta.get("human_delay_profile")
@@ -130,7 +146,12 @@ def _runtime_delay_marker(context: ExecutionContext | ActorSessionExecutionConte
             profile_payload,
         )
         return
-    delay_seconds = min(base_seconds * profile.delay_multiplier, profile.runtime_delay_cap_seconds)
+    delay_seconds = base_seconds * profile.delay_multiplier
+    if bounds is not None:
+        if bounds.min_seconds is not None:
+            delay_seconds = max(delay_seconds, bounds.min_seconds)
+        if bounds.max_seconds is not None:
+            delay_seconds = min(delay_seconds, bounds.max_seconds)
     if delay_seconds <= 0:
         return
     context.get_browser_session().page.wait_for_timeout(round(delay_seconds * 1000))

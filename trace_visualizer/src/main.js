@@ -677,7 +677,7 @@ function renderSessions(model) {
       <span>${model.sessions.length} records</span>
     </div>
     ${renderTable(
-      ["actor_session_id", "synthetic_actor_id", "technical_sap_user_id", "username_env_var", "login_url_env_var", "delay_multiplier", "runtime_delay_cap_seconds"],
+      ["actor_session_id", "synthetic_actor_id", "technical_sap_user_id", "username_env_var", "login_url_env_var", "delay_multiplier"],
       model.sessions.map((session) => [
         session.actor_session_id,
         session.synthetic_actor_id,
@@ -685,7 +685,6 @@ function renderSessions(model) {
         session.username_env_var,
         session.login_url_env_var,
         session.human_delay_profile?.delay_multiplier,
-        session.human_delay_profile?.runtime_delay_cap_seconds,
       ]),
     )}
   `;
@@ -1256,7 +1255,7 @@ function classifyArtifact(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return "";
   }
-  if (value.trace_version === "0.2" && value.dependency_graph && value.execution_schedule) {
+  if (value.trace_version === "0.3" && value.dependency_graph && value.execution_schedule) {
     return "execution";
   }
   if (value.manifest_version === "0.2" && value.timestamp_policy && Array.isArray(value.planned_step_timestamps)) {
@@ -1497,8 +1496,8 @@ function buildWaveMatrix({ waves, enrichedByNode }) {
 
 function buildRunWarnings(run, execution, manifest, enrichedSteps) {
   const warnings = [...run.warnings];
-  if (execution && execution.trace_version !== "0.2") {
-    warnings.push(`Unsupported trace_version ${execution.trace_version || "missing"}; expected 0.2.`);
+  if (execution && execution.trace_version !== "0.3") {
+    warnings.push(`Unsupported trace_version ${execution.trace_version || "missing"}; expected 0.3.`);
   }
   if (manifest && manifest.manifest_version !== "0.2") {
     warnings.push(`Unsupported manifest_version ${manifest.manifest_version || "missing"}; expected 0.2.`);

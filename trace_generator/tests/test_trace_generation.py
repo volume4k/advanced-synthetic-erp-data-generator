@@ -175,7 +175,6 @@ def _actor(actor_id: str, role: str, user_prefix: str) -> dict:
         "timezone": "Europe/Berlin",
         "workLocation": "HD00",
         "delayMultiplier": 1.0,
-        "runtimeDelayCapSeconds": 3.0,
         "personaDescription": f"{role} clerk with normal ERP habits",
         "realismProfile": {
             "workerType": role,
@@ -189,8 +188,6 @@ def _actor(actor_id: str, role: str, user_prefix: str) -> dict:
             "workdayDeviationHoursMax": 1.0,
             "pauseDurationMinutesMin": 30,
             "pauseDurationMinutesMax": 75,
-            "runtimeDelayCapSecondsMin": 1.0,
-            "runtimeDelayCapSecondsMax": 5.0,
         },
         "exposeInFinalDatasetAs": actor_id,
         "capabilities": [{"processType": "procure_to_pay", "stepTypes": capabilities}],
@@ -329,17 +326,27 @@ def test_config_loader_rejects_deprecated_speed_factor(tmp_path: Path) -> None:
         load_generation_config(config_path)
 
 
-def test_config_loader_loads_delay_multiplier_and_runtime_cap(tmp_path: Path) -> None:
+def test_config_loader_loads_delay_multiplier(tmp_path: Path) -> None:
     payload = _base_config()
     payload["actors"][0]["delayMultiplier"] = 1.25
-    payload["actors"][0]["runtimeDelayCapSeconds"] = 4.0
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, payload)
 
     config = load_generation_config(config_path)
 
     assert config.actors[0].delay_multiplier == 1.25
-    assert config.actors[0].runtime_delay_cap_seconds == 4.0
+
+
+def test_config_loader_rejects_removed_runtime_delay_cap(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["actors"][0]["runtimeDelayCapSeconds"] = 4.0
+    payload["actors"][0]["realismGuardrails"]["runtimeDelayCapSecondsMin"] = 1.0
+    payload["actors"][0]["realismGuardrails"]["runtimeDelayCapSecondsMax"] = 5.0
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="runtimeDelayCapSeconds.*removed"):
+        load_generation_config(config_path)
 
 
 def test_config_loader_validates_realism_guardrails(tmp_path: Path) -> None:
@@ -1130,7 +1137,6 @@ def _actor_criteria(config) -> dict[str, ActorRealismCriteria]:
             delay_multiplier=actor.delay_multiplier,
             workday_deviation_hours=0.0,
             pause_duration_minutes=30,
-            runtime_delay_cap_seconds=actor.runtime_delay_cap_seconds,
         )
         for actor in config.actors
     }
@@ -1250,7 +1256,7 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
     assert not (out_dir / "RUN_TEST_001.executor.trace.jsonl").exists()
 
     execution_trace = yaml.safe_load(artifacts.execution_trace_path.read_text(encoding="utf-8"))
-    assert execution_trace["trace_version"] == "0.2"
+    assert execution_trace["trace_version"] == "0.3"
     assert execution_trace["run_id"] == "RUN_TEST_001"
     assert execution_trace["realism_criteria_hash"] == execution_trace["llm_metadata"]["realism_criteria_hash"]
     assert execution_trace["actor_sessions"] == [
@@ -1261,7 +1267,7 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
                 "username_env_var": "SAP_USER_1_UN",
                 "password_env_var": "SAP_USER_1_PW",
                 "login_url_env_var": "SAP_URL",
-                "human_delay_profile": {"delay_multiplier": 1.0, "runtime_delay_cap_seconds": 3.0},
+                "human_delay_profile": {"delay_multiplier": 1.0},
             },
             {
                 "actor_session_id": "warehouse_01-session",
@@ -1270,7 +1276,7 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
                 "username_env_var": "SAP_USER_2_UN",
                 "password_env_var": "SAP_USER_2_PW",
                 "login_url_env_var": "SAP_URL",
-                "human_delay_profile": {"delay_multiplier": 1.0, "runtime_delay_cap_seconds": 3.0},
+                "human_delay_profile": {"delay_multiplier": 1.0},
             },
             {
                 "actor_session_id": "accounts_payable_01-session",
@@ -1279,7 +1285,7 @@ def test_generation_emits_canonical_trace_and_post_processing_manifest(tmp_path:
                 "username_env_var": "SAP_USER_3_UN",
                 "password_env_var": "SAP_USER_3_PW",
                 "login_url_env_var": "SAP_URL",
-                "human_delay_profile": {"delay_multiplier": 1.0, "runtime_delay_cap_seconds": 3.0},
+                "human_delay_profile": {"delay_multiplier": 1.0},
             },
         ]
     assert "secret" not in json.dumps(execution_trace)

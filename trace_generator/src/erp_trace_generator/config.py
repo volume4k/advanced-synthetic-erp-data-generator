@@ -77,6 +77,10 @@ def _list(payload: dict[str, Any], key: str) -> list[dict[str, Any]]:
 def _actor(item: dict[str, Any]) -> Actor:
     if "speedFactor" in item:
         raise TraceGenerationError("Actor field 'speedFactor' is deprecated; use 'delayMultiplier'")
+    if "runtimeDelayCapSeconds" in item:
+        raise TraceGenerationError(
+            "Actor field 'runtimeDelayCapSeconds' has been removed; use marker-local RuntimeDelayBounds"
+        )
     guardrails = _realism_guardrails(item.get("realismGuardrails", {}))
     return Actor(
         id=str(item["id"]),
@@ -84,7 +88,6 @@ def _actor(item: dict[str, Any]) -> Actor:
         timezone=str(item["timezone"]),
         persona_description=str(item.get("personaDescription", item.get("realismProfile", {}).get("workerType", item["role"]))),
         delay_multiplier=float(item["delayMultiplier"]),
-        runtime_delay_cap_seconds=float(item.get("runtimeDelayCapSeconds", guardrails.runtime_delay_cap_seconds_max)),
         realism_guardrails=guardrails,
         expose_as=str(item.get("exposeInFinalDatasetAs", item["id"])),
         capabilities=tuple(_actor_capability(value) for value in item.get("capabilities", [])),
@@ -92,6 +95,12 @@ def _actor(item: dict[str, Any]) -> Actor:
 
 
 def _realism_guardrails(item: dict[str, Any]) -> RealismGuardrails:
+    removed_cap_fields = {"runtimeDelayCapSecondsMin", "runtimeDelayCapSecondsMax"} & item.keys()
+    if removed_cap_fields:
+        raise TraceGenerationError(
+            "Realism guardrail fields runtimeDelayCapSecondsMin/runtimeDelayCapSecondsMax have been removed; "
+            "use marker-local RuntimeDelayBounds"
+        )
     return RealismGuardrails(
         delay_multiplier_min=float(item.get("delayMultiplierMin", 0.5)),
         delay_multiplier_max=float(item.get("delayMultiplierMax", 3.0)),
@@ -99,8 +108,6 @@ def _realism_guardrails(item: dict[str, Any]) -> RealismGuardrails:
         workday_deviation_hours_max=float(item.get("workdayDeviationHoursMax", 1.0)),
         pause_duration_minutes_min=int(item.get("pauseDurationMinutesMin", 30)),
         pause_duration_minutes_max=int(item.get("pauseDurationMinutesMax", 75)),
-        runtime_delay_cap_seconds_min=float(item.get("runtimeDelayCapSecondsMin", 0.5)),
-        runtime_delay_cap_seconds_max=float(item.get("runtimeDelayCapSecondsMax", 10.0)),
     )
 
 
@@ -401,11 +408,6 @@ def _validate_actor_realism(actor: Actor) -> None:
         raise TraceGenerationError(
             f"Actor '{actor.id}' delayMultiplier must be within realism guardrails "
             f"[{guardrails.delay_multiplier_min}, {guardrails.delay_multiplier_max}]"
-        )
-    if not guardrails.runtime_delay_cap_seconds_min <= actor.runtime_delay_cap_seconds <= guardrails.runtime_delay_cap_seconds_max:
-        raise TraceGenerationError(
-            f"Actor '{actor.id}' runtimeDelayCapSeconds must be within realism guardrails "
-            f"[{guardrails.runtime_delay_cap_seconds_min}, {guardrails.runtime_delay_cap_seconds_max}]"
         )
 
 

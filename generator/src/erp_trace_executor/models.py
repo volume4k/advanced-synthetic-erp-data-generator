@@ -37,12 +37,11 @@ class ExecutionTaskRecord(BaseModel):
 
 
 class HumanDelayProfile(BaseModel):
-    """Runtime-safe actor delay metadata carried by canonical traces."""
+    """Runtime-safe actor delay multiplier carried by canonical traces."""
 
     model_config = ConfigDict(extra="forbid")
 
     delay_multiplier: float = Field(gt=0)
-    runtime_delay_cap_seconds: float = Field(ge=0)
 
 
 class SessionInitUser(BaseModel):

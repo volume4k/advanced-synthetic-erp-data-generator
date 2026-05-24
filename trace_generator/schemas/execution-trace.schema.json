@@ -89,16 +89,10 @@
           "exclusiveMinimum": 0,
           "title": "Delay Multiplier",
           "type": "number"
-        },
-        "runtime_delay_cap_seconds": {
-          "minimum": 0,
-          "title": "Runtime Delay Cap Seconds",
-          "type": "number"
         }
       },
       "required": [
-        "delay_multiplier",
-        "runtime_delay_cap_seconds"
+        "delay_multiplier"
       ],
       "title": "HumanDelayProfile",
       "type": "object"

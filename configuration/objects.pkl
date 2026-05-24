@@ -32,8 +32,6 @@ class RealismGuardrails {
   workdayDeviationHoursMax: Float(this >= workdayDeviationHoursMin) = 1.0
   pauseDurationMinutesMin: Int(this >= 0) = 30
   pauseDurationMinutesMax: Int(this >= pauseDurationMinutesMin) = 75
-  runtimeDelayCapSecondsMin: Float(this >= 0) = 0.5
-  runtimeDelayCapSecondsMax: Float(this >= runtimeDelayCapSecondsMin) = 10.0
 }
 
 /// Inclusive minute range sampled by the trace generator.
@@ -127,7 +125,6 @@ class SyntheticActor {
   workLocation: String(this.length > 0)
   personaDescription: String
   delayMultiplier: Float(this > 0)
-  runtimeDelayCapSeconds: Float(this >= 0)
   realismProfile: RealismProfile
   realismGuardrails: RealismGuardrails = new RealismGuardrails {}
   exposeInFinalDatasetAs: String(this.length > 0)

@@ -1,4 +1,4 @@
-trace_version: '0.2'
+trace_version: '0.3'
 run_id: RUN_EXAMPLE_CREATE_GR
 config_hash: example
 tool_catalog_hash: example

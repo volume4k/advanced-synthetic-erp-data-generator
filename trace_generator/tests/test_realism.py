@@ -39,7 +39,6 @@ def test_realism_compiler_accepts_valid_actor_criteria(tmp_path: Path) -> None:
             "delay_multiplier": 1.2,
             "workday_deviation_hours": -0.5,
             "pause_duration_minutes": 45,
-            "runtime_delay_cap_seconds": 4.0,
         }
     )
     client = FakeRealismClient([response])
@@ -59,8 +58,7 @@ def test_realism_compiler_accepts_json_markdown_fenced_actor_criteria(tmp_path: 
   "actor_id": "procurement_01",
   "delay_multiplier": 1.2,
   "workday_deviation_hours": -0.5,
-  "pause_duration_minutes": 45,
-  "runtime_delay_cap_seconds": 4.0
+  "pause_duration_minutes": 45
 }
 ```"""
     client = FakeRealismClient([response])
@@ -80,7 +78,6 @@ def test_realism_compiler_accepts_local_model_actor_wrapper(tmp_path: Path) -> N
                 "delay_multiplier": 1.2,
                 "workday_deviation_hours": -0.5,
                 "pause_duration_minutes": 45,
-                "runtime_delay_cap_seconds": 4.0,
                 "day_delay_multiplier_variance": 0.1,
                 "day_workday_deviation_hours_variance": 0.2,
                 "day_pause_duration_minutes_variance": 10,
@@ -108,7 +105,6 @@ def test_realism_compiler_accepts_local_model_actor_with_extra_input_echo(tmp_pa
             "delay_multiplier": 1.2,
             "workday_deviation_hours": -0.5,
             "pause_duration_minutes": 45,
-            "runtime_delay_cap_seconds": 4.0,
             "day_delay_multiplier_variance": 0.1,
             "day_workday_deviation_hours_variance": -0.2,
             "day_pause_duration_minutes_variance": 10,
@@ -133,7 +129,6 @@ def test_realism_compiler_retries_invalid_actor_criteria_with_error_feedback(tmp
             "delay_multiplier": 9.0,
             "workday_deviation_hours": -0.5,
             "pause_duration_minutes": 45,
-            "runtime_delay_cap_seconds": 4.0,
         }
     )
     valid = json.dumps(
@@ -142,7 +137,6 @@ def test_realism_compiler_retries_invalid_actor_criteria_with_error_feedback(tmp
             "delay_multiplier": 1.1,
             "workday_deviation_hours": -0.5,
             "pause_duration_minutes": 45,
-            "runtime_delay_cap_seconds": 4.0,
         }
     )
     client = FakeRealismClient([invalid, valid])
@@ -164,7 +158,6 @@ def test_realism_compiler_fails_after_invalid_actor_retries(tmp_path: Path) -> N
             "delay_multiplier": 9.0,
             "workday_deviation_hours": -0.5,
             "pause_duration_minutes": 45,
-            "runtime_delay_cap_seconds": 4.0,
         }
     )
     client = FakeRealismClient([invalid, invalid])
@@ -180,7 +173,6 @@ def test_realism_compiler_uses_cached_actor_criteria(tmp_path: Path) -> None:
         "delay_multiplier": 1.15,
         "workday_deviation_hours": 0.0,
         "pause_duration_minutes": 40,
-        "runtime_delay_cap_seconds": 3.0,
     }
     cache_path = RealismCompiler(config=config, client=FakeRealismClient([]), cache_dir=tmp_path).actor_cache_path(
         "procurement_01"
@@ -352,12 +344,11 @@ def test_trace_generation_uses_enabled_realism_compiler(tmp_path: Path) -> None:
 
     assert trace["llm_metadata"]["used"] is True
     assert trace["llm_metadata"]["realism_criteria_hash"]
-    assert trace["llm_metadata"]["realism_compiler_schema_version"] == "2"
+    assert trace["llm_metadata"]["realism_compiler_schema_version"] == "3"
     assert trace["llm_metadata"]["llm_request_count"] == 6
     assert trace["llm_metadata"]["llm_retry_count"] == 0
     assert trace["actor_sessions"][0]["human_delay_profile"] == {
         "delay_multiplier": 1.2,
-        "runtime_delay_cap_seconds": 4.0,
     }
     assert trace["cases"][0]["requested_delivery_date"] == "2026-05-23"
     assert 19.0 <= trace["cases"][0]["line_items"][0]["target_price"] <= 21.0
@@ -869,7 +860,6 @@ def _actor_response(actor_id: str, delay_multiplier: float) -> str:
             "delay_multiplier": delay_multiplier,
             "workday_deviation_hours": 0.0,
             "pause_duration_minutes": 45,
-            "runtime_delay_cap_seconds": 4.0,
             "day_delay_multiplier_variance": 0.1,
             "day_workday_deviation_hours_variance": 0.2,
             "day_pause_duration_minutes_variance": 10,

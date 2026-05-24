@@ -89,7 +89,7 @@ def _execution_trace(
 ) -> dict[str, Any]:
     process = config.active_process()
     return {
-        "trace_version": "0.2",
+        "trace_version": "0.3",
         "run_id": run_id,
         "config_hash": config_hash,
         "tool_catalog_hash": tool_catalog_hash,
@@ -304,7 +304,6 @@ def _human_delay_profile(actor_id: str, realism_criteria: CompiledRealismCriteri
     return {
         "human_delay_profile": {
             "delay_multiplier": criteria.delay_multiplier,
-            "runtime_delay_cap_seconds": criteria.runtime_delay_cap_seconds,
         }
     }
 
