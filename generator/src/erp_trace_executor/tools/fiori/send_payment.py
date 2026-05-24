@@ -57,7 +57,7 @@ class SapSendPaymentFlow:
 
         self._delay("app_open_search", 1.5)
         self._open_payment_app(page)
-        self._delay("form_section_fill", 1.0)
+        self._delay("payment_header_review", 1.2)
         self._fill_textbox_if_visible(page, "Buchungskreis", params.company_code)
         self._fill_textbox(page, "Buchungsbelegdatum", posting_document_date, commit=True)
         if posting_date is not None:
@@ -65,13 +65,15 @@ class SapSendPaymentFlow:
         self._fill_supplier(page, params.supplier)
 
         page.get_by_role("button", name="Posten anzeigen").click()
+        self._delay("open_item_selection_review", 1.6)
         self._clear_open_item(page, params.accounting_document)
 
+        self._delay("payment_amount_review", 1.8)
         self._fill_textbox(page, "Sachkonto", params.general_ledger_account, commit=True)
         self._fill_textbox(page, "Betrag", _format_amount(params.amount), commit=True)
         self._fill_currency_if_visible(page, params.currency)
 
-        self._delay("review_save_post", 1.5)
+        self._delay("review_save_post", 2.5)
         page.get_by_role("button", name="Buchen", exact=True).click()
         payment_document = self._wait_for_payment_document(page)
 

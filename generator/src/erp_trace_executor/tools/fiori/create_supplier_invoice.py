@@ -49,16 +49,17 @@ class SapSupplierInvoiceFlow:
         page.get_by_role("gridcell", name="Lieferantenrechnung anlegen", exact=True).locator("b").click()
         self._discard_existing_draft_if_present(page)
 
-        self._delay("form_section_fill", 1.0)
+        self._delay("invoice_header_review", 1.0)
         self._fill_textbox(page, "Rechnungsdatum", invoice_date)
         page.get_by_role("textbox", name="Rechnungsdatum").press("Enter")
 
+        self._delay("purchase_order_reference_review", 1.2)
         self._fill_textbox(page, "Bestellung/Lieferplan", params.purchase_order)
-        self._delay("form_section_fill", 1.0)
         page.get_by_role("textbox", name="Bestellung/Lieferplan").press("Enter")
-        self._delay("form_section_fill", 1.0)
+        self._delay("invoice_items_load_review", 1.5)
         self._click_close_if_present(page)
 
+        self._delay("amount_tax_review", 1.6)
         gross_amount = page.get_by_role("textbox", name="Bruttobetrag", exact=True)
         gross_amount.click()
         gross_amount.press("ControlOrMeta+a")
@@ -68,7 +69,7 @@ class SapSupplierInvoiceFlow:
         self._set_tax_code(page, params.tax_code)
 
         page.get_by_role("button", name="Prüfen").click()
-        self._delay("review_save_post", 1.5)
+        self._delay("review_save_post", 2.2)
         page.get_by_role("button", name="Buchen").click()
 
         invoice_link = page.locator("a", has_text=INVOICE_LINK_PATTERN).first
