@@ -12,6 +12,7 @@ from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.models import (
     Actor,
     ActorCapability,
+    BankAccountDetails,
     BindingSource,
     BindingValueType,
     FraudScenario,
@@ -29,6 +30,7 @@ from erp_trace_generator.models import (
     RunSettings,
     TechnicalUser,
     ToolRequirement,
+    VendorFlipflopConfig,
     WorkingHours,
 )
 from erp_trace_generator.fraud import ensure_fraud_scenarios_supported
@@ -39,7 +41,9 @@ DEFAULT_STEP_DURATION_MINUTES = {
     "create_purchase_order": {"min": 7, "max": 12},
     "post_goods_receipt": {"min": 5, "max": 10},
     "enter_incoming_invoice": {"min": 8, "max": 15},
+    "change_vendor_bank_data": {"min": 5, "max": 8},
     "post_outgoing_payment": {"min": 5, "max": 10},
+    "revert_vendor_bank_data": {"min": 5, "max": 8},
 }
 
 
@@ -77,6 +81,10 @@ def _list(payload: dict[str, Any], key: str) -> list[dict[str, Any]]:
 def _actor(item: dict[str, Any]) -> Actor:
     if "speedFactor" in item:
         raise TraceGenerationError("Actor field 'speedFactor' is deprecated; use 'delayMultiplier'")
+    if "runtimeDelayCapSeconds" in item:
+        raise TraceGenerationError(
+            "Actor field 'runtimeDelayCapSeconds' has been removed; use marker-local RuntimeDelayBounds"
+        )
     guardrails = _realism_guardrails(item.get("realismGuardrails", {}))
     return Actor(
         id=str(item["id"]),
@@ -84,7 +92,6 @@ def _actor(item: dict[str, Any]) -> Actor:
         timezone=str(item["timezone"]),
         persona_description=str(item.get("personaDescription", item.get("realismProfile", {}).get("workerType", item["role"]))),
         delay_multiplier=float(item["delayMultiplier"]),
-        runtime_delay_cap_seconds=float(item.get("runtimeDelayCapSeconds", guardrails.runtime_delay_cap_seconds_max)),
         realism_guardrails=guardrails,
         expose_as=str(item.get("exposeInFinalDatasetAs", item["id"])),
         capabilities=tuple(_actor_capability(value) for value in item.get("capabilities", [])),
@@ -92,6 +99,12 @@ def _actor(item: dict[str, Any]) -> Actor:
 
 
 def _realism_guardrails(item: dict[str, Any]) -> RealismGuardrails:
+    removed_cap_fields = {"runtimeDelayCapSecondsMin", "runtimeDelayCapSecondsMax"} & item.keys()
+    if removed_cap_fields:
+        raise TraceGenerationError(
+            "Realism guardrail fields runtimeDelayCapSecondsMin/runtimeDelayCapSecondsMax have been removed; "
+            "use marker-local RuntimeDelayBounds"
+        )
     return RealismGuardrails(
         delay_multiplier_min=float(item.get("delayMultiplierMin", 0.5)),
         delay_multiplier_max=float(item.get("delayMultiplierMax", 3.0)),
@@ -99,8 +112,6 @@ def _realism_guardrails(item: dict[str, Any]) -> RealismGuardrails:
         workday_deviation_hours_max=float(item.get("workdayDeviationHoursMax", 1.0)),
         pause_duration_minutes_min=int(item.get("pauseDurationMinutesMin", 30)),
         pause_duration_minutes_max=int(item.get("pauseDurationMinutesMax", 75)),
-        runtime_delay_cap_seconds_min=float(item.get("runtimeDelayCapSecondsMin", 0.5)),
-        runtime_delay_cap_seconds_max=float(item.get("runtimeDelayCapSecondsMax", 10.0)),
     )
 
 
@@ -172,6 +183,7 @@ def _process(item: dict[str, Any], tool_requirements: dict[str, Any]) -> Process
                     _input_binding(binding, step_type) for binding in step.get("plannedDateInputBindings", [])
                 ),
                 required_sap_object_keys=tuple(str(value) for value in step.get("requiredSapObjectKeys", [])),
+                object_output_required=bool(step.get("objectOutputRequired", True)),
             )
         )
 
@@ -186,6 +198,7 @@ def _process(item: dict[str, Any], tool_requirements: dict[str, Any]) -> Process
             )
             for dep in item.get("dependencies", [])
         ),
+        scenario_type=str(item.get("scenarioType", "NORMAL")),
     )
 
 
@@ -226,10 +239,35 @@ def _binding_value_type(value: object) -> BindingValueType:
 
 
 def _fraud_scenario(item: dict[str, Any]) -> FraudScenario:
+    enabled = bool(item["enabled"])
+    target_share = float(item["targetShare"])
+    if enabled and not 0 < target_share <= 1.0:
+        raise TraceGenerationError("Enabled fraud scenarios must have targetShare in range (0, 1.0]")
     return FraudScenario(
         id=str(item["id"]),
-        enabled=bool(item["enabled"]),
-        target_share=float(item["targetShare"]),
+        enabled=enabled,
+        target_share=target_share,
+        vendor_flipflop=(
+            _vendor_flipflop_config(item["vendorFlipflop"])
+            if item.get("vendorFlipflop") is not None
+            else None
+        ),
+    )
+
+
+def _vendor_flipflop_config(item: dict[str, Any]) -> VendorFlipflopConfig:
+    return VendorFlipflopConfig(
+        vendor_id=str(item["vendorId"]),
+        fraudulent_bank_account=_bank_account_details(item["fraudulentBankAccount"]),
+        original_bank_account=_bank_account_details(item["originalBankAccount"]),
+    )
+
+
+def _bank_account_details(item: dict[str, Any]) -> BankAccountDetails:
+    return BankAccountDetails(
+        bank_key=str(item["bankKey"]),
+        account_number=str(item["accountNumber"]),
+        account_owner=str(item["accountOwner"]),
     )
 
 
@@ -318,6 +356,30 @@ def _validate(config: GenerationConfig) -> None:
     missing_processes = active_process_types - process_types
     if missing_processes:
         raise TraceGenerationError(f"Active process type not configured: {sorted(missing_processes)}")
+    enabled_fraud_scenarios = tuple(scenario for scenario in config.fraud_scenarios if scenario.enabled)
+    if len(enabled_fraud_scenarios) > 1:
+        raise TraceGenerationError("Trace generator v1 supports only one enabled fraud scenario")
+    scenario_types_for_run = {"NORMAL"}
+    if enabled_fraud_scenarios:
+        scenario = enabled_fraud_scenarios[0]
+        if not 0 < scenario.target_share <= 1.0:
+            raise TraceGenerationError("Enabled fraud scenarios must have targetShare in range (0, 1.0]")
+        if scenario.id == "VENDOR_FLIPFLOP" and scenario.vendor_flipflop is None:
+            raise TraceGenerationError("Enabled VENDOR_FLIPFLOP scenario requires vendorFlipflop config")
+        scenario_types_for_run.add(scenario.id)
+        scenario_processes = {
+            (process.process_type, process.scenario_type)
+            for process in config.processes
+        }
+        for process_type in active_process_types:
+            if (process_type, scenario.id) not in scenario_processes:
+                raise TraceGenerationError(
+                    f"No process variant configured for active process '{process_type}' and fraud scenario '{scenario.id}'"
+                )
+            if (process_type, "NORMAL") not in scenario_processes:
+                raise TraceGenerationError(
+                    f"No NORMAL process variant configured for active process '{process_type}'"
+                )
     master_material_ids = {item.material_id for item in config.master_data}
     blocked_material_ids = set(config.run_settings.realism.blocked_materials)
     unknown_blocked_materials = sorted(
@@ -338,41 +400,49 @@ def _validate(config: GenerationConfig) -> None:
         if mapping.technical_sap_user_id not in technical_user_ids:
             raise TraceGenerationError(f"Identity mapping references unknown technical user '{mapping.technical_sap_user_id}'")
 
-    active_process = config.active_process()
     mapped_actor_ids = {mapping.synthetic_actor_id for mapping in config.identity_mappings}
     _validate_actor_capabilities(config)
-    for step in active_process.steps:
-        capable_actors = config.actors_capable_of(active_process.process_type, step.step_type)
-        if not capable_actors:
-            raise TraceGenerationError(f"Step '{step.step_type}' has no capable actor")
-        unmapped_actor_ids = sorted(actor.id for actor in capable_actors if actor.id not in mapped_actor_ids)
-        if unmapped_actor_ids:
-            raise TraceGenerationError(
-                f"Capable actor(s) for step '{step.step_type}' have no technical user mapping: {unmapped_actor_ids}"
-            )
-        if step.step_type not in config.run_settings.step_duration_minutes:
-            raise TraceGenerationError(f"Step '{step.step_type}' has no step duration range")
-        if not step.required_sap_object_keys:
-            raise TraceGenerationError(f"Step '{step.step_type}' has no required SAP object keys")
-        required_fields = set(config.tool_requirements[step.tool_name].required_input_fields)
-        bound_fields = {binding.field for binding in step.input_bindings}
-        missing_bindings = sorted(required_fields - bound_fields)
-        if missing_bindings:
-            missing = ", ".join(missing_bindings)
-            raise TraceGenerationError(f"Step '{step.step_type}' missing bindings for required fields: {missing}")
-        all_bindings = step.input_bindings + step.planned_date_input_bindings
-        unknown_binding_steps = {binding.step_type for binding in all_bindings if binding.step_type != step.step_type}
-        if unknown_binding_steps:
-            raise TraceGenerationError(f"Step '{step.step_type}' has binding with mismatched stepType")
+    for scenario_type in sorted(scenario_types_for_run):
+        active_process = config.process_for_scenario(scenario_type)
+        for step in active_process.steps:
+            capable_actors = config.actors_capable_of(active_process.process_type, step.step_type)
+            if not capable_actors:
+                raise TraceGenerationError(f"Step '{step.step_type}' has no capable actor")
+            unmapped_actor_ids = sorted(actor.id for actor in capable_actors if actor.id not in mapped_actor_ids)
+            if unmapped_actor_ids:
+                raise TraceGenerationError(
+                    f"Capable actor(s) for step '{step.step_type}' have no technical user mapping: {unmapped_actor_ids}"
+                )
+            if step.step_type not in config.run_settings.step_duration_minutes:
+                raise TraceGenerationError(f"Step '{step.step_type}' has no step duration range")
+            if step.object_output_required and not step.required_sap_object_keys:
+                raise TraceGenerationError(f"Step '{step.step_type}' has no required SAP object keys")
+            required_fields = set(config.tool_requirements[step.tool_name].required_input_fields)
+            bound_fields = _bound_root_fields(step.input_bindings)
+            missing_bindings = sorted(required_fields - bound_fields)
+            if missing_bindings:
+                missing = ", ".join(missing_bindings)
+                raise TraceGenerationError(f"Step '{step.step_type}' missing bindings for required fields: {missing}")
+            all_bindings = step.input_bindings + step.planned_date_input_bindings
+            unknown_binding_steps = {binding.step_type for binding in all_bindings if binding.step_type != step.step_type}
+            if unknown_binding_steps:
+                raise TraceGenerationError(f"Step '{step.step_type}' has binding with mismatched stepType")
 
-    step_types = {step.step_type for step in active_process.steps}
-    for dep in active_process.dependencies:
-        if dep.from_step_type not in step_types or dep.to_step_type not in step_types:
-            raise TraceGenerationError(
-                f"Dependency '{dep.from_step_type}->{dep.to_step_type}' references unknown step"
-            )
-    _validate_acyclic(active_process)
-    ensure_fraud_scenarios_supported(config.fraud_scenarios)
+        step_types = {step.step_type for step in active_process.steps}
+        for dep in active_process.dependencies:
+            if dep.from_step_type not in step_types or dep.to_step_type not in step_types:
+                raise TraceGenerationError(
+                    f"Dependency '{dep.from_step_type}->{dep.to_step_type}' references unknown step"
+                )
+        _validate_acyclic(active_process)
+    ensure_fraud_scenarios_supported(
+        config.fraud_scenarios,
+        supported_scenario_types={process.scenario_type for process in config.processes},
+    )
+
+
+def _bound_root_fields(bindings: tuple[InputBinding, ...]) -> set[str]:
+    return {binding.field.split(".", maxsplit=1)[0] for binding in bindings}
 
 
 def _validate_actor_capabilities(config: GenerationConfig) -> None:
@@ -401,11 +471,6 @@ def _validate_actor_realism(actor: Actor) -> None:
         raise TraceGenerationError(
             f"Actor '{actor.id}' delayMultiplier must be within realism guardrails "
             f"[{guardrails.delay_multiplier_min}, {guardrails.delay_multiplier_max}]"
-        )
-    if not guardrails.runtime_delay_cap_seconds_min <= actor.runtime_delay_cap_seconds <= guardrails.runtime_delay_cap_seconds_max:
-        raise TraceGenerationError(
-            f"Actor '{actor.id}' runtimeDelayCapSeconds must be within realism guardrails "
-            f"[{guardrails.runtime_delay_cap_seconds_min}, {guardrails.runtime_delay_cap_seconds_max}]"
         )
 
 

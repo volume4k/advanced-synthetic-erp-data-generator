@@ -20,7 +20,7 @@ from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.models import Actor, GenerationConfig, MasterDataEntry
 
 
-REALISM_COMPILER_SCHEMA_VERSION = "2"
+REALISM_COMPILER_SCHEMA_VERSION = "3"
 WORKLOAD_FACTORS = {"low": -0.5, "normal": 0.0, "high": 1.0}
 
 
@@ -36,7 +36,6 @@ class ActorRealismCriteria(BaseModel):
     delay_multiplier: float
     workday_deviation_hours: float
     pause_duration_minutes: int
-    runtime_delay_cap_seconds: float
     day_delay_multiplier_variance: float = 0.0
     day_workday_deviation_hours_variance: float = 0.0
     day_pause_duration_minutes_variance: int = 0
@@ -612,11 +611,6 @@ class RealismCompiler:
                 f"pause_duration_minutes {criteria.pause_duration_minutes} outside guardrails "
                 f"[{guardrails.pause_duration_minutes_min}, {guardrails.pause_duration_minutes_max}]"
             )
-        if not guardrails.runtime_delay_cap_seconds_min <= criteria.runtime_delay_cap_seconds <= guardrails.runtime_delay_cap_seconds_max:
-            raise TraceGenerationError(
-                f"runtime_delay_cap_seconds {criteria.runtime_delay_cap_seconds} outside guardrails "
-                f"[{guardrails.runtime_delay_cap_seconds_min}, {guardrails.runtime_delay_cap_seconds_max}]"
-            )
         settings = self._config.run_settings.realism
         if criteria.workload_delay_multiplier_boost > settings.max_workload_delay_multiplier_boost:
             raise TraceGenerationError("workload_delay_multiplier_boost outside guardrails")
@@ -767,7 +761,6 @@ class RealismCompiler:
                     delay_multiplier=round(delay_multiplier, 3),
                     workday_deviation_hours=round(workday_deviation_hours, 3),
                     pause_duration_minutes=pause_duration_minutes,
-                    runtime_delay_cap_seconds=baseline.runtime_delay_cap_seconds,
                     day_delay_multiplier_variance=baseline.day_delay_multiplier_variance,
                     day_workday_deviation_hours_variance=baseline.day_workday_deviation_hours_variance,
                     day_pause_duration_minutes_variance=baseline.day_pause_duration_minutes_variance,
@@ -801,10 +794,6 @@ class RealismCompiler:
                     guardrails.pause_duration_minutes_min,
                     guardrails.pause_duration_minutes_max,
                 ],
-                "runtime_delay_cap_seconds": [
-                    guardrails.runtime_delay_cap_seconds_min,
-                    guardrails.runtime_delay_cap_seconds_max,
-                ],
                 "workload_delay_multiplier_boost_max": self._config.run_settings.realism.max_workload_delay_multiplier_boost,
                 "workload_workday_deviation_hours_boost_max": self._config.run_settings.realism.max_workload_workday_deviation_hours_boost,
             },
@@ -813,7 +802,6 @@ class RealismCompiler:
                 "delay_multiplier": "number",
                 "workday_deviation_hours": "number",
                 "pause_duration_minutes": "integer",
-                "runtime_delay_cap_seconds": "number",
                 "day_delay_multiplier_variance": "number",
                 "day_workday_deviation_hours_variance": "number",
                 "day_pause_duration_minutes_variance": "integer",
@@ -1074,7 +1062,6 @@ def default_realism_criteria(config: GenerationConfig) -> CompiledRealismCriteri
             delay_multiplier=actor.delay_multiplier,
             workday_deviation_hours=0.0,
             pause_duration_minutes=config.run_settings.working_hours.pause_duration_minutes_min,
-            runtime_delay_cap_seconds=actor.runtime_delay_cap_seconds,
         )
         for actor in config.actors
     }
@@ -1246,6 +1233,9 @@ def _default_material_demand_profiles(config: GenerationConfig) -> dict[str, Mat
 def _active_master_data(config: GenerationConfig) -> tuple[MasterDataEntry, ...]:
     blocked_materials = set(config.run_settings.realism.blocked_materials)
     active = tuple(item for item in config.master_data if item.material_id not in blocked_materials)
+    vendor_flipflop = config.active_vendor_flipflop_config()
+    if vendor_flipflop is not None:
+        active = tuple(item for item in active if vendor_flipflop.vendor_id in item.valid_vendors)
     if not active:
         raise TraceGenerationError("No unblocked master data remains for realism compilation")
     return active
@@ -1294,7 +1284,6 @@ def _normalize_actor_payload(payload: dict, actor: Actor) -> dict:
         "delay_multiplier",
         "workday_deviation_hours",
         "pause_duration_minutes",
-        "runtime_delay_cap_seconds",
     }
     if required_keys.issubset(payload):
         return {key: value for key, value in payload.items() if key in allowed_keys}

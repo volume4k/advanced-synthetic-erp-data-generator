@@ -13,7 +13,6 @@ actors: Listing<objects.SyntheticActor> = new Listing {
     workLocation = "MI00"
     personaDescription = ""
     delayMultiplier = 1.15
-    runtimeDelayCapSeconds = 4.0
     realismProfile {
       workerType = "inventory manager"
       workingHoursDeviation = -0.5
@@ -26,8 +25,6 @@ actors: Listing<objects.SyntheticActor> = new Listing {
       workdayDeviationHoursMax = 1.0
       pauseDurationMinutesMin = 25
       pauseDurationMinutesMax = 75
-      runtimeDelayCapSecondsMin = 2.0
-      runtimeDelayCapSecondsMax = 6.0
     }
     exposeInFinalDatasetAs = "inventory_manager_mi00"
     capabilities {
@@ -47,7 +44,6 @@ actors: Listing<objects.SyntheticActor> = new Listing {
     workLocation = "MI00"
     personaDescription = ""
     delayMultiplier = 1.0
-    runtimeDelayCapSeconds = 4.0
     realismProfile {
       workerType = "purchasing employee"
       workingHoursDeviation = 0.0
@@ -60,8 +56,6 @@ actors: Listing<objects.SyntheticActor> = new Listing {
       workdayDeviationHoursMax = 1.5
       pauseDurationMinutesMin = 20
       pauseDurationMinutesMax = 70
-      runtimeDelayCapSecondsMin = 1.5
-      runtimeDelayCapSecondsMax = 6.0
     }
     exposeInFinalDatasetAs = "buyer_mi00"
     capabilities {
@@ -81,7 +75,6 @@ actors: Listing<objects.SyntheticActor> = new Listing {
     workLocation = "MI00"
     personaDescription = ""
     delayMultiplier = 1.3
-    runtimeDelayCapSeconds = 5.0
     realismProfile {
       workerType = "goods receipt clerk"
       workingHoursDeviation = -0.75
@@ -94,8 +87,6 @@ actors: Listing<objects.SyntheticActor> = new Listing {
       workdayDeviationHoursMax = 0.5
       pauseDurationMinutesMin = 25
       pauseDurationMinutesMax = 80
-      runtimeDelayCapSecondsMin = 2.0
-      runtimeDelayCapSecondsMax = 7.0
     }
     exposeInFinalDatasetAs = "goods_receipt_clerk_mi00"
     capabilities {
@@ -115,7 +106,6 @@ actors: Listing<objects.SyntheticActor> = new Listing {
     workLocation = "MI00"
     personaDescription = ""
     delayMultiplier = 1.05
-    runtimeDelayCapSeconds = 4.0
     realismProfile {
       workerType = "accounts payable clerk"
       workingHoursDeviation = 0.25
@@ -128,8 +118,6 @@ actors: Listing<objects.SyntheticActor> = new Listing {
       workdayDeviationHoursMax = 1.75
       pauseDurationMinutesMin = 20
       pauseDurationMinutesMax = 75
-      runtimeDelayCapSecondsMin = 1.5
-      runtimeDelayCapSecondsMax = 6.0
     }
     exposeInFinalDatasetAs = "accounts_payable_clerk_mi00"
     capabilities {
@@ -137,7 +125,9 @@ actors: Listing<objects.SyntheticActor> = new Listing {
         processType = "procure_to_pay"
         stepTypes {
           "enter_incoming_invoice"
+          "change_vendor_bank_data"
           "post_outgoing_payment"
+          "revert_vendor_bank_data"
         }
       }
     }

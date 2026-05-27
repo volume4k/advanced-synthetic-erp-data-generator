@@ -8,7 +8,7 @@ runSettings: objects.RunSettings = new objects.RunSettings {
     "procure_to_pay"
   }
   schedulerSeed = 42
-  runStartDate = "2026-05-18"
+  runStartDate = "2026-05-27"
   runHorizonDays = 30
   queuePolicy = "fifo"
   realism {
@@ -67,9 +67,17 @@ runSettings: objects.RunSettings = new objects.RunSettings {
       min = 8
       max = 15
     }
+    ["change_vendor_bank_data"] = new objects.MinuteRange {
+      min = 5
+      max = 8
+    }
     ["post_outgoing_payment"] = new objects.MinuteRange {
       min = 5
       max = 10
+    }
+    ["revert_vendor_bank_data"] = new objects.MinuteRange {
+      min = 5
+      max = 8
     }
   }
   interStepDelayMinutes {
@@ -96,6 +104,24 @@ runSettings: objects.RunSettings = new objects.RunSettings {
       toStepType = "post_outgoing_payment"
       min = 240
       max = 2880
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "enter_incoming_invoice"
+      toStepType = "change_vendor_bank_data"
+      min = 15
+      max = 90
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "change_vendor_bank_data"
+      toStepType = "post_outgoing_payment"
+      min = 30
+      max = 240
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "post_outgoing_payment"
+      toStepType = "revert_vendor_bank_data"
+      min = 10
+      max = 60
     }
   }
   storageLocationLabels {

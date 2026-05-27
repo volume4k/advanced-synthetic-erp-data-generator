@@ -10,7 +10,24 @@ from erp_trace_generator.models import CasePlan, InputBinding, ProcessStep
 
 
 def resolve_step_inputs(step: ProcessStep, case: CasePlan) -> dict[str, Any]:
-    return {binding.field: _resolve_binding(binding, case) for binding in step.input_bindings}
+    inputs: dict[str, Any] = {}
+    for binding in step.input_bindings:
+        _set_binding_value(inputs, binding.field, _resolve_binding(binding, case))
+    return inputs
+
+
+def _set_binding_value(inputs: dict[str, Any], field: str, value: Any) -> None:
+    parts = field.split(".")
+    target = inputs
+    for part in parts[:-1]:
+        existing = target.setdefault(part, {})
+        if not isinstance(existing, dict):
+            raise TraceGenerationError(f"Cannot bind nested field '{field}': '{part}' already has a scalar value")
+        target = existing
+    leaf = parts[-1]
+    if leaf in target:
+        raise TraceGenerationError(f"Duplicate binding for field '{field}'")
+    target[leaf] = value
 
 
 def planned_date_inputs_for_step(step: ProcessStep, case: CasePlan) -> dict[str, str]:

@@ -22,6 +22,9 @@ class FakeLocator:
             self._page.click_failures_by_name[self._name] = failures_remaining - 1
             raise PlaywrightTimeoutError(f"cannot click {self._name}")
 
+    def dblclick(self, **_kwargs: Any) -> None:
+        self._page.actions.append(("dblclick", self._name))
+
     def fill(self, value: str) -> None:
         self._page.actions.append(("fill", self._name, value))
 
@@ -36,6 +39,10 @@ class FakeLocator:
 
     def get_by_role(self, role: str, *, name: str) -> "FakeLocator":
         return FakeLocator(self._page, f"{self._name}->role:{role}:{name}")
+
+    def inner_text(self) -> str:
+        self._page.actions.append(("inner_text", self._name))
+        return self._name
 
 
 class FakePage:
@@ -78,6 +85,45 @@ def test_fiori_locator_click_waits_for_page_to_settle():
     assert ("wait_for_function", False, 1234) in raw_page.actions
     assert ("wait_for_function", True, 1234) in raw_page.actions
     assert ("evaluate_messages",) not in raw_page.actions
+
+
+def test_fiori_locator_runs_micro_delay_after_human_actions():
+    raw_page = FakePage()
+    delayed_actions: list[str] = []
+    page = FioriPage(raw_page, action_delay=delayed_actions.append)
+
+    page.get_by_role("button", name="Bestellen").click()
+    page.get_by_role("button", name="Bestellen").dblclick()
+    page.get_by_role("textbox", name="Material").fill("PUMP1902")
+    page.get_by_role("textbox", name="Material").press("A")
+    page.get_by_role("textbox", name="Material").press("Enter")
+
+    assert delayed_actions == ["click", "dblclick", "fill", "press", "press"]
+
+
+def test_fiori_locator_does_not_micro_delay_waits_or_reads():
+    raw_page = FakePage()
+    delayed_actions: list[str] = []
+    page = FioriPage(raw_page, action_delay=delayed_actions.append)
+
+    locator = page.get_by_role("textbox", name="Material")
+    locator.wait_for(state="visible")
+    assert locator.inner_text() == "role:textbox:Material"
+
+    assert delayed_actions == []
+
+
+def test_fiori_locator_can_disable_micro_delay_per_action():
+    raw_page = FakePage()
+    delayed_actions: list[str] = []
+    page = FioriPage(raw_page, action_delay=delayed_actions.append)
+
+    page.get_by_role("button", name="Bestellen").click(human_delay=False)
+    page.get_by_role("button", name="Bestellen").dblclick(human_delay=False)
+    page.get_by_role("textbox", name="Material").fill("PUMP1902", human_delay=False)
+    page.get_by_role("textbox", name="Material").press("Enter", human_delay=False)
+
+    assert delayed_actions == []
 
 
 def test_fiori_locator_press_settles_only_for_commit_keys():

@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import re
+import time
 
 from pydantic import BaseModel, Field
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.models import ToolResult, returned_object
+from erp_trace_executor.runtime_delay import RuntimeDelay, noop_delay, runtime_delay_callback
 from erp_trace_executor.tooling import ToolSpec
-from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, format_number, noop_delay, runtime_delay_callback
+from erp_trace_executor.tools.fiori.helpers import format_number
 
 
 IFRAME_SELECTOR = 'iframe[name="application-PurchaseOrder-create-iframe"]'
@@ -49,6 +51,7 @@ class SapPurchaseOrderFlow:
         frame = page.locator(IFRAME_SELECTOR).content_frame
         self._close_start_dialog_if_visible(frame)
 
+        self._delay("supplier_context_review", 1.0)
         supplier = frame.get_by_role("textbox", name="Lieferant")
         supplier.click()
         supplier.fill(params.supplier)
@@ -61,6 +64,7 @@ class SapPurchaseOrderFlow:
         self._focus_purchase_requisition_by_tab(frame)
         purchase_requisition = frame.get_by_role("textbox", name="Banf").first
         purchase_requisition.wait_for(state="visible")
+        self._delay("line_item_reference_review", 1.4)
         self._type_grid_textbox_value(purchase_requisition, params.purchase_requisition)
 
         quantity_input = frame.get_by_role("textbox", name="Bestellmenge").first
@@ -69,12 +73,13 @@ class SapPurchaseOrderFlow:
         net_price_input = frame.get_by_role("textbox", name="Nettopreis").first
         net_price_input.wait_for(state="visible")
         self._type_grid_textbox_value(net_price_input, format_number(params.net_price))
+        self._delay("pricing_tax_review", 1.6)
         frame.get_by_role("tablist").get_by_text("Rechnung", exact=True).click()
         tax_code = frame.get_by_role("textbox", name="Steuerkennz.")
         tax_code.click()
         tax_code.fill(params.tax_code)
         tax_code.press("Enter")
-        self._delay("review_save_post", 1.5)
+        self._delay("review_save_post", 2.0)
         frame.get_by_role("button", name=re.compile(r"Sichern\s+Hervorgehoben")).click()
 
         success_message = frame.locator(STATUS_BAR_MESSAGE_SELECTOR)
@@ -110,6 +115,8 @@ class SapPurchaseOrderFlow:
 
         for character in value:
             cell.press(character)
+            time.sleep(0.1)
+        time.sleep(0.25)
         cell.press("Enter")
 
     def _close_start_dialog_if_visible(self, frame) -> None:

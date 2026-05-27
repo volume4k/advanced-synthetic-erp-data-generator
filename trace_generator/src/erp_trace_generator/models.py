@@ -22,8 +22,6 @@ class RealismGuardrails:
     workday_deviation_hours_max: float
     pause_duration_minutes_min: int
     pause_duration_minutes_max: int
-    runtime_delay_cap_seconds_min: float
-    runtime_delay_cap_seconds_max: float
 
     def __post_init__(self) -> None:
         if self.delay_multiplier_min > self.delay_multiplier_max:
@@ -32,8 +30,6 @@ class RealismGuardrails:
             raise ValueError("workday_deviation_hours_min must be <= workday_deviation_hours_max")
         if self.pause_duration_minutes_min > self.pause_duration_minutes_max:
             raise ValueError("pause_duration_minutes_min must be <= pause_duration_minutes_max")
-        if self.runtime_delay_cap_seconds_min > self.runtime_delay_cap_seconds_max:
-            raise ValueError("runtime_delay_cap_seconds_min must be <= runtime_delay_cap_seconds_max")
 
 
 @dataclass(frozen=True)
@@ -43,7 +39,6 @@ class Actor:
     timezone: str
     persona_description: str
     delay_multiplier: float
-    runtime_delay_cap_seconds: float
     realism_guardrails: RealismGuardrails
     expose_as: str
     capabilities: tuple[ActorCapability, ...]
@@ -115,6 +110,7 @@ class ProcessStep:
     input_bindings: tuple[InputBinding, ...] = ()
     planned_date_input_bindings: tuple[InputBinding, ...] = ()
     required_sap_object_keys: tuple[str, ...] = ()
+    object_output_required: bool = True
 
 
 @dataclass(frozen=True)
@@ -129,6 +125,7 @@ class ProcessDefinition:
     process_type: str
     steps: tuple[ProcessStep, ...]
     dependencies: tuple[ProcessDependency, ...]
+    scenario_type: str = "NORMAL"
 
 
 @dataclass(frozen=True)
@@ -241,10 +238,25 @@ class RealismSettings:
 
 
 @dataclass(frozen=True)
+class BankAccountDetails:
+    bank_key: str
+    account_number: str
+    account_owner: str
+
+
+@dataclass(frozen=True)
+class VendorFlipflopConfig:
+    vendor_id: str
+    fraudulent_bank_account: BankAccountDetails
+    original_bank_account: BankAccountDetails
+
+
+@dataclass(frozen=True)
 class FraudScenario:
     id: str
     enabled: bool
     target_share: float
+    vendor_flipflop: VendorFlipflopConfig | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.target_share <= 1.0:
@@ -267,13 +279,31 @@ class GenerationConfig:
     fraud_scenarios: tuple[FraudScenario, ...] = ()
 
     def active_process(self) -> ProcessDefinition:
+        return self.process_for_scenario(self.active_scenario_type())
+
+    def process_for_scenario(self, scenario_type: str) -> ProcessDefinition:
         active = self.run_settings.active_process_types
         if not active:
             raise ValueError("active_process_types cannot be empty")
         for process in self.processes:
-            if process.process_type == active[0]:
+            if process.process_type == active[0] and process.scenario_type == scenario_type:
                 return process
         raise AssertionError("active process existence is validated by loader")
+
+    def active_scenario_type(self) -> str:
+        enabled = tuple(scenario for scenario in self.fraud_scenarios if scenario.enabled)
+        if not enabled:
+            return "NORMAL"
+        return enabled[0].id
+
+    def active_vendor_flipflop_config(self) -> VendorFlipflopConfig | None:
+        scenario = next(
+            (item for item in self.fraud_scenarios if item.enabled and item.id == "VENDOR_FLIPFLOP"),
+            None,
+        )
+        if scenario is None:
+            return None
+        return scenario.vendor_flipflop
 
     def actors_capable_of(self, process_type: str, step_type: str) -> tuple[Actor, ...]:
         return tuple(
@@ -328,6 +358,7 @@ class PlannedStep:
     planned_date_inputs: dict[str, str]
     target_start: datetime
     target_end: datetime
+    case_scenario_type: str = "NORMAL"
     labels: dict[str, str] = field(default_factory=lambda: {"step_label": "normal"})
 
 

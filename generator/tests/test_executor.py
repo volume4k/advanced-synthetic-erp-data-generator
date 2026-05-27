@@ -22,6 +22,7 @@ from erp_trace_executor.errors import SessionUserMismatchError
 from erp_trace_executor.executor import TraceExecutor
 from erp_trace_executor.models import ExecutionTaskRecord, SessionInitRecord, SessionInitUser, ToolResult, returned_object
 from erp_trace_executor.registry import ToolRegistry
+from erp_trace_executor.runtime_delay import RuntimeDelayBounds
 from erp_trace_executor.tooling import ToolSpec
 
 
@@ -88,7 +89,7 @@ def _trace_from_records(records: list[ExecutionTaskRecord], *, run_id: str = "RU
 
     return CanonicalTrace.model_validate(
         {
-            "trace_version": "0.2",
+            "trace_version": "0.3",
             "run_id": run_id,
             "config_hash": "config",
             "tool_catalog_hash": "tools",
@@ -849,11 +850,10 @@ def test_execution_contexts_use_configured_fiori_message_sink_factory():
     assert calls == [(record, session), (record, session)]
 
 
-def test_execution_context_runtime_delay_marker_uses_multiplier_and_cap():
+def test_execution_context_runtime_delay_marker_uses_multiplier_and_marker_bounds():
     record = _record("C001_A1", tool="test.noop")
     record.meta["human_delay_profile"] = {
         "delay_multiplier": 2.0,
-        "runtime_delay_cap_seconds": 2.5,
     }
     page = SimpleNamespace(waited=[])
 
@@ -869,16 +869,95 @@ def test_execution_context_runtime_delay_marker_uses_multiplier_and_cap():
 
     context = ExecutionContext(record=record, session_manager=FakeSessionManager())
 
-    context.runtime_delay_marker("review_save", 1.5)
+    context.runtime_delay_marker(
+        "review_save",
+        1.5,
+        RuntimeDelayBounds(min_seconds=0.5, max_seconds=2.5),
+    )
 
     assert page.waited == [2500]
+
+
+def test_execution_context_runtime_delay_marker_allows_unbounded_marker_delay():
+    record = _record("C001_A1", tool="test.noop")
+    record.meta["human_delay_profile"] = {
+        "delay_multiplier": 2.0,
+    }
+    page = SimpleNamespace(waited=[])
+
+    def wait_for_timeout(timeout_ms):
+        page.waited.append(timeout_ms)
+
+    page.wait_for_timeout = wait_for_timeout
+    session = SimpleNamespace(page=page, fiori_messages=[])
+
+    class FakeSessionManager:
+        def get_session(self, *, actor_session_id: str, synthetic_actor_id: str):
+            return session
+
+    context = ExecutionContext(record=record, session_manager=FakeSessionManager())
+
+    context.runtime_delay_marker("form_section_fill", 2.0)
+
+    assert page.waited == [4000]
+
+
+def test_execution_context_runtime_action_delay_uses_multiplier(monkeypatch):
+    record = _record("C001_A1", tool="test.noop")
+    record.meta["human_delay_profile"] = {
+        "delay_multiplier": 2.0,
+    }
+    page = SimpleNamespace(waited=[])
+
+    def wait_for_timeout(timeout_ms):
+        page.waited.append(timeout_ms)
+
+    page.wait_for_timeout = wait_for_timeout
+    session = SimpleNamespace(page=page, fiori_messages=[])
+
+    class FakeSessionManager:
+        def get_session(self, *, actor_session_id: str, synthetic_actor_id: str):
+            return session
+
+    monkeypatch.setattr("erp_trace_executor.context.random.uniform", lambda _min, _max: 0.2)
+    context = ExecutionContext(record=record, session_manager=FakeSessionManager())
+
+    context.runtime_action_delay("click")
+
+    assert page.waited == [400]
+
+
+def test_execution_context_runtime_action_delay_skips_missing_profile(monkeypatch):
+    record = _record("C001_A1", tool="test.noop")
+    page = SimpleNamespace(waited=[])
+
+    def wait_for_timeout(timeout_ms):
+        page.waited.append(timeout_ms)
+
+    page.wait_for_timeout = wait_for_timeout
+    session = SimpleNamespace(page=page, fiori_messages=[])
+
+    class FakeSessionManager:
+        def get_session(self, *, actor_session_id: str, synthetic_actor_id: str):
+            return session
+
+    monkeypatch.setattr("erp_trace_executor.context.random.uniform", lambda _min, _max: 0.2)
+    context = ExecutionContext(record=record, session_manager=FakeSessionManager())
+
+    context.runtime_action_delay("fill")
+
+    assert page.waited == []
+
+
+def test_runtime_delay_bounds_reject_inverted_min_and_max():
+    with pytest.raises(ValueError, match="min_seconds must be <= max_seconds"):
+        RuntimeDelayBounds(min_seconds=3.0, max_seconds=2.0)
 
 
 def test_execution_context_runtime_delay_marker_skips_invalid_profile(caplog):
     record = _record("C001_A1", tool="test.noop")
     record.meta["human_delay_profile"] = {
         "delay_multiplier": 0,
-        "runtime_delay_cap_seconds": 2.5,
     }
 
     class FakeSessionManager:

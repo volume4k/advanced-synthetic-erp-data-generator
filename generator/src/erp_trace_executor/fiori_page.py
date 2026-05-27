@@ -8,6 +8,7 @@ from typing import Any
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from erp_trace_executor.fiori_messages import FioriMessageHandler, FioriMessagePolicy, FioriMessageSink
+from erp_trace_executor.runtime_delay import RuntimeActionDelay, noop_action_delay
 
 
 DEFAULT_FIORI_TIMEOUT_MS = 30_000
@@ -34,10 +35,12 @@ class FioriPage:
         quiet_ms: int = DEFAULT_DOM_QUIET_MS,
         message_sink: FioriMessageSink | None = None,
         message_policy: FioriMessagePolicy | None = None,
+        action_delay: RuntimeActionDelay = noop_action_delay,
     ) -> None:
         self.raw_page = page
         self._timeout_ms = timeout_ms
         self._quiet_ms = quiet_ms
+        self._action_delay = action_delay
         self._retry_previous_click: Callable[[], None] | None = None
         self._message_handler = FioriMessageHandler(
             page,
@@ -107,6 +110,11 @@ class FioriPage:
 
         return self._message_handler.handle()
 
+    def delay_after_human_action(self, action: str) -> None:
+        """Pause briefly after a human-like UI action when actor realism is available."""
+
+        self._action_delay(action)
+
     def register_retryable_click(self, retry_click: Callable[[], None]) -> None:
         """Store one click that may be replayed if the next explicit wait misses.
 
@@ -148,33 +156,44 @@ class FioriLocator:
         """
 
         retry_on_next_wait = bool(kwargs.pop("retry_on_next_wait", False))
+        human_delay = bool(kwargs.pop("human_delay", True))
         result = self._run_with_message_recovery(lambda: self._locator.click(*args, **kwargs))
         self._page.wait_until_ready()
         if retry_on_next_wait:
-            self._page.register_retryable_click(lambda: self._retry_click(*args, **kwargs))
+            self._page.register_retryable_click(
+                lambda: self._retry_click(*args, human_delay=human_delay, **kwargs)
+            )
         else:
             self._page.consume_retryable_click()
+        self._delay_after_action("click", human_delay)
         return result
 
     def dblclick(self, *args: Any, **kwargs: Any) -> Any:
         """Double-click locator, then wait for SAPUI5 rendering to settle."""
 
+        human_delay = bool(kwargs.pop("human_delay", True))
         result = self._run_with_message_recovery(lambda: self._locator.dblclick(*args, **kwargs))
         self._page.wait_until_ready()
+        self._delay_after_action("dblclick", human_delay)
         return result
 
     def press(self, key: str, *args: Any, **kwargs: Any) -> Any:
         """Press key and settle after Enter/Tab, which often trigger Fiori updates."""
 
+        human_delay = bool(kwargs.pop("human_delay", True))
         result = self._run_with_message_recovery(lambda: self._locator.press(key, *args, **kwargs))
         if key in SETTLING_KEYS:
             self._page.wait_until_ready()
+        self._delay_after_action("press", human_delay)
         return result
 
     def fill(self, *args: Any, **kwargs: Any) -> Any:
         """Fill locator without settling; commit keys like Enter/Tab settle later."""
 
-        return self._run_with_message_recovery(lambda: self._locator.fill(*args, **kwargs))
+        human_delay = bool(kwargs.pop("human_delay", True))
+        result = self._run_with_message_recovery(lambda: self._locator.fill(*args, **kwargs))
+        self._delay_after_action("fill", human_delay)
+        return result
 
     def wait_for(self, *args: Any, **kwargs: Any) -> Any:
         """Wait for locator, optionally replaying one safe previous click first."""
@@ -247,9 +266,14 @@ class FioriLocator:
                 raise
             return operation()
 
-    def _retry_click(self, *args: Any, **kwargs: Any) -> None:
+    def _delay_after_action(self, action: str, enabled: bool) -> None:
+        if enabled:
+            self._page.delay_after_human_action(action)
+
+    def _retry_click(self, *args: Any, human_delay: bool = True, **kwargs: Any) -> None:
         self._run_with_message_recovery(lambda: self._locator.click(*args, **kwargs))
         self._page.wait_until_ready()
+        self._delay_after_action("click", human_delay)
 
 
 class FioriFrameLocator:

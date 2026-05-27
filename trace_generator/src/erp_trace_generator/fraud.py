@@ -25,7 +25,15 @@ def register_fraud_transformer(case_scenario_type: str) -> Callable[[FraudTransf
     return decorator
 
 
-def ensure_fraud_scenarios_supported(scenarios: tuple[FraudScenario, ...]) -> None:
+def ensure_fraud_scenarios_supported(
+    scenarios: tuple[FraudScenario, ...],
+    *,
+    supported_scenario_types: set[str] | None = None,
+) -> None:
     for scenario in scenarios:
-        if scenario.enabled and scenario.id not in FRAUD_TRANSFORMERS:
+        if not scenario.enabled:
+            continue
+        if supported_scenario_types is not None and scenario.id in supported_scenario_types:
+            continue
+        if scenario.id not in FRAUD_TRANSFORMERS:
             raise TraceGenerationError(f"No graph transformer registered for enabled fraud scenario '{scenario.id}'")

@@ -14,6 +14,7 @@ from erp_trace_executor.tooling import ToolSpec
 EXAMPLES_DIR = Path(__file__).parents[1] / "examples"
 INFRASTRUCTURE_TOOLS = {"fiori.login"}
 EXPECTED_EXAMPLE_TRACES = {
+    "sap-change-vendor-bank-details.execution-trace.yaml",
     "sap-create-goods-receipt.execution-trace.yaml",
     "sap-create-purchase-order.execution-trace.yaml",
     "sap-create-purchase-requisition.execution-trace.yaml",

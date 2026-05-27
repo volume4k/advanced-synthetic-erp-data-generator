@@ -122,9 +122,9 @@ def load_canonical_trace(path: str | Path) -> CanonicalTrace:
     except ValidationError as exc:
         raise TraceParseError(f"Invalid canonical trace '{trace_path}': {exc}") from exc
 
-    if trace.trace_version != "0.2":
+    if trace.trace_version != "0.3":
         raise TraceParseError(
-            f"Unsupported canonical trace version '{trace.trace_version}' in '{trace_path}'; expected '0.2'"
+            f"Unsupported canonical trace version '{trace.trace_version}' in '{trace_path}'; expected '0.3'"
         )
     _validate_canonical_refs(trace)
     return trace

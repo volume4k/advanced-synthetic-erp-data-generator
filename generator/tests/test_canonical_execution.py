@@ -81,7 +81,7 @@ def _registry(*, missing_expected_output: bool = False) -> ToolRegistry:
 
 def _canonical_payload() -> dict:
     return {
-        "trace_version": "0.2",
+        "trace_version": "0.3",
         "run_id": "RUN_CANONICAL",
         "config_hash": "config",
         "tool_catalog_hash": "tools",
@@ -162,7 +162,7 @@ def test_canonical_loader_rejects_v01_traces(tmp_path: Path) -> None:
     path = tmp_path / "trace.execution-trace.yaml"
     _write_yaml(path, payload)
 
-    with pytest.raises(TraceParseError, match="expected '0.2'"):
+    with pytest.raises(TraceParseError, match="expected '0.3'"):
         load_canonical_trace(path)
 
 
@@ -222,7 +222,6 @@ def test_build_init_from_sessions_preserves_human_delay_profile() -> None:
     payload = _canonical_payload()
     payload["actor_sessions"][0]["human_delay_profile"] = {
         "delay_multiplier": 2.0,
-        "runtime_delay_cap_seconds": 2.5,
     }
     trace = CanonicalTrace.model_validate(payload)
 
@@ -232,7 +231,6 @@ def test_build_init_from_sessions_preserves_human_delay_profile() -> None:
     )
 
     assert init.users[0].human_delay_profile.delay_multiplier == 2.0
-    assert init.users[0].human_delay_profile.runtime_delay_cap_seconds == 2.5
 
 
 @pytest.mark.parametrize(

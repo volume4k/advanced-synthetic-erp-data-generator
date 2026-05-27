@@ -87,9 +87,8 @@ def _execution_trace(
     tool_catalog_hash: str,
     realism_criteria: CompiledRealismCriteria,
 ) -> dict[str, Any]:
-    process = config.active_process()
     return {
-        "trace_version": "0.2",
+        "trace_version": "0.3",
         "run_id": run_id,
         "config_hash": config_hash,
         "tool_catalog_hash": tool_catalog_hash,
@@ -108,6 +107,7 @@ def _execution_trace(
                     "reason": dep.description,
                 }
                 for case in cases
+                for process in [config.process_for_scenario(case.case_scenario_type)]
                 for dep in process.dependencies
             ],
         },
@@ -178,7 +178,7 @@ def _post_processing_manifest(
         "object_lineage": [
             {
                 "case_id": case.case_id,
-                "chain": _object_lineage_chain(config, case.process_type),
+                "chain": _object_lineage_chain(config, case.process_type, case.case_scenario_type),
             }
             for case in cases
         ],
@@ -304,7 +304,6 @@ def _human_delay_profile(actor_id: str, realism_criteria: CompiledRealismCriteri
     return {
         "human_delay_profile": {
             "delay_multiplier": criteria.delay_multiplier,
-            "runtime_delay_cap_seconds": criteria.runtime_delay_cap_seconds,
         }
     }
 
@@ -336,10 +335,15 @@ def _step_id(process, step_type: str) -> str:
     return step_id
 
 
-def _object_lineage_chain(config: GenerationConfig, process_type: str) -> list[str]:
-    process = next((item for item in config.processes if item.process_type == process_type), None)
+def _object_lineage_chain(config: GenerationConfig, process_type: str, scenario_type: str) -> list[str]:
+    process = next(
+        (item for item in config.processes if item.process_type == process_type and item.scenario_type == scenario_type),
+        None,
+    )
     if process is None:
-        raise TraceGenerationError(f"Cannot build object lineage for unknown process type '{process_type}'")
+        raise TraceGenerationError(
+            f"Cannot build object lineage for unknown process type '{process_type}' and scenario '{scenario_type}'"
+        )
 
     chain: list[str] = []
     for step in process.steps:

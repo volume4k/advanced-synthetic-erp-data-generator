@@ -11,8 +11,8 @@ from pydantic import BaseModel, ConfigDict
 from erp_trace_executor.context import ExecutionContext
 from erp_trace_executor.errors import ToolExecutionError
 from erp_trace_executor.models import ToolResult, returned_object
+from erp_trace_executor.runtime_delay import RuntimeDelay, noop_delay, runtime_delay_callback
 from erp_trace_executor.tooling import ToolSpec
-from erp_trace_executor.tools.fiori.helpers import RuntimeDelay, noop_delay, runtime_delay_callback
 
 MATERIAL_DOCUMENT_LINK_PATTERN = re.compile(r"Materialbeleg\s+(\d+)/?")
 NO_SELECTABLE_POSITION_PATTERN = re.compile(
@@ -68,6 +68,7 @@ class SapGoodsReceiptFlow:
         purchase_order = page.get_by_role("textbox", name="Einkaufsbeleg")
         purchase_order.wait_for(state="visible")
         self._delay("form_section_fill", 1.0)
+        self._delay("purchase_order_lookup_review", 1.2)
         purchase_order.click()
         purchase_order.fill(params.purchase_order)
         # SAP can expose this field before it reliably accepts input; retry once before committing.
@@ -83,11 +84,12 @@ class SapGoodsReceiptFlow:
         purchase_order.press("Enter")
         self._raise_if_no_selectable_position(page, params.purchase_order)
 
+        self._delay("receipt_position_review", 1.3)
         page.locator(STORAGE_LOCATION_CELL_SELECTOR).first.click()
         page.locator(
             STORAGE_LOCATION_OPTION_SELECTOR, has_text=params.storage_location
         ).first.click()
-        self._delay("review_save_post", 1.5)
+        self._delay("review_save_post", 2.0)
         page.get_by_role("button", name="Buchen", exact=True).click()
 
         success_dialog = page.locator('[role="dialog"]', has_text="Materialbeleg").first

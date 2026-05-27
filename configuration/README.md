@@ -37,7 +37,6 @@ new objects.SyntheticActor {
   workLocation = "HD00"
   personaDescription = "Careful procurement clerk who pauses before save actions."
   delayMultiplier = 1.2
-  runtimeDelayCapSeconds = 4.0
   realismProfile {
     workerType = "relaxed procurement clerk"
     workingHoursDeviation = -2.5
@@ -50,8 +49,6 @@ new objects.SyntheticActor {
     workdayDeviationHoursMax = 0.5
     pauseDurationMinutesMin = 35
     pauseDurationMinutesMax = 90
-    runtimeDelayCapSecondsMin = 2.0
-    runtimeDelayCapSecondsMax = 6.0
   }
   exposeInFinalDatasetAs = "procurement_01"
   capabilities {

@@ -75,6 +75,14 @@ See these contributor guides:
 - `docs/recording-tools.md`
 - `docs/locator-guidelines.md`
 
+Record a draft SAP browser flow with Playwright Codegen:
+
+```bash
+uv run --project generator playwright codegen --target=python --output /tmp/recorded_flow.py "https://your-sap-host.example/path?client=XXX&lang=YY"
+```
+
+Keep the raw recording outside the repo, then rewrite the useful actions into a reviewed tool.
+
 1. Add a small input model and runner under `src/erp_trace_executor/tools/`.
 2. Keep page selectors and flows in a page-object helper instead of inside the tool module.
 3. Register the new `ToolSpec` in `src/erp_trace_executor/registry.py`.
