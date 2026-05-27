@@ -625,7 +625,17 @@ def test_enabled_vendor_flipflop_rejects_zero_target_share(tmp_path: Path) -> No
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, payload)
 
-    with pytest.raises(TraceGenerationError, match="targetShare greater than 0"):
+    with pytest.raises(TraceGenerationError, match=r"targetShare in range \(0, 1\.0\]"):
+        load_generation_config(config_path)
+
+
+def test_enabled_vendor_flipflop_rejects_target_share_above_one(tmp_path: Path) -> None:
+    payload = _vendor_flipflop_config_payload()
+    payload["fraudScenarios"][0]["targetShare"] = 1.1
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match=r"targetShare in range \(0, 1\.0\]"):
         load_generation_config(config_path)
 
 

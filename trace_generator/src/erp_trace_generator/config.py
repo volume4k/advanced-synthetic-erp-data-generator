@@ -239,10 +239,14 @@ def _binding_value_type(value: object) -> BindingValueType:
 
 
 def _fraud_scenario(item: dict[str, Any]) -> FraudScenario:
+    enabled = bool(item["enabled"])
+    target_share = float(item["targetShare"])
+    if enabled and not 0 < target_share <= 1.0:
+        raise TraceGenerationError("Enabled fraud scenarios must have targetShare in range (0, 1.0]")
     return FraudScenario(
         id=str(item["id"]),
-        enabled=bool(item["enabled"]),
-        target_share=float(item["targetShare"]),
+        enabled=enabled,
+        target_share=target_share,
         vendor_flipflop=(
             _vendor_flipflop_config(item["vendorFlipflop"])
             if item.get("vendorFlipflop") is not None
@@ -358,8 +362,8 @@ def _validate(config: GenerationConfig) -> None:
     scenario_types_for_run = {"NORMAL"}
     if enabled_fraud_scenarios:
         scenario = enabled_fraud_scenarios[0]
-        if scenario.target_share <= 0:
-            raise TraceGenerationError("Enabled fraud scenarios must have targetShare greater than 0")
+        if not 0 < scenario.target_share <= 1.0:
+            raise TraceGenerationError("Enabled fraud scenarios must have targetShare in range (0, 1.0]")
         if scenario.id == "VENDOR_FLIPFLOP" and scenario.vendor_flipflop is None:
             raise TraceGenerationError("Enabled VENDOR_FLIPFLOP scenario requires vendorFlipflop config")
         scenario_types_for_run.add(scenario.id)
