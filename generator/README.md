@@ -78,10 +78,10 @@ See these contributor guides:
 Record a draft SAP browser flow with Playwright Codegen:
 
 ```bash
-uv run --project generator playwright codegen --target=python --output /tmp/recorded_flow.py "https://a04p.ucc.cloud/sap/bc/ui2/flp?sap-client=204&sap-language=DE"
+uv run --project generator playwright codegen --target=python --output /tmp/recorded_flow.py "https://your-sap-host.example/path?client=XXX&lang=YY"
 ```
 
-For another SAP tenant, replace the URL with its Fiori launchpad URL. Keep the raw recording outside the repo, then rewrite the useful actions into a reviewed tool.
+Keep the raw recording outside the repo, then rewrite the useful actions into a reviewed tool.
 
 1. Add a small input model and runner under `src/erp_trace_executor/tools/`.
 2. Keep page selectors and flows in a page-object helper instead of inside the tool module.
