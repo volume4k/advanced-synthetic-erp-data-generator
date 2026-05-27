@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 
 from pydantic import BaseModel, Field
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -114,6 +115,8 @@ class SapPurchaseOrderFlow:
 
         for character in value:
             cell.press(character)
+            time.sleep(0.1)
+        time.sleep(0.25)
         cell.press("Enter")
 
     def _close_start_dialog_if_visible(self, frame) -> None:
