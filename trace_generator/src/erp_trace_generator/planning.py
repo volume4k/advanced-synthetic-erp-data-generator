@@ -19,7 +19,10 @@ def plan_cases(config: GenerationConfig, rng: Random, *, demand_releases: list[D
     if len(releases) != config.run_settings.case_count:
         raise ValueError("demand_releases must match configured case_count")
     cases: list[CasePlan] = []
+    scenario_types = _scenario_types_for_cases(config, rng)
+    vendor_flipflop = config.active_vendor_flipflop_config()
     for index, release in enumerate(releases, start=1):
+        case_scenario_type = scenario_types[index - 1]
         master_data = _master_data_for_release(config, release, rng)
         quantity = release.target_quantity
         if quantity is None:
@@ -33,9 +36,13 @@ def plan_cases(config: GenerationConfig, rng: Random, *, demand_releases: list[D
         cases.append(
             CasePlan(
                 case_id=release.case_id or f"C{index:03d}",
-                process_type=config.active_process().process_type,
+                process_type=config.process_for_scenario(case_scenario_type).process_type,
                 material_id=master_data.material_id,
-                vendor_id=rng.choice(master_data.valid_vendors),
+                vendor_id=(
+                    vendor_flipflop.vendor_id
+                    if vendor_flipflop is not None and case_scenario_type == "VENDOR_FLIPFLOP"
+                    else rng.choice(master_data.valid_vendors)
+                ),
                 plant=rng.choice(master_data.valid_plants),
                 purchasing_org=rng.choice(master_data.valid_purchasing_orgs),
                 storage_location=storage_location,
@@ -47,6 +54,7 @@ def plan_cases(config: GenerationConfig, rng: Random, *, demand_releases: list[D
                 gross_amount=round(quantity * target_price, 2),
                 demand_release_time=release.release_time,
                 requested_delivery_date=requested_delivery_date,
+                case_scenario_type=case_scenario_type,
             )
         )
     return cases
@@ -60,7 +68,6 @@ def plan_steps(
     actor_criteria: dict[str, ActorRealismCriteria] | None = None,
     actor_day_profiles: dict[tuple[str, str], ActorRealismCriteria] | None = None,
 ) -> list[PlannedStep]:
-    process = config.active_process()
     timeline = TimelinePlanner(config.run_settings, rng)
     actor_available: dict[str, datetime] = defaultdict(timeline.first_start)
     technical_user_available: dict[str, datetime] = defaultdict(timeline.first_start)
@@ -77,6 +84,7 @@ def plan_steps(
     while True:
         candidates: list[tuple[datetime, int, str, ProcessStep, Actor, TechnicalUser]] = []
         for case in cases:
+            process = config.process_for_scenario(case.case_scenario_type)
             step_index = next_step_index[case.case_id]
             if step_index >= len(process.steps):
                 continue
@@ -114,7 +122,7 @@ def plan_steps(
         if material_lock_key is not None:
             buffer_seconds = config.run_settings.realism.material_valuation_lock_buffer_seconds
             material_lock_available[material_lock_key] = end + timedelta(seconds=buffer_seconds)
-        labels = {"step_label": "normal"}
+        labels = _step_labels(case.case_scenario_type, step.step_type)
         if material_lock_key is not None:
             labels["material_valuation_lock_key"] = material_lock_key
 
@@ -132,12 +140,14 @@ def plan_steps(
             planned_date_inputs=planned_date_inputs_for_step(step, case),
             target_start=start,
             target_end=end,
+            case_scenario_type=case.case_scenario_type,
             labels=labels,
         )
         planned_steps.append(planned_step)
         next_step_index[case.case_id] += 1
-        if next_step_index[case.case_id] < len(process.steps):
-            next_step = process.steps[next_step_index[case.case_id]]
+        next_process = config.process_for_scenario(case.case_scenario_type)
+        if next_step_index[case.case_id] < len(next_process.steps):
+            next_step = next_process.steps[next_step_index[case.case_id]]
             earliest_by_case[case.case_id] = timeline.add_inter_step_delay(
                 end,
                 planned_step.step_type,
@@ -185,16 +195,24 @@ def _profile_for_actor_day(
 
 
 def plan_waves(config: GenerationConfig, planned_steps: list[PlannedStep]) -> list[dict]:
-    process = config.active_process()
-    step_rank = {step.step_type: index for index, step in enumerate(process.steps)}
+    step_rank_by_scenario = {
+        process.scenario_type: {step.step_type: index for index, step in enumerate(process.steps)}
+        for process in config.processes
+        if process.process_type in config.run_settings.active_process_types
+    }
     unscheduled = sorted(
         planned_steps,
-        key=lambda planned_step: (planned_step.target_start, step_rank[planned_step.step_type], planned_step.case_id),
+        key=lambda planned_step: (
+            planned_step.target_start,
+            step_rank_by_scenario[planned_step.case_scenario_type][planned_step.step_type],
+            planned_step.case_id,
+        ),
     )
     scheduled: set[str] = set()
     dependencies: dict[tuple[str, str], set[str]] = defaultdict(set)
-    case_ids = {planned_step.case_id for planned_step in planned_steps}
-    for case_id in case_ids:
+    scenario_by_case = {planned_step.case_id: planned_step.case_scenario_type for planned_step in planned_steps}
+    for case_id, scenario_type in scenario_by_case.items():
+        process = config.process_for_scenario(scenario_type)
         for dep in process.dependencies:
             dependencies[(case_id, dep.to_step_type)].add(f"{case_id}_{_step_id_for(process, dep.from_step_type)}")
     waves: list[dict] = []
@@ -214,7 +232,11 @@ def plan_waves(config: GenerationConfig, planned_steps: list[PlannedStep]) -> li
 
         for planned_step in sorted(
             ready_steps,
-            key=lambda item: (item.target_start, step_rank[item.step_type], item.case_id),
+            key=lambda item: (
+                item.target_start,
+                step_rank_by_scenario[item.case_scenario_type][item.step_type],
+                item.case_id,
+            ),
         ):
             if planned_step.synthetic_actor_id in used_actors or planned_step.technical_sap_user_id in used_technical_users:
                 continue
@@ -273,19 +295,64 @@ def _step_id_for(process, step_type: str) -> str:
     return next(step.step_id for step in process.steps if step.step_type == step_type)
 
 
+def _scenario_types_for_cases(config: GenerationConfig, rng: Random) -> list[str]:
+    case_count = config.run_settings.case_count
+    scenario_types = ["NORMAL"] * case_count
+    enabled = tuple(scenario for scenario in config.fraud_scenarios if scenario.enabled)
+    if not enabled:
+        return scenario_types
+
+    scenario = enabled[0]
+    fraud_count = round(case_count * scenario.target_share)
+    if scenario.target_share > 0 and fraud_count == 0:
+        fraud_count = 1
+    fraud_count = min(fraud_count, case_count)
+    if fraud_count == case_count:
+        return [scenario.id] * case_count
+
+    for index in rng.sample(range(case_count), fraud_count):
+        scenario_types[index] = scenario.id
+    return scenario_types
+
+
 def _master_data_for_release(config: GenerationConfig, release: DemandRelease, rng: Random):
-    blocked_materials = set(config.run_settings.realism.blocked_materials)
+    active_master_data = _active_master_data(config)
     if release.material_id:
-        if release.material_id in blocked_materials:
-            raise TraceGenerationError(f"Demand release references blocked material_id '{release.material_id}'")
-        match = next((item for item in config.master_data if item.material_id == release.material_id), None)
+        match = next((item for item in active_master_data if item.material_id == release.material_id), None)
         if match is None:
-            raise TraceGenerationError(f"Demand release references unknown material_id '{release.material_id}'")
+            raise TraceGenerationError(
+                f"Demand release references inactive, blocked, or scenario-incompatible material_id '{release.material_id}'"
+            )
         return match
-    active_master_data = [item for item in config.master_data if item.material_id not in blocked_materials]
     if not active_master_data:
         raise TraceGenerationError("No unblocked master data remains for case planning")
     return rng.choice(active_master_data)
+
+
+def _active_master_data(config: GenerationConfig):
+    blocked_materials = set(config.run_settings.realism.blocked_materials)
+    active = tuple(item for item in config.master_data if item.material_id not in blocked_materials)
+    vendor_flipflop = config.active_vendor_flipflop_config()
+    if vendor_flipflop is not None:
+        active = tuple(item for item in active if vendor_flipflop.vendor_id in item.valid_vendors)
+    if not active:
+        raise TraceGenerationError("No unblocked master data remains for case planning")
+    return active
+
+
+def _step_labels(scenario_type: str, step_type: str) -> dict[str, str]:
+    labels = {"step_label": "normal"}
+    if scenario_type == "VENDOR_FLIPFLOP":
+        if step_type == "change_vendor_bank_data":
+            labels["step_label"] = "fraud_step"
+            labels["scenario_family"] = "vendor_master_manipulation"
+        elif step_type == "post_outgoing_payment":
+            labels["step_label"] = "fraud_supporting_step"
+            labels["scenario_family"] = "vendor_master_manipulation"
+        elif step_type == "revert_vendor_bank_data":
+            labels["step_label"] = "cleanup_step"
+            labels["scenario_family"] = "vendor_master_manipulation"
+    return labels
 
 
 def _material_valuation_lock_key(config: GenerationConfig, case: CasePlan, step_type: str) -> str | None:

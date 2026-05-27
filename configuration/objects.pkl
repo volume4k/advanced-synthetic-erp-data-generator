@@ -154,6 +154,7 @@ class ProcessStep {
   inputBindings: Listing<ToolInputBinding> = new Listing {}
   plannedDateInputBindings: Listing<ToolInputBinding> = new Listing {}
   requiredSapObjectKeys: Listing<String> = new Listing {}
+  objectOutputRequired: Boolean = true
 }
 
 /// Directed dependency between two configured process step types.
@@ -166,8 +167,23 @@ class ProcessDependency {
 /// Process template consumed by trace planning.
 class ProcessDefinition {
   processType: String(this.length > 0)
+  scenarioType: String(this.length > 0) = "NORMAL"
   steps: Listing<ProcessStep>
   dependencies: Listing<ProcessDependency>
+}
+
+/// Vendor bank account values used by a configured fraud scenario.
+class BankAccountDetails {
+  bankKey: String(this.length > 0)
+  accountNumber: String(this.length > 0)
+  accountOwner: String(this.length > 0)
+}
+
+/// Vendor Flipflop scenario data, kept outside the process template.
+class VendorFlipflopConfig {
+  vendorId: String(this.length > 0)
+  fraudulentBankAccount: BankAccountDetails
+  originalBankAccount: BankAccountDetails
 }
 
 /// Valid master-data combination and hard sampling guardrails.
@@ -196,6 +212,7 @@ class FraudScenario {
   id: String(this.length > 0)
   enabled: Boolean
   targetShare: Float(this >= 0 && this <= 1)
+  vendorFlipflop: VendorFlipflopConfig? = null
 }
 
 /// Top-level generation run settings.

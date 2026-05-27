@@ -125,7 +125,9 @@ actors: Listing<objects.SyntheticActor> = new Listing {
         processType = "procure_to_pay"
         stepTypes {
           "enter_incoming_invoice"
+          "change_vendor_bank_data"
           "post_outgoing_payment"
+          "revert_vendor_bank_data"
         }
       }
     }

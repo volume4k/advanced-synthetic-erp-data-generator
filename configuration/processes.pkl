@@ -1,275 +1,389 @@
+import "fraud_scenarios.pkl" as fraudConfig
 import "generated_tool_config.pkl"
 import "objects.pkl"
 
 toolRequirements = generated_tool_config.toolRequirements
+vendorFlipflop = fraudConfig.vendorFlipflopConfig
+
+createPurchaseRequisitionStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "A1"
+  stepType = "create_purchase_requisition"
+  tool = toolRequirements["fiori.create_purchase_requisition"]
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "material"
+      source = "master_data"
+      value = "materialId"
+    }
+    new objects.ToolInputBinding {
+      field = "quantity"
+      source = "case"
+      value = "quantity"
+    }
+    new objects.ToolInputBinding {
+      field = "valuation_price"
+      source = "case"
+      value = "target_price"
+    }
+    new objects.ToolInputBinding {
+      field = "currency"
+      source = "master_data"
+      value = "currency"
+    }
+    new objects.ToolInputBinding {
+      field = "price_unit"
+      source = "literal"
+      value = "1"
+      valueType = "int"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+    new objects.ToolInputBinding {
+      field = "plant"
+      source = "master_data"
+      value = "plant"
+    }
+    new objects.ToolInputBinding {
+      field = "purchasing_group"
+      source = "literal"
+      value = "N00"
+    }
+    new objects.ToolInputBinding {
+      field = "purchasing_organization"
+      source = "master_data"
+      value = "purchasing_org"
+    }
+    new objects.ToolInputBinding {
+      field = "company_code"
+      source = "master_data"
+      value = "purchasing_org"
+    }
+  }
+  plannedDateInputBindings {
+    new objects.ToolInputBinding {
+      field = "delivery_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+  }
+  requiredSapObjectKeys {
+    "purchase_requisition.pr_number"
+  }
+}
+
+createPurchaseOrderStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "A2"
+  stepType = "create_purchase_order"
+  tool = toolRequirements["fiori.create_purchase_order"]
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "purchase_requisition"
+      source = "prior_output"
+      value = "purchase_requisition.pr_number"
+    }
+    new objects.ToolInputBinding {
+      field = "storage_location"
+      source = "case"
+      value = "storage_location"
+    }
+    new objects.ToolInputBinding {
+      field = "supplier"
+      source = "master_data"
+      value = "vendor_id"
+    }
+    new objects.ToolInputBinding {
+      field = "quantity"
+      source = "case"
+      value = "quantity"
+    }
+    new objects.ToolInputBinding {
+      field = "net_price"
+      source = "case"
+      value = "target_price"
+    }
+  }
+  requiredSapObjectKeys {
+    "purchase_order.po_number"
+  }
+}
+
+postGoodsReceiptStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "A3"
+  stepType = "post_goods_receipt"
+  tool = toolRequirements["fiori.create_goods_receipt"]
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "purchase_order"
+      source = "prior_output"
+      value = "purchase_order.po_number"
+    }
+    new objects.ToolInputBinding {
+      field = "storage_location"
+      source = "derived"
+      value = "storage_location_label"
+    }
+  }
+  plannedDateInputBindings {
+    new objects.ToolInputBinding {
+      field = "document_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+    new objects.ToolInputBinding {
+      field = "posting_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+  }
+  requiredSapObjectKeys {
+    "material_document.material_document_number"
+  }
+}
+
+enterIncomingInvoiceStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "A4"
+  stepType = "enter_incoming_invoice"
+  tool = toolRequirements["fiori.create_supplier_invoice"]
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "gross_amount"
+      source = "derived"
+      value = "gross_amount"
+    }
+    new objects.ToolInputBinding {
+      field = "purchase_order"
+      source = "prior_output"
+      value = "purchase_order.po_number"
+    }
+    new objects.ToolInputBinding {
+      field = "tax_code"
+      source = "literal"
+      value = "XI"
+    }
+  }
+  plannedDateInputBindings {
+    new objects.ToolInputBinding {
+      field = "invoice_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+  }
+  requiredSapObjectKeys {
+    "supplier_invoice.invoice_number"
+    "supplier_invoice.fiscal_year"
+  }
+}
+
+postOutgoingPaymentStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "A5"
+  stepType = "post_outgoing_payment"
+  tool = toolRequirements["fiori.send_payment"]
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "company_code"
+      source = "master_data"
+      value = "purchasing_org"
+    }
+    new objects.ToolInputBinding {
+      field = "posting_document_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+    new objects.ToolInputBinding {
+      field = "posting_date"
+      source = "derived"
+      value = "fiori_payment_posting_date"
+    }
+    new objects.ToolInputBinding {
+      field = "supplier"
+      source = "master_data"
+      value = "vendor_id"
+    }
+    new objects.ToolInputBinding {
+      field = "accounting_document"
+      source = "prior_output"
+      value = "supplier_invoice.invoice_number"
+    }
+    new objects.ToolInputBinding {
+      field = "general_ledger_account"
+      source = "literal"
+      value = "1800000"
+    }
+    new objects.ToolInputBinding {
+      field = "amount"
+      source = "derived"
+      value = "gross_amount"
+    }
+    new objects.ToolInputBinding {
+      field = "currency"
+      source = "master_data"
+      value = "currency"
+    }
+  }
+  plannedDateInputBindings {
+    new objects.ToolInputBinding {
+      field = "posting_document_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+    new objects.ToolInputBinding {
+      field = "posting_date"
+      source = "derived"
+      value = "fiori_payment_posting_date"
+    }
+  }
+  requiredSapObjectKeys {
+    "payment_document.payment_document_number"
+  }
+}
+
+changeVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "F1"
+  stepType = "change_vendor_bank_data"
+  tool = toolRequirements["fiori.change_vendor_bank_details"]
+  objectOutputRequired = false
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "vendor_id"
+      source = "literal"
+      value = vendorFlipflop.vendorId
+    }
+    new objects.ToolInputBinding {
+      field = "bank_account_credentials.bank_key"
+      source = "literal"
+      value = vendorFlipflop.fraudulentBankAccount.bankKey
+    }
+    new objects.ToolInputBinding {
+      field = "bank_account_credentials.account_number"
+      source = "literal"
+      value = vendorFlipflop.fraudulentBankAccount.accountNumber
+    }
+    new objects.ToolInputBinding {
+      field = "bank_account_credentials.account_owner"
+      source = "literal"
+      value = vendorFlipflop.fraudulentBankAccount.accountOwner
+    }
+  }
+}
+
+revertVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "F2"
+  stepType = "revert_vendor_bank_data"
+  tool = toolRequirements["fiori.change_vendor_bank_details"]
+  objectOutputRequired = false
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "vendor_id"
+      source = "literal"
+      value = vendorFlipflop.vendorId
+    }
+    new objects.ToolInputBinding {
+      field = "bank_account_credentials.bank_key"
+      source = "literal"
+      value = vendorFlipflop.originalBankAccount.bankKey
+    }
+    new objects.ToolInputBinding {
+      field = "bank_account_credentials.account_number"
+      source = "literal"
+      value = vendorFlipflop.originalBankAccount.accountNumber
+    }
+    new objects.ToolInputBinding {
+      field = "bank_account_credentials.account_owner"
+      source = "literal"
+      value = vendorFlipflop.originalBankAccount.accountOwner
+    }
+  }
+}
+
+prToPoDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "create_purchase_requisition"
+  toStepType = "create_purchase_order"
+  description =
+    "Create purchase order after purchase requisition because A2 needs the purchase requisition number produced by A1."
+}
+
+poToGoodsReceiptDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "create_purchase_order"
+  toStepType = "post_goods_receipt"
+  description =
+    "Post goods receipt after purchase order creation because A3 requires the purchase order created by A2."
+}
+
+goodsReceiptToInvoiceDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "post_goods_receipt"
+  toStepType = "enter_incoming_invoice"
+  description = "Enter incoming invoice after goods receipt in the version-one procure-to-pay flow."
+}
+
+invoiceToPaymentDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "enter_incoming_invoice"
+  toStepType = "post_outgoing_payment"
+  description =
+    "Post outgoing payment after incoming invoice entry because payment requires an invoice."
+}
+
+invoiceToBankChangeDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "enter_incoming_invoice"
+  toStepType = "change_vendor_bank_data"
+  description = "Change vendor bank details after incoming invoice entry."
+}
+
+bankChangeToPaymentDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "change_vendor_bank_data"
+  toStepType = "post_outgoing_payment"
+  description = "Post outgoing payment while manipulated vendor bank details are active."
+}
+
+paymentToBankRevertDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "post_outgoing_payment"
+  toStepType = "revert_vendor_bank_data"
+  description = "Revert vendor bank details after outgoing payment."
+}
 
 procureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
   processType = "procure_to_pay"
-
+  scenarioType = "NORMAL"
   steps {
-    new objects.ProcessStep {
-      stepId = "A1"
-      stepType = "create_purchase_requisition"
-      tool = toolRequirements["fiori.create_purchase_requisition"]
-      inputBindings {
-        new objects.ToolInputBinding {
-          field = "material"
-          source = "master_data"
-          value = "materialId"
-        }
-        new objects.ToolInputBinding {
-          field = "quantity"
-          source = "case"
-          value = "quantity"
-        }
-        new objects.ToolInputBinding {
-          field = "valuation_price"
-          source = "case"
-          value = "target_price"
-        }
-        new objects.ToolInputBinding {
-          field = "currency"
-          source = "master_data"
-          value = "currency"
-        }
-        new objects.ToolInputBinding {
-          field = "price_unit"
-          source = "literal"
-          value = "1"
-          valueType = "int"
-        }
-        new objects.ToolInputBinding {
-          field = "delivery_date"
-          source = "derived"
-          value = "fiori_delivery_date"
-        }
-        new objects.ToolInputBinding {
-          field = "plant"
-          source = "master_data"
-          value = "plant"
-        }
-        new objects.ToolInputBinding {
-          field = "purchasing_group"
-          source = "literal"
-          value = "N00"
-        }
-        new objects.ToolInputBinding {
-          field = "purchasing_organization"
-          source = "master_data"
-          value = "purchasing_org"
-        }
-        new objects.ToolInputBinding {
-          field = "company_code"
-          source = "master_data"
-          value = "purchasing_org"
-        }
-      }
-      plannedDateInputBindings {
-        new objects.ToolInputBinding {
-          field = "delivery_date"
-          source = "derived"
-          value = "fiori_delivery_date"
-        }
-      }
-      requiredSapObjectKeys {
-        "purchase_requisition.pr_number"
-      }
-    }
-    new objects.ProcessStep {
-      stepId = "A2"
-      stepType = "create_purchase_order"
-      tool = toolRequirements["fiori.create_purchase_order"]
-      inputBindings {
-        new objects.ToolInputBinding {
-          field = "purchase_requisition"
-          source = "prior_output"
-          value = "purchase_requisition.pr_number"
-        }
-        new objects.ToolInputBinding {
-          field = "storage_location"
-          source = "case"
-          value = "storage_location"
-        }
-        new objects.ToolInputBinding {
-          field = "supplier"
-          source = "master_data"
-          value = "vendor_id"
-        }
-        new objects.ToolInputBinding {
-          field = "quantity"
-          source = "case"
-          value = "quantity"
-        }
-        new objects.ToolInputBinding {
-          field = "net_price"
-          source = "case"
-          value = "target_price"
-        }
-      }
-      requiredSapObjectKeys {
-        "purchase_order.po_number"
-      }
-    }
-    new objects.ProcessStep {
-      stepId = "A3"
-      stepType = "post_goods_receipt"
-      tool = toolRequirements["fiori.create_goods_receipt"]
-      inputBindings {
-        new objects.ToolInputBinding {
-          field = "purchase_order"
-          source = "prior_output"
-          value = "purchase_order.po_number"
-        }
-        new objects.ToolInputBinding {
-          field = "storage_location"
-          source = "derived"
-          value = "storage_location_label"
-        }
-      }
-      plannedDateInputBindings {
-        new objects.ToolInputBinding {
-          field = "document_date"
-          source = "derived"
-          value = "fiori_delivery_date"
-        }
-        new objects.ToolInputBinding {
-          field = "posting_date"
-          source = "derived"
-          value = "fiori_delivery_date"
-        }
-      }
-      requiredSapObjectKeys {
-        "material_document.material_document_number"
-      }
-    }
-    new objects.ProcessStep {
-      stepId = "A4"
-      stepType = "enter_incoming_invoice"
-      tool = toolRequirements["fiori.create_supplier_invoice"]
-      inputBindings {
-        new objects.ToolInputBinding {
-          field = "gross_amount"
-          source = "derived"
-          value = "gross_amount"
-        }
-        new objects.ToolInputBinding {
-          field = "purchase_order"
-          source = "prior_output"
-          value = "purchase_order.po_number"
-        }
-        new objects.ToolInputBinding {
-          field = "tax_code"
-          source = "literal"
-          value = "XI"
-        }
-      }
-      plannedDateInputBindings {
-        new objects.ToolInputBinding {
-          field = "invoice_date"
-          source = "derived"
-          value = "fiori_delivery_date"
-        }
-      }
-      requiredSapObjectKeys {
-        "supplier_invoice.invoice_number"
-        "supplier_invoice.fiscal_year"
-      }
-    }
-    new objects.ProcessStep {
-      stepId = "A5"
-      stepType = "post_outgoing_payment"
-      tool = toolRequirements["fiori.send_payment"]
-      inputBindings {
-        new objects.ToolInputBinding {
-          field = "company_code"
-          source = "master_data"
-          value = "purchasing_org"
-        }
-        new objects.ToolInputBinding {
-          field = "posting_document_date"
-          source = "derived"
-          value = "fiori_delivery_date"
-        }
-        new objects.ToolInputBinding {
-          field = "posting_date"
-          source = "derived"
-          value = "fiori_payment_posting_date"
-        }
-        new objects.ToolInputBinding {
-          field = "supplier"
-          source = "master_data"
-          value = "vendor_id"
-        }
-        new objects.ToolInputBinding {
-          field = "accounting_document"
-          source = "prior_output"
-          value = "supplier_invoice.invoice_number"
-        }
-        new objects.ToolInputBinding {
-          field = "general_ledger_account"
-          source = "literal"
-          value = "1800000"
-        }
-        new objects.ToolInputBinding {
-          field = "amount"
-          source = "derived"
-          value = "gross_amount"
-        }
-        new objects.ToolInputBinding {
-          field = "currency"
-          source = "master_data"
-          value = "currency"
-        }
-      }
-      plannedDateInputBindings {
-        new objects.ToolInputBinding {
-          field = "posting_document_date"
-          source = "derived"
-          value = "fiori_delivery_date"
-        }
-        new objects.ToolInputBinding {
-          field = "posting_date"
-          source = "derived"
-          value = "fiori_payment_posting_date"
-        }
-      }
-      requiredSapObjectKeys {
-        "payment_document.payment_document_number"
-      }
-    }
+    createPurchaseRequisitionStep
+    createPurchaseOrderStep
+    postGoodsReceiptStep
+    enterIncomingInvoiceStep
+    postOutgoingPaymentStep
   }
-
-  // Dependencies define process-step dependencies between process steps.
-  // The trace planner must execute `fromStepType` before `toStepType`.
-  // The description explains why the edge exists and which business object/data flows across it.
   dependencies {
-    new objects.ProcessDependency {
-      fromStepType = "create_purchase_requisition"
-      toStepType = "create_purchase_order"
-      description =
-        "Create purchase order after purchase requisition because A2 needs the purchase requisition number produced by A1."
-    }
-    new objects.ProcessDependency {
-      fromStepType = "create_purchase_order"
-      toStepType = "post_goods_receipt"
-      description =
-        "Post goods receipt after purchase order creation because A3 requires the purchase order created by A2."
-    }
-    new objects.ProcessDependency {
-      fromStepType = "post_goods_receipt"
-      toStepType = "enter_incoming_invoice"
-      description =
-        "Enter incoming invoice after goods receipt in the version-one procure-to-pay flow."
-    }
-    new objects.ProcessDependency {
-      fromStepType = "enter_incoming_invoice"
-      toStepType = "post_outgoing_payment"
-      description =
-        "Post outgoing payment after incoming invoice entry because payment requires an invoice."
-    }
+    prToPoDependency
+    poToGoodsReceiptDependency
+    goodsReceiptToInvoiceDependency
+    invoiceToPaymentDependency
+  }
+}
+
+vendorFlipflopProcureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
+  processType = "procure_to_pay"
+  scenarioType = "VENDOR_FLIPFLOP"
+  steps {
+    createPurchaseRequisitionStep
+    createPurchaseOrderStep
+    postGoodsReceiptStep
+    enterIncomingInvoiceStep
+    changeVendorBankDataStep
+    postOutgoingPaymentStep
+    revertVendorBankDataStep
+  }
+  dependencies {
+    prToPoDependency
+    poToGoodsReceiptDependency
+    goodsReceiptToInvoiceDependency
+    invoiceToBankChangeDependency
+    bankChangeToPaymentDependency
+    paymentToBankRevertDependency
   }
 }
 
 processes: Listing<objects.ProcessDefinition> = new Listing {
   procureToPayProcess
+  vendorFlipflopProcureToPayProcess
 }

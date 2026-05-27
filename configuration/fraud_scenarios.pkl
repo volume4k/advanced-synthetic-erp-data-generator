@@ -1,10 +1,25 @@
 import "objects.pkl"
 
+vendorFlipflopConfig: objects.VendorFlipflopConfig = new objects.VendorFlipflopConfig {
+  vendorId = "1003070"
+  fraudulentBankAccount {
+    bankKey = "ABNAUS33XXX"
+    accountNumber = "87654321"
+    accountOwner = "Jonas Schnepf"
+  }
+  originalBankAccount {
+    bankKey = "ABNAUS33XXX"
+    accountNumber = "12345678"
+    accountOwner = "Mid-West Supply, Inc."
+  }
+}
+
 fraudScenarios: Listing<objects.FraudScenario> = new Listing {
   new objects.FraudScenario {
     id = "VENDOR_FLIPFLOP"
-    enabled = false
-    targetShare = 0.0
+    enabled = true
+    targetShare = 0.1
+    vendorFlipflop = vendorFlipflopConfig
   }
   new objects.FraudScenario {
     id = "LARCENY"

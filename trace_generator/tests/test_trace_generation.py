@@ -22,6 +22,7 @@ from erp_trace_generator.planning import plan_cases, plan_steps, plan_waves
 from erp_trace_generator.realism import ActorRealismCriteria, CompiledRealismCriteria, DemandRelease, default_demand_releases
 from erp_trace_generator.schema_export import schema_output_paths
 from erp_trace_generator.timeline import TimelinePlanner
+from erp_trace_generator.tool_validation import validate_planned_step_tool_inputs
 
 
 def _write_yaml(path: Path, payload: dict) -> None:
@@ -306,6 +307,105 @@ def _required_sap_object_keys(step_type: str) -> list[str]:
     }[step_type]
 
 
+def _vendor_flipflop_config_payload() -> dict:
+    payload = _base_config()
+    payload["masterData"][0]["validVendors"] = ["1003070"]
+    payload["toolRequirements"]["fiori.change_vendor_bank_details"] = _tool(
+        "fiori.change_vendor_bank_details",
+        ["vendor_id", "bank_account_credentials"],
+    )
+    payload["fraudScenarios"][0] = {
+        "id": "VENDOR_FLIPFLOP",
+        "enabled": True,
+        "targetShare": 1.0,
+        "vendorFlipflop": {
+            "vendorId": "1003070",
+            "fraudulentBankAccount": {
+                "bankKey": "ABNAUS33XXX",
+                "accountNumber": "87654321",
+                "accountOwner": "Jonas Schnepf",
+            },
+            "originalBankAccount": {
+                "bankKey": "ABNAUS33XXX",
+                "accountNumber": "12345678",
+                "accountOwner": "Mid-West Supply, Inc.",
+            },
+        },
+    }
+    payload["actors"][2]["capabilities"][0]["stepTypes"].extend(
+        ["change_vendor_bank_data", "revert_vendor_bank_data"]
+    )
+    payload["runSettings"]["stepDurationMinutes"].update(
+        {
+            "change_vendor_bank_data": {"min": 5, "max": 8},
+            "revert_vendor_bank_data": {"min": 5, "max": 8},
+        }
+    )
+    payload["runSettings"]["interStepDelayMinutes"].extend(
+        [
+            {"fromStepType": "enter_incoming_invoice", "toStepType": "change_vendor_bank_data", "min": 15, "max": 90},
+            {"fromStepType": "change_vendor_bank_data", "toStepType": "post_outgoing_payment", "min": 30, "max": 240},
+            {"fromStepType": "post_outgoing_payment", "toStepType": "revert_vendor_bank_data", "min": 10, "max": 60},
+        ]
+    )
+
+    normal_steps = payload["processes"][0]["steps"]
+    payload["processes"].append(
+        {
+            "processType": "procure_to_pay",
+            "scenarioType": "VENDOR_FLIPFLOP",
+            "steps": [
+                *normal_steps[:4],
+                _vendor_bank_step(
+                    "F1",
+                    "change_vendor_bank_data",
+                    "87654321",
+                    "Jonas Schnepf",
+                ),
+                normal_steps[4],
+                _vendor_bank_step(
+                    "F2",
+                    "revert_vendor_bank_data",
+                    "12345678",
+                    "Mid-West Supply, Inc.",
+                ),
+            ],
+            "dependencies": [
+                _dependency("create_purchase_requisition", "create_purchase_order"),
+                _dependency("create_purchase_order", "post_goods_receipt"),
+                _dependency("post_goods_receipt", "enter_incoming_invoice"),
+                _dependency("enter_incoming_invoice", "change_vendor_bank_data"),
+                _dependency("change_vendor_bank_data", "post_outgoing_payment"),
+                _dependency("post_outgoing_payment", "revert_vendor_bank_data"),
+            ],
+        }
+    )
+    return payload
+
+
+def _vendor_bank_step(step_id: str, step_type: str, account_number: str, account_owner: str) -> dict:
+    return {
+        "stepId": step_id,
+        "stepType": step_type,
+        "tool": {
+            "toolName": "fiori.change_vendor_bank_details",
+            "title": "Change Vendor Bank Details",
+            "inputModel": "ChangeVendorBankDetailsInput",
+            "requiredInputFields": ["vendor_id", "bank_account_credentials"],
+            "inputProperties": [],
+        },
+        "objectOutputRequired": False,
+        "inputBindings": [
+            _binding("vendor_id", "literal", "1003070"),
+            _binding("bank_account_credentials.bank_key", "literal", "ABNAUS33XXX"),
+            _binding("bank_account_credentials.account_number", "literal", account_number),
+            _binding("bank_account_credentials.account_owner", "literal", account_owner),
+        ],
+        "plannedDateInputBindings": [],
+        "requiredSapObjectKeys": [],
+    }
+
+
 def test_config_loader_rejects_active_null_tool(tmp_path: Path) -> None:
     payload = _base_config()
     payload["processes"][0]["steps"][2]["tool"] = None
@@ -510,12 +610,153 @@ def test_config_loader_rejects_capable_actor_without_identity_mapping(tmp_path: 
 
 def test_enabled_unimplemented_fraud_scenario_fails(tmp_path: Path) -> None:
     payload = _base_config()
-    payload["fraudScenarios"][0]["enabled"] = True
+    payload["fraudScenarios"][1]["enabled"] = True
+    payload["fraudScenarios"][1]["targetShare"] = 1.0
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, payload)
 
-    with pytest.raises(TraceGenerationError, match="No graph transformer registered"):
+    with pytest.raises(TraceGenerationError, match="No process variant configured"):
         load_generation_config(config_path)
+
+
+def test_enabled_vendor_flipflop_rejects_zero_target_share(tmp_path: Path) -> None:
+    payload = _vendor_flipflop_config_payload()
+    payload["fraudScenarios"][0]["targetShare"] = 0.0
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="targetShare greater than 0"):
+        load_generation_config(config_path)
+
+
+def test_vendor_flipflop_config_selects_scenario_process_and_nested_bank_inputs(tmp_path: Path) -> None:
+    payload = _vendor_flipflop_config_payload()
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+
+    cases = plan_cases(
+        config,
+        Random(17),
+        demand_releases=[
+            DemandRelease("C001", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025"),
+            DemandRelease("C002", datetime(2026, 5, 18, 8, 30, tzinfo=tz), "MA025"),
+        ],
+    )
+    planned_steps = plan_steps(config, cases, Random(17))
+
+    assert config.active_process().scenario_type == "VENDOR_FLIPFLOP"
+    assert {case.case_scenario_type for case in cases} == {"VENDOR_FLIPFLOP"}
+    assert {case.vendor_id for case in cases} == {"1003070"}
+    assert [step.step_type for step in config.active_process().steps] == [
+        "create_purchase_requisition",
+        "create_purchase_order",
+        "post_goods_receipt",
+        "enter_incoming_invoice",
+        "change_vendor_bank_data",
+        "post_outgoing_payment",
+        "revert_vendor_bank_data",
+    ]
+
+    first_case_steps = [step for step in planned_steps if step.case_id == "C001"]
+    fraud_step = next(step for step in first_case_steps if step.step_type == "change_vendor_bank_data")
+    payment_step = next(step for step in first_case_steps if step.step_type == "post_outgoing_payment")
+    cleanup_step = next(step for step in first_case_steps if step.step_type == "revert_vendor_bank_data")
+
+    assert fraud_step.inputs == {
+        "vendor_id": "1003070",
+        "bank_account_credentials": {
+            "bank_key": "ABNAUS33XXX",
+            "account_number": "87654321",
+            "account_owner": "Jonas Schnepf",
+        },
+    }
+    assert cleanup_step.inputs["bank_account_credentials"] == {
+        "bank_key": "ABNAUS33XXX",
+        "account_number": "12345678",
+        "account_owner": "Mid-West Supply, Inc.",
+    }
+    assert fraud_step.required_sap_object_keys == []
+    assert cleanup_step.required_sap_object_keys == []
+    assert fraud_step.labels["step_label"] == "fraud_step"
+    assert payment_step.labels["step_label"] == "fraud_supporting_step"
+    assert cleanup_step.labels["step_label"] == "cleanup_step"
+    assert fraud_step.labels["scenario_family"] == "vendor_master_manipulation"
+    validate_planned_step_tool_inputs(first_case_steps)
+
+
+def test_vendor_flipflop_partial_share_mixes_normal_and_fraud_cases(tmp_path: Path) -> None:
+    payload = _vendor_flipflop_config_payload()
+    payload["runSettings"]["caseCount"] = 10
+    payload["fraudScenarios"][0]["targetShare"] = 0.3
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+
+    cases = plan_cases(
+        config,
+        Random(17),
+        demand_releases=[
+            DemandRelease(f"C{index:03d}", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025")
+            for index in range(1, 11)
+        ],
+    )
+    planned_steps = plan_steps(config, cases, Random(17))
+    waves = plan_waves(config, planned_steps)
+    manifest = _post_processing_manifest(
+        config,
+        cases,
+        planned_steps,
+        run_id="RUN_TEST",
+        config_hash="abc",
+        realism_criteria=CompiledRealismCriteria(
+            actor_criteria={},
+            demand_releases=[],
+            criteria_hash="criteria",
+            llm_metadata={},
+            actor_day_profiles={},
+            price_anchors={},
+            material_demand_profiles={},
+            demand_patterns=[],
+        ),
+    )
+
+    scenario_counts = {
+        scenario_type: sum(1 for case in cases if case.case_scenario_type == scenario_type)
+        for scenario_type in {"NORMAL", "VENDOR_FLIPFLOP"}
+    }
+    assert scenario_counts == {"NORMAL": 7, "VENDOR_FLIPFLOP": 3}
+
+    normal_case = next(case for case in cases if case.case_scenario_type == "NORMAL")
+    fraud_case = next(case for case in cases if case.case_scenario_type == "VENDOR_FLIPFLOP")
+    normal_steps = [step for step in planned_steps if step.case_id == normal_case.case_id]
+    fraud_steps = [step for step in planned_steps if step.case_id == fraud_case.case_id]
+
+    assert [step.step_type for step in normal_steps] == [
+        "create_purchase_requisition",
+        "create_purchase_order",
+        "post_goods_receipt",
+        "enter_incoming_invoice",
+        "post_outgoing_payment",
+    ]
+    assert [step.step_type for step in fraud_steps] == [
+        "create_purchase_requisition",
+        "create_purchase_order",
+        "post_goods_receipt",
+        "enter_incoming_invoice",
+        "change_vendor_bank_data",
+        "post_outgoing_payment",
+        "revert_vendor_bank_data",
+    ]
+    assert any(step.step_type == "change_vendor_bank_data" for step in fraud_steps)
+    assert all(step.step_type != "change_vendor_bank_data" for step in normal_steps)
+    assert waves
+    assert {item["case_scenario_type"] for item in manifest["case_scenario_types"]} == {
+        "NORMAL",
+        "VENDOR_FLIPFLOP",
+    }
 
 
 def test_fraud_transformer_registration_rejects_duplicates() -> None:
@@ -584,6 +825,8 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
             InputBinding("sample_step", "amount", "derived", "gross_amount"),
             InputBinding("sample_step", "document_date", "derived", "fiori_delivery_date"),
             InputBinding("sample_step", "storage_location", "derived", "storage_location_label"),
+            InputBinding("sample_step", "bank_account_credentials.bank_key", "literal", "ABNAUS33XXX"),
+            InputBinding("sample_step", "bank_account_credentials.account_number", "literal", "87654321"),
         ),
         planned_date_input_bindings=(
             InputBinding("sample_step", "document_date", "derived", "fiori_delivery_date"),
@@ -601,6 +844,10 @@ def test_binding_resolver_handles_supported_sources_and_named_derived_values() -
         "amount": 200.0,
         "document_date": "05/18/2026",
         "storage_location": "Trading Goods",
+        "bank_account_credentials": {
+            "bank_key": "ABNAUS33XXX",
+            "account_number": "87654321",
+        },
     }
     assert planned_date_inputs_for_step(step, case) == {
         "document_date": "2026-05-18",
