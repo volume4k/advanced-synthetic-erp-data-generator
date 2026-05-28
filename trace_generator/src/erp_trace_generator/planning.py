@@ -19,7 +19,7 @@ def plan_cases(config: GenerationConfig, rng: Random, *, demand_releases: list[D
     if len(releases) != config.run_settings.case_count:
         raise ValueError("demand_releases must match configured case_count")
     cases: list[CasePlan] = []
-    scenario_types = _scenario_types_for_cases(config, rng)
+    scenario_types = _scenario_types_for_cases(config, rng, releases)
     vendor_flipflop = config.active_vendor_flipflop_config()
     for index, release in enumerate(releases, start=1):
         case_scenario_type = scenario_types[index - 1]
@@ -295,7 +295,7 @@ def _step_id_for(process, step_type: str) -> str:
     return next(step.step_id for step in process.steps if step.step_type == step_type)
 
 
-def _scenario_types_for_cases(config: GenerationConfig, rng: Random) -> list[str]:
+def _scenario_types_for_cases(config: GenerationConfig, rng: Random, releases: list[DemandRelease]) -> list[str]:
     case_count = config.run_settings.case_count
     scenario_types = ["NORMAL"] * case_count
     enabled = tuple(
@@ -311,14 +311,38 @@ def _scenario_types_for_cases(config: GenerationConfig, rng: Random) -> list[str
         scenario_count = round(case_count * scenario.target_share)
         if scenario.target_share > 0 and scenario_count == 0:
             scenario_count = 1
-        if scenario_count > len(available_indexes):
+        eligible_indexes = _eligible_indexes_for_scenario(config, scenario.id, available_indexes, releases)
+        if scenario_count > len(eligible_indexes):
             raise TraceGenerationError("Enabled scenario targetShare counts exceed configured caseCount")
-        sampled = rng.sample(available_indexes, scenario_count)
+        sampled = rng.sample(eligible_indexes, scenario_count)
         sampled_set = set(sampled)
         for index in sampled:
             scenario_types[index] = scenario.id
         available_indexes = [index for index in available_indexes if index not in sampled_set]
     return scenario_types
+
+
+def _eligible_indexes_for_scenario(
+    config: GenerationConfig,
+    scenario_type: str,
+    available_indexes: list[int],
+    releases: list[DemandRelease],
+) -> list[int]:
+    if scenario_type != "VENDOR_FLIPFLOP":
+        return available_indexes
+    vendor_flipflop = config.active_vendor_flipflop_config()
+    if vendor_flipflop is None:
+        return available_indexes
+    compatible_material_ids = {
+        item.material_id
+        for item in _active_master_data(config, scenario_type)
+        if vendor_flipflop.vendor_id in item.valid_vendors
+    }
+    return [
+        index
+        for index in available_indexes
+        if releases[index].material_id is None or releases[index].material_id in compatible_material_ids
+    ]
 
 
 def _master_data_for_release(config: GenerationConfig, release: DemandRelease, scenario_type: str, rng: Random):

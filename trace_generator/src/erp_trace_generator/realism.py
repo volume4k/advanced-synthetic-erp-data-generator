@@ -1233,9 +1233,6 @@ def _default_material_demand_profiles(config: GenerationConfig) -> dict[str, Mat
 def _active_master_data(config: GenerationConfig) -> tuple[MasterDataEntry, ...]:
     blocked_materials = set(config.run_settings.realism.blocked_materials)
     active = tuple(item for item in config.master_data if item.material_id not in blocked_materials)
-    vendor_flipflop = config.active_vendor_flipflop_config()
-    if vendor_flipflop is not None:
-        active = tuple(item for item in active if vendor_flipflop.vendor_id in item.valid_vendors)
     if not active:
         raise TraceGenerationError("No unblocked master data remains for realism compilation")
     return active

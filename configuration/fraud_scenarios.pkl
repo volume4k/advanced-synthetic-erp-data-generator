@@ -14,8 +14,6 @@ vendorFlipflopConfig: objects.VendorFlipflopConfig = new objects.VendorFlipflopC
   }
 }
 
-routineVendorBankChangeVendorId = "1003070"
-
 routineVendorBankAccount: objects.BankAccountDetails = new objects.BankAccountDetails {
   bankKey = "ABNAUS33XXX"
   accountNumber = "55551234"

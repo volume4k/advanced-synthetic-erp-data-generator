@@ -4,7 +4,6 @@ import "objects.pkl"
 
 toolRequirements = generated_tool_config.toolRequirements
 vendorFlipflop = fraudConfig.vendorFlipflopConfig
-routineVendorBankChangeVendorId = fraudConfig.routineVendorBankChangeVendorId
 routineVendorBankAccount = fraudConfig.routineVendorBankAccount
 
 createPurchaseRequisitionStep: objects.ProcessStep = new objects.ProcessStep {
@@ -546,8 +545,8 @@ routineVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
   inputBindings {
     new objects.ToolInputBinding {
       field = "vendor_id"
-      source = "literal"
-      value = routineVendorBankChangeVendorId
+      source = "case"
+      value = "vendor_id"
     }
     new objects.ToolInputBinding {
       field = "bank_account_credentials.bank_key"

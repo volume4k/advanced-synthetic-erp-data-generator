@@ -438,7 +438,15 @@ def _vendor_flipflop_config_payload() -> dict:
     return payload
 
 
-def _vendor_bank_step(step_id: str, step_type: str, account_number: str, account_owner: str) -> dict:
+def _vendor_bank_step(
+    step_id: str,
+    step_type: str,
+    account_number: str,
+    account_owner: str,
+    *,
+    vendor_source: str = "literal",
+    vendor_value: str = "1003070",
+) -> dict:
     return {
         "stepId": step_id,
         "stepType": step_type,
@@ -451,7 +459,7 @@ def _vendor_bank_step(step_id: str, step_type: str, account_number: str, account
         },
         "objectOutputRequired": False,
         "inputBindings": [
-            _binding("vendor_id", "literal", "1003070"),
+            _binding("vendor_id", vendor_source, vendor_value),
             _binding("bank_account_credentials.bank_key", "literal", "ABNAUS33XXX"),
             _binding("bank_account_credentials.account_number", "literal", account_number),
             _binding("bank_account_credentials.account_owner", "literal", account_owner),
@@ -531,7 +539,14 @@ def _scenario_mix_config_payload() -> dict:
     split_gr = _step("Q1", "post_split_goods_receipt", "fiori.create_split_goods_receipt")
     scrap_qi = _step("Q2", "scrap_quality_inspection_stock", "fiori.manage_quality_inspection_stock")
     release_qi = _step("Q3", "release_quality_inspection_stock", "fiori.manage_quality_inspection_stock")
-    routine_bank = _vendor_bank_step("R1", "change_vendor_bank_data", "55551234", "Mid-West Supply, Inc.")
+    routine_bank = _vendor_bank_step(
+        "R1",
+        "change_vendor_bank_data",
+        "55551234",
+        "Mid-West Supply, Inc.",
+        vendor_source="case",
+        vendor_value="vendor_id",
+    )
 
     payload["processes"].extend(
         [
@@ -1037,7 +1052,63 @@ def test_multiple_fraud_and_routine_scenarios_sample_exact_counts_and_validate_i
     assert release_step.labels["step_label"] == "routine_step"
     assert release_step.labels["case_outcome"] == "non_fraud"
 
+    routine_bank_cases = [
+        case for case in cases if case.case_scenario_type == "ROUTINE_VENDOR_BANK_CHANGE"
+    ]
+    routine_bank_change_steps = [
+        next(
+            step
+            for step in planned_steps
+            if step.case_id == case.case_id and step.step_type == "change_vendor_bank_data"
+        )
+        for case in routine_bank_cases
+    ]
+    assert {
+        step.inputs["vendor_id"]
+        for step in routine_bank_change_steps
+    } == {case.vendor_id for case in routine_bank_cases}
+    assert any(step.inputs["vendor_id"] != "1003070" for step in routine_bank_change_steps)
+
     validate_planned_step_tool_inputs(planned_steps)
+
+
+def test_vendor_flipflop_samples_only_compatible_material_releases(tmp_path: Path) -> None:
+    payload = _vendor_flipflop_config_payload()
+    payload["runSettings"]["caseCount"] = 3
+    payload["fraudScenarios"][0]["targetShare"] = 1 / 3
+    payload["masterData"] = [
+        {
+            **payload["masterData"][0],
+            "materialId": "MA025",
+            "validVendors": ["V17121"],
+        },
+        {
+            **payload["masterData"][0],
+            "materialId": "MB001",
+            "validVendors": ["1003070"],
+        },
+    ]
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+
+    cases = plan_cases(
+        config,
+        Random(17),
+        demand_releases=[
+            DemandRelease("C001", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025"),
+            DemandRelease("C002", datetime(2026, 5, 18, 8, 30, tzinfo=tz), "MB001"),
+            DemandRelease("C003", datetime(2026, 5, 18, 9, 0, tzinfo=tz), "MA025"),
+        ],
+    )
+
+    flipflop_case = next(case for case in cases if case.case_scenario_type == "VENDOR_FLIPFLOP")
+    normal_cases = [case for case in cases if case.case_scenario_type == "NORMAL"]
+    assert flipflop_case.case_id == "C002"
+    assert flipflop_case.material_id == "MB001"
+    assert flipflop_case.vendor_id == "1003070"
+    assert {case.vendor_id for case in normal_cases} == {"V17121"}
 
 
 def test_config_loader_rejects_enabled_scenario_shares_above_one(tmp_path: Path) -> None:
