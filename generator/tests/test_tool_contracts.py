@@ -14,7 +14,12 @@ from erp_trace_executor.tools.fiori.create_split_goods_receipt import (
     _extract_material_document as extract_split_goods_receipt_material_document,
 )
 from erp_trace_executor.tools.fiori.manage_quality_inspection_stock import (
+    DOCUMENT_ITEM_TEXT_INPUT_SELECTOR,
+    SapQualityInspectionStockFlow,
     _extract_material_document as extract_quality_inspection_material_document,
+)
+from erp_trace_executor.tools.fiori.manage_quality_inspection_stock import (
+    _read_material_document_success_text,
 )
 
 EXAMPLES_DIR = Path(__file__).parents[1] / "examples"
@@ -174,3 +179,76 @@ def test_larceny3_material_document_extractors_accept_recorded_message_shapes():
         extract_split_goods_receipt_material_document("Materialbeleg5000000127/")
         == "5000000127"
     )
+
+
+def test_quality_stock_success_reader_uses_dialog_text_not_role_regex():
+    class FakeLocator:
+        def __init__(self, text: str) -> None:
+            self.text = text
+            self.wait_kwargs = None
+
+        @property
+        def first(self):
+            return self
+
+        def wait_for(self, **kwargs):
+            self.wait_kwargs = kwargs
+
+        def inner_text(self) -> str:
+            return self.text
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.dialog = FakeLocator("Erfolg Materialbeleg 4900038013/2026 angelegt OK")
+            self.locator_calls = []
+
+        def locator(self, *args, **kwargs):
+            self.locator_calls.append((args, kwargs))
+            return self.dialog
+
+        def get_by_role(self, *args, **kwargs):  # pragma: no cover - proves the old path is gone
+            raise AssertionError("success reader must not use role regex locator")
+
+    page = FakePage()
+
+    assert _read_material_document_success_text(page) == "Erfolg Materialbeleg 4900038013/2026 angelegt OK"
+    assert page.locator_calls == [(('[role="dialog"]',), {"has_text": "Materialbeleg"})]
+    assert page.dialog.wait_kwargs == {"state": "visible", "timeout": 60_000}
+
+
+def test_quality_stock_item_text_prefers_observed_sap_input_id():
+    class FakeLocator:
+        def __init__(self) -> None:
+            self.events = []
+
+        def wait_for(self, **kwargs):
+            self.events.append(("wait_for", kwargs))
+
+        def click(self, **kwargs):
+            self.events.append(("click", kwargs))
+
+        def fill(self, value: str):
+            self.events.append(("fill", value))
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.item_text = FakeLocator()
+            self.locator_selectors = []
+
+        def locator(self, selector: str):
+            self.locator_selectors.append(selector)
+            return self.item_text
+
+        def get_by_role(self, *args, **kwargs):  # pragma: no cover - proves id path wins
+            raise AssertionError("role fallback should not be used when SAP id is visible")
+
+    page = FakePage()
+
+    SapQualityInspectionStockFlow(page)._fill_document_item_text("Qualitätsprüfung bestanden")
+
+    assert page.locator_selectors == [DOCUMENT_ITEM_TEXT_INPUT_SELECTOR]
+    assert page.item_text.events == [
+        ("wait_for", {"state": "visible", "timeout": 30_000}),
+        ("click", {}),
+        ("fill", "Qualitätsprüfung bestanden"),
+    ]

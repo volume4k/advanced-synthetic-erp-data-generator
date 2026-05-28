@@ -115,7 +115,7 @@ dependency_graph:
       cost_center: NAPC1000
       document_item_text: Muss leider verschrottet werden.
     required_sap_object_keys:
-    - material_document.material_document_number
+    - scrap_material_document.material_document_number
     planned_date_inputs:
       posting_date: '2026-06-20'
     planned_synthetic_time:
@@ -138,7 +138,7 @@ dependency_graph:
       quantity: 5
       document_item_text: Qualitätsprüfung bestanden
     required_sap_object_keys:
-    - material_document.material_document_number
+    - stock_release_material_document.material_document_number
     planned_date_inputs:
       posting_date: '2026-06-20'
     planned_synthetic_time:
