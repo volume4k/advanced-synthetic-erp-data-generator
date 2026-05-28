@@ -8,8 +8,10 @@ from erp_trace_executor.tools.fiori.change_vendor_bank_details import CHANGE_VEN
 from erp_trace_executor.tools.fiori.create_goods_receipt import CREATE_GOODS_RECEIPT_TOOL
 from erp_trace_executor.tools.fiori.create_purchase_order import CREATE_PURCHASE_ORDER_TOOL
 from erp_trace_executor.tools.fiori.create_purchase_requisition import CREATE_PURCHASE_REQUISITION_TOOL
+from erp_trace_executor.tools.fiori.create_split_goods_receipt import CREATE_SPLIT_GOODS_RECEIPT_TOOL
 from erp_trace_executor.tools.fiori.create_supplier_invoice import CREATE_SUPPLIER_INVOICE_TOOL
 from erp_trace_executor.tools.fiori.login import LOGIN_TOOL
+from erp_trace_executor.tools.fiori.manage_quality_inspection_stock import MANAGE_QUALITY_INSPECTION_STOCK_TOOL
 from erp_trace_executor.tools.fiori.send_payment import SEND_PAYMENT_TOOL
 
 
@@ -41,6 +43,8 @@ def build_default_registry() -> ToolRegistry:
     registry.register(CREATE_GOODS_RECEIPT_TOOL)
     registry.register(CREATE_PURCHASE_REQUISITION_TOOL)
     registry.register(CREATE_PURCHASE_ORDER_TOOL)
+    registry.register(CREATE_SPLIT_GOODS_RECEIPT_TOOL)
     registry.register(CREATE_SUPPLIER_INVOICE_TOOL)
+    registry.register(MANAGE_QUALITY_INSPECTION_STOCK_TOOL)
     registry.register(SEND_PAYMENT_TOOL)
     return registry
