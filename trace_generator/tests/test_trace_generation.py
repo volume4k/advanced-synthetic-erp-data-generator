@@ -86,6 +86,7 @@ def _base_config() -> dict:
             {"id": "VENDOR_FLIPFLOP", "enabled": False, "targetShare": 0.0},
             {"id": "LARCENY", "enabled": False, "targetShare": 0.0},
         ],
+        "vendorBankAccounts": {},
         "runSettings": {
             "caseCount": 2,
             "maxParallelActorSessions": 2,
@@ -446,7 +447,15 @@ def _vendor_bank_step(
     *,
     vendor_source: str = "literal",
     vendor_value: str = "1003070",
+    bank_key_source: str = "literal",
+    bank_key_value: str = "ABNAUS33XXX",
+    account_number_source: str = "literal",
+    account_number_value: str | None = None,
+    account_owner_source: str = "literal",
+    account_owner_value: str | None = None,
 ) -> dict:
+    resolved_account_number_value = account_number if account_number_value is None else account_number_value
+    resolved_account_owner_value = account_owner if account_owner_value is None else account_owner_value
     return {
         "stepId": step_id,
         "stepType": step_type,
@@ -460,9 +469,17 @@ def _vendor_bank_step(
         "objectOutputRequired": False,
         "inputBindings": [
             _binding("vendor_id", vendor_source, vendor_value),
-            _binding("bank_account_credentials.bank_key", "literal", "ABNAUS33XXX"),
-            _binding("bank_account_credentials.account_number", "literal", account_number),
-            _binding("bank_account_credentials.account_owner", "literal", account_owner),
+            _binding("bank_account_credentials.bank_key", bank_key_source, bank_key_value),
+            _binding(
+                "bank_account_credentials.account_number",
+                account_number_source,
+                resolved_account_number_value,
+            ),
+            _binding(
+                "bank_account_credentials.account_owner",
+                account_owner_source,
+                resolved_account_owner_value,
+            ),
         ],
         "plannedDateInputBindings": [],
         "requiredSapObjectKeys": [],
@@ -473,6 +490,18 @@ def _scenario_mix_config_payload() -> dict:
     payload = _vendor_flipflop_config_payload()
     payload["runSettings"]["caseCount"] = 50
     payload["masterData"][0]["validVendors"] = ["1003070", "V17121"]
+    payload["vendorBankAccounts"] = {
+        "1003070": {
+            "bankKey": "ABNAUS33XXX",
+            "accountNumber": "12345678",
+            "accountOwner": "Mid West Supply, Inc.",
+        },
+        "V17121": {
+            "bankKey": "011000390",
+            "accountNumber": "987654321",
+            "accountOwner": "Valley Supplier LLC",
+        },
+    }
     payload["toolRequirements"].update(
         {
             "fiori.create_purchase_order_with_delivery_address": _tool(
@@ -546,6 +575,12 @@ def _scenario_mix_config_payload() -> dict:
         "Mid-West Supply, Inc.",
         vendor_source="case",
         vendor_value="vendor_id",
+        bank_key_source="vendor_bank_account",
+        bank_key_value="bank_key",
+        account_number_source="vendor_bank_account",
+        account_number_value="account_number",
+        account_owner_source="vendor_bank_account",
+        account_owner_value="account_owner",
     )
 
     payload["processes"].extend(
@@ -1068,6 +1103,14 @@ def test_multiple_fraud_and_routine_scenarios_sample_exact_counts_and_validate_i
         for step in routine_bank_change_steps
     } == {case.vendor_id for case in routine_bank_cases}
     assert any(step.inputs["vendor_id"] != "1003070" for step in routine_bank_change_steps)
+    expected_bank_accounts = payload["vendorBankAccounts"]
+    for step in routine_bank_change_steps:
+        expected_bank_account = expected_bank_accounts[step.inputs["vendor_id"]]
+        assert step.inputs["bank_account_credentials"] == {
+            "bank_key": expected_bank_account["bankKey"],
+            "account_number": expected_bank_account["accountNumber"],
+            "account_owner": expected_bank_account["accountOwner"],
+        }
 
     validate_planned_step_tool_inputs(planned_steps)
 
@@ -1119,6 +1162,17 @@ def test_config_loader_rejects_enabled_scenario_shares_above_one(tmp_path: Path)
     _write_yaml(config_path, payload)
 
     with pytest.raises(TraceGenerationError, match="scenario targetShare total"):
+        load_generation_config(config_path)
+
+
+def test_config_loader_rejects_invalid_vendor_bank_account_details(tmp_path: Path) -> None:
+    payload = _scenario_mix_config_payload()
+    payload["vendorBankAccounts"]["1003070"]["bankKey"] = "BADKEY"
+    payload["vendorBankAccounts"]["V17121"]["accountNumber"] = "1234ABCD"
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="vendorBankAccounts"):
         load_generation_config(config_path)
 
 

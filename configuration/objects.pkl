@@ -93,7 +93,8 @@ class ToolInputBinding {
       || this == "case"
       || this == "planned_date"
       || this == "prior_output"
-      || this == "derived",
+      || this == "derived"
+      || this == "vendor_bank_account",
   )
   value: String(this.length > 0)
   valueType: String(

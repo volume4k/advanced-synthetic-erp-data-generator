@@ -46,6 +46,7 @@ DEFAULT_STEP_DURATION_MINUTES = {
     "post_outgoing_payment": {"min": 5, "max": 10},
     "revert_vendor_bank_data": {"min": 5, "max": 8},
 }
+ALLOWED_BANK_KEYS = {"011000390", "820800001", "ABNAUS33XXX"}
 
 
 def load_generation_config(path: str | Path) -> GenerationConfig:
@@ -65,6 +66,7 @@ def load_generation_config(path: str | Path) -> GenerationConfig:
         processes=tuple(_process(item, payload.get("toolRequirements", {})) for item in _list(payload, "processes")),
         fraud_scenarios=tuple(_fraud_scenario(item) for item in payload.get("fraudScenarios", [])),
         routine_scenarios=tuple(_routine_scenario(item) for item in payload.get("routineScenarios", [])),
+        vendor_bank_accounts=_vendor_bank_accounts(payload.get("vendorBankAccounts", {})),
         tool_requirements=_tool_requirements(payload.get("toolRequirements", {})),
         run_settings=_run_settings(payload.get("runSettings", {})),
         raw=payload,
@@ -228,7 +230,15 @@ def _input_binding(item: dict[str, Any], step_type: str) -> InputBinding:
 
 def _binding_source(value: object) -> BindingSource:
     source = str(value)
-    if source not in {"literal", "master_data", "case", "planned_date", "prior_output", "derived"}:
+    if source not in {
+        "literal",
+        "master_data",
+        "case",
+        "planned_date",
+        "prior_output",
+        "derived",
+        "vendor_bank_account",
+    }:
         raise TraceGenerationError(f"unsupported binding source '{source}'")
     return source  # type: ignore[return-value]
 
@@ -263,6 +273,15 @@ def _vendor_flipflop_config(item: dict[str, Any]) -> VendorFlipflopConfig:
         fraudulent_bank_account=_bank_account_details(item["fraudulentBankAccount"]),
         original_bank_account=_bank_account_details(item["originalBankAccount"]),
     )
+
+
+def _vendor_bank_accounts(items: dict[str, Any]) -> dict[str, BankAccountDetails]:
+    if not isinstance(items, dict):
+        raise TraceGenerationError("Configuration field 'vendorBankAccounts' must be a mapping")
+    return {
+        str(vendor_id): _bank_account_details(item)
+        for vendor_id, item in items.items()
+    }
 
 
 def _routine_scenario(item: dict[str, Any]) -> RoutineScenario:
@@ -411,6 +430,7 @@ def _validate(config: GenerationConfig) -> None:
         )
     if len(blocked_material_ids) >= len(master_material_ids):
         raise TraceGenerationError("runSettings.realism.blockedMaterials cannot block all configured materials")
+    _validate_bank_accounts(config)
 
     actor_ids = {actor.id for actor in config.actors}
     technical_user_ids = {user.id for user in config.technical_users}
@@ -458,6 +478,55 @@ def _validate(config: GenerationConfig) -> None:
     ensure_fraud_scenarios_supported(
         config.fraud_scenarios,
         supported_scenario_types={process.scenario_type for process in config.processes},
+    )
+
+
+def _validate_bank_accounts(config: GenerationConfig) -> None:
+    for vendor_id, account in config.vendor_bank_accounts.items():
+        _validate_bank_account_details(f"vendorBankAccounts[{vendor_id!r}]", account)
+    for scenario in config.fraud_scenarios:
+        if scenario.vendor_flipflop is None:
+            continue
+        _validate_bank_account_details(
+            f"fraudScenarios[{scenario.id!r}].vendorFlipflop.fraudulentBankAccount",
+            scenario.vendor_flipflop.fraudulent_bank_account,
+        )
+        _validate_bank_account_details(
+            f"fraudScenarios[{scenario.id!r}].vendorFlipflop.originalBankAccount",
+            scenario.vendor_flipflop.original_bank_account,
+        )
+    if _uses_vendor_bank_account_bindings(config):
+        configured_vendors = set(config.vendor_bank_accounts)
+        required_vendors = {
+            vendor_id
+            for item in config.master_data
+            if item.material_id not in set(config.run_settings.realism.blocked_materials)
+            for vendor_id in item.valid_vendors
+        }
+        missing_vendors = sorted(required_vendors - configured_vendors)
+        if missing_vendors:
+            raise TraceGenerationError(
+                f"vendorBankAccounts missing account details for configured vendor(s): {missing_vendors}"
+            )
+
+
+def _validate_bank_account_details(path: str, account: BankAccountDetails) -> None:
+    if account.bank_key not in ALLOWED_BANK_KEYS:
+        raise TraceGenerationError(
+            f"{path} bankKey must be one of {sorted(ALLOWED_BANK_KEYS)}"
+        )
+    if not (8 <= len(account.account_number) <= 10 and account.account_number.isdigit()):
+        raise TraceGenerationError(
+            f"{path} accountNumber must contain 8 to 10 digits"
+        )
+
+
+def _uses_vendor_bank_account_bindings(config: GenerationConfig) -> bool:
+    return any(
+        binding.source == "vendor_bank_account"
+        for process in config.processes
+        for step in process.steps
+        for binding in step.input_bindings
     )
 
 

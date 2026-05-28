@@ -28,6 +28,8 @@ fraudScenarios = fraudConfig.fraudScenarios
 
 routineScenarios = fraudConfig.routineScenarios
 
+vendorBankAccounts = fraudConfig.vendorBankAccounts
+
 runSettings = runConfig.runSettings
 
 toolRequirements = generatedTools.toolRequirements

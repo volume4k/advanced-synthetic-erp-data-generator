@@ -135,7 +135,7 @@ def plan_steps(
             synthetic_actor_id=actor.id,
             technical_sap_user_id=technical_user.id,
             actor_session_id=f"{actor.id}-session",
-            inputs=resolve_step_inputs(step, case),
+            inputs=resolve_step_inputs(step, case, config.vendor_bank_accounts),
             required_sap_object_keys=list(step.required_sap_object_keys),
             planned_date_inputs=planned_date_inputs_for_step(step, case),
             target_start=start,

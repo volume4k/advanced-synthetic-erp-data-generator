@@ -89,7 +89,15 @@ class ToolRequirement:
     required_input_fields: tuple[str, ...]
 
 
-BindingSource = Literal["literal", "master_data", "case", "planned_date", "prior_output", "derived"]
+BindingSource = Literal[
+    "literal",
+    "master_data",
+    "case",
+    "planned_date",
+    "prior_output",
+    "derived",
+    "vendor_bank_account",
+]
 BindingValueType = Literal["string", "int", "float", "bool"]
 
 
@@ -289,6 +297,7 @@ class GenerationConfig:
     raw: dict
     fraud_scenarios: tuple[FraudScenario, ...] = ()
     routine_scenarios: tuple[RoutineScenario, ...] = ()
+    vendor_bank_accounts: dict[str, BankAccountDetails] = field(default_factory=dict)
 
     def active_process(self) -> ProcessDefinition:
         return self.process_for_scenario(self.active_scenario_type())

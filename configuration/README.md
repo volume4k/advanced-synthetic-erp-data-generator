@@ -19,7 +19,7 @@ This folder owns trace-planning configuration. The generator stays execution-onl
 - `identity_mapping.pkl`: mapping from synthetic actors to technical SAP users.
 - `master_data.pkl`: material/vendor/plant/storage-location matrix and hard sampling guardrails.
 - `processes.pkl`: process steps, tool assignments, step-local input bindings, required SAP object keys, and process dependencies.
-- `fraud_scenarios.pkl`: enabled fraud and routine scenario controls plus target shares.
+- `fraud_scenarios.pkl`: enabled fraud and routine scenario controls, target shares, and configured vendor bank-account values.
 - `run_settings.pkl`: case count, concurrency, timezone, active process types, scheduler seed, working hours, pause ranges, inter-step delay ranges, storage-location labels, and post-processing export groups.
 - `main.pkl`: final public entrypoint for compiled config.
 - `create-config.sh`: regenerates tool facts, validates Pkl, writes YAML.
