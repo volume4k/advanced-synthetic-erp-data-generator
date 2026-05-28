@@ -1,0 +1,111 @@
+trace_version: '0.3'
+run_id: RUN_EXAMPLE_LARCENY5_MANUAL
+config_hash: example
+tool_catalog_hash: example
+trace_generator_version: 0.1.0
+llm_metadata:
+  used: false
+  seed: 17
+actor_sessions:
+- actor_session_id: tour-user-1-session
+  synthetic_actor_id: tour-user-1
+  technical_sap_user_id: TU_EXAMPLE
+  username_env_var: SAP_USER_1_UN
+  password_env_var: SAP_USER_1_PW
+  login_url_env_var: SAP_URL
+  success_selector: '#userActionsMenuHeaderButton'
+cases:
+- case_id: LARCENY5_MANUAL_001
+  process_type: procure_to_pay
+  case_scenario_type: LARCENY5
+  line_items:
+  - line_id: LARCENY5_MANUAL_001_L1
+    material_id: PUMP1800
+    vendor_id: '107800'
+    plant: MI00
+    purchasing_org: US00
+    storage_location: TG00
+    quantity: 10
+    target_price: 20
+dependency_graph:
+  planned_steps:
+  - planned_step_id: larceny5-manual-001-create-pr
+    case_id: LARCENY5_MANUAL_001
+    step_type: create_purchase_requisition
+    tool_name: fiori.create_purchase_requisition
+    synthetic_actor_id: tour-user-1
+    technical_sap_user_id: TU_EXAMPLE
+    actor_session_id: tour-user-1-session
+    inputs:
+      material: PUMP1800
+      quantity: 10
+      valuation_price: 20
+      currency: USD
+      price_unit: 1
+      delivery_date: 06/20/2026
+      plant: MI00
+      purchasing_group: N00
+      purchasing_organization: US00
+      company_code: US00
+    required_sap_object_keys:
+    - purchase_requisition.pr_number
+    planned_date_inputs:
+      delivery_date: '2026-06-20'
+    planned_synthetic_time:
+      start: '2026-05-18T08:00:00+02:00'
+      end: '2026-05-18T08:09:00+02:00'
+    labels:
+      step_label: normal
+  - planned_step_id: larceny5-manual-001-create-po-address
+    case_id: LARCENY5_MANUAL_001
+    step_type: create_purchase_order_with_delivery_address
+    tool_name: fiori.create_purchase_order_with_delivery_address
+    synthetic_actor_id: tour-user-1
+    technical_sap_user_id: TU_EXAMPLE
+    actor_session_id: tour-user-1-session
+    inputs:
+      purchase_requisition: $purchase_requisition.pr_number
+      storage_location: TG00
+      supplier: '107800'
+      quantity: 10
+      net_price: 20
+      tax_code: XI
+      delivery_address:
+        name: Acme California Receiving
+        street_and_house_number: 455 Market St
+        house_number: '455'
+        postal_code: '94105'
+        city: San Francisco
+        country: US
+        region: CA
+    required_sap_object_keys:
+    - purchase_order.po_number
+    planned_date_inputs: {}
+    planned_synthetic_time:
+      start: '2026-05-18T09:00:00+02:00'
+      end: '2026-05-18T09:08:00+02:00'
+    labels:
+      step_label: fraud_step
+      scenario_family: delivery_address_manipulation
+  dependencies:
+  - type: data_dependency
+    reason: purchase requisition number feeds purchase order creation
+    from_planned_step_id: larceny5-manual-001-create-pr
+    to_planned_step_id: larceny5-manual-001-create-po-address
+execution_schedule:
+  mode: waves
+  max_parallel_actor_sessions: 1
+  waves:
+  - wave_id: W001
+    sequence_no: 1
+    planned_steps:
+    - planned_step_id: larceny5-manual-001-create-pr
+      startup_order: 1
+  - wave_id: W002
+    sequence_no: 2
+    planned_steps:
+    - planned_step_id: larceny5-manual-001-create-po-address
+      startup_order: 1
+validation_report:
+  errors: []
+  warnings: []

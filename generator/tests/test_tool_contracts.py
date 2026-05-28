@@ -32,6 +32,7 @@ EXPECTED_EXAMPLE_TRACES = {
     "sap-create-supplier-invoice.execution-trace.yaml",
     "sap-init-login.execution-trace.yaml",
     "sap-larceny3-manual.execution-trace.yaml",
+    "sap-larceny5-manual.execution-trace.yaml",
     "sap-procure-to-pay-runtime-handover.execution-trace.yaml",
     "sap-send-payment.execution-trace.yaml",
 }

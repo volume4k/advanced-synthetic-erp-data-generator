@@ -7,6 +7,9 @@ from erp_trace_executor.tooling import ToolSpec
 from erp_trace_executor.tools.fiori.change_vendor_bank_details import CHANGE_VENDOR_BANK_DETAILS_TOOL
 from erp_trace_executor.tools.fiori.create_goods_receipt import CREATE_GOODS_RECEIPT_TOOL
 from erp_trace_executor.tools.fiori.create_purchase_order import CREATE_PURCHASE_ORDER_TOOL
+from erp_trace_executor.tools.fiori.create_purchase_order_with_delivery_address import (
+    CREATE_PURCHASE_ORDER_WITH_DELIVERY_ADDRESS_TOOL,
+)
 from erp_trace_executor.tools.fiori.create_purchase_requisition import CREATE_PURCHASE_REQUISITION_TOOL
 from erp_trace_executor.tools.fiori.create_split_goods_receipt import CREATE_SPLIT_GOODS_RECEIPT_TOOL
 from erp_trace_executor.tools.fiori.create_supplier_invoice import CREATE_SUPPLIER_INVOICE_TOOL
@@ -43,6 +46,7 @@ def build_default_registry() -> ToolRegistry:
     registry.register(CREATE_GOODS_RECEIPT_TOOL)
     registry.register(CREATE_PURCHASE_REQUISITION_TOOL)
     registry.register(CREATE_PURCHASE_ORDER_TOOL)
+    registry.register(CREATE_PURCHASE_ORDER_WITH_DELIVERY_ADDRESS_TOOL)
     registry.register(CREATE_SPLIT_GOODS_RECEIPT_TOOL)
     registry.register(CREATE_SUPPLIER_INVOICE_TOOL)
     registry.register(MANAGE_QUALITY_INSPECTION_STOCK_TOOL)
