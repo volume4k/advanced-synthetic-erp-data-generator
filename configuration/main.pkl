@@ -26,6 +26,8 @@ processes = processConfig.processes
 
 fraudScenarios = fraudConfig.fraudScenarios
 
+routineScenarios = fraudConfig.routineScenarios
+
 runSettings = runConfig.runSettings
 
 toolRequirements = generatedTools.toolRequirements

@@ -100,6 +100,63 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
       }
     }
   }
+  ["fiori.create_purchase_order_with_delivery_address"] = new objects.ToolRequirement {
+    toolName = "fiori.create_purchase_order_with_delivery_address"
+    title = "Create Purchase Order With Delivery Address"
+    inputModel = "CreatePurchaseOrderWithDeliveryAddressInput"
+    requiredInputFields {
+      "purchase_requisition"
+      "storage_location"
+      "supplier"
+      "quantity"
+      "net_price"
+      "delivery_address"
+    }
+    inputProperties {
+      new objects.ToolInputProperty {
+        name = "purchase_requisition"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "storage_location"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "supplier"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "quantity"
+        schemaType = "integer"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "net_price"
+        schemaType = "number"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "delivery_address"
+        schemaType = "object"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "tax_code"
+        schemaType = "string"
+        required = false
+        defaultValue = "XI"
+      }
+    }
+  }
   ["fiori.create_purchase_requisition"] = new objects.ToolRequirement {
     toolName = "fiori.create_purchase_requisition"
     title = "Create Purchase Requisition"
@@ -174,6 +231,43 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
       new objects.ToolInputProperty {
         name = "company_code"
         schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+    }
+  }
+  ["fiori.create_split_goods_receipt"] = new objects.ToolRequirement {
+    toolName = "fiori.create_split_goods_receipt"
+    title = "Create Split Goods Receipt"
+    inputModel = "CreateSplitGoodsReceiptInput"
+    requiredInputFields {
+      "purchase_order"
+      "storage_location"
+      "unrestricted_quantity"
+      "quality_inspection_quantity"
+    }
+    inputProperties {
+      new objects.ToolInputProperty {
+        name = "purchase_order"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "storage_location"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "unrestricted_quantity"
+        schemaType = "number"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "quality_inspection_quantity"
+        schemaType = "number"
         required = true
         defaultValue = null
       }
@@ -262,6 +356,56 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
       }
       new objects.ToolInputProperty {
         name = "success_selector"
+        schemaType = "string | null"
+        required = false
+        defaultValue = null
+      }
+    }
+  }
+  ["fiori.manage_quality_inspection_stock"] = new objects.ToolRequirement {
+    toolName = "fiori.manage_quality_inspection_stock"
+    title = "Manage Quality Inspection Stock"
+    inputModel = "ManageQualityInspectionStockInput"
+    requiredInputFields {
+      "material"
+      "stock_location_label"
+      "movement"
+      "quantity"
+      "document_item_text"
+    }
+    inputProperties {
+      new objects.ToolInputProperty {
+        name = "material"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "stock_location_label"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "movement"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "quantity"
+        schemaType = "number"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "document_item_text"
+        schemaType = "string"
+        required = true
+        defaultValue = null
+      }
+      new objects.ToolInputProperty {
+        name = "cost_center"
         schemaType = "string | null"
         required = false
         defaultValue = null

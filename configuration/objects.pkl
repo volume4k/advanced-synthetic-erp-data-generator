@@ -215,6 +215,13 @@ class FraudScenario {
   vendorFlipflop: VendorFlipflopConfig? = null
 }
 
+/// Non-fraud process variation switch and target share.
+class RoutineScenario {
+  id: String(this.length > 0)
+  enabled: Boolean
+  targetShare: Float(this >= 0 && this <= 1)
+}
+
 /// Top-level generation run settings.
 class RunSettings {
   caseCount: Int(this >= 1)

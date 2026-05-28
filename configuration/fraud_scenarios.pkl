@@ -14,16 +14,47 @@ vendorFlipflopConfig: objects.VendorFlipflopConfig = new objects.VendorFlipflopC
   }
 }
 
+routineVendorBankChangeVendorId = "1003070"
+
+routineVendorBankAccount: objects.BankAccountDetails = new objects.BankAccountDetails {
+  bankKey = "ABNAUS33XXX"
+  accountNumber = "55551234"
+  accountOwner = "Mid-West Supply, Inc."
+}
+
 fraudScenarios: Listing<objects.FraudScenario> = new Listing {
   new objects.FraudScenario {
     id = "VENDOR_FLIPFLOP"
     enabled = true
-    targetShare = 0.1
+    targetShare = 0.02
     vendorFlipflop = vendorFlipflopConfig
   }
   new objects.FraudScenario {
-    id = "LARCENY"
-    enabled = false
-    targetShare = 0.0
+    id = "LARCENY3"
+    enabled = true
+    targetShare = 0.04
+  }
+  new objects.FraudScenario {
+    id = "LARCENY5"
+    enabled = true
+    targetShare = 0.04
+  }
+}
+
+routineScenarios: Listing<objects.RoutineScenario> = new Listing {
+  new objects.RoutineScenario {
+    id = "ROUTINE_ADDRESS_CHANGE"
+    enabled = true
+    targetShare = 0.06
+  }
+  new objects.RoutineScenario {
+    id = "ROUTINE_QUALITY_INSPECTION"
+    enabled = true
+    targetShare = 0.06
+  }
+  new objects.RoutineScenario {
+    id = "ROUTINE_VENDOR_BANK_CHANGE"
+    enabled = true
+    targetShare = 0.04
   }
 }

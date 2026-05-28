@@ -59,7 +59,27 @@ runSettings: objects.RunSettings = new objects.RunSettings {
       min = 7
       max = 12
     }
+    ["create_purchase_order_with_delivery_address"] = new objects.MinuteRange {
+      min = 8
+      max = 14
+    }
     ["post_goods_receipt"] = new objects.MinuteRange {
+      min = 5
+      max = 10
+    }
+    ["post_larceny5_goods_receipt"] = new objects.MinuteRange {
+      min = 5
+      max = 10
+    }
+    ["post_split_goods_receipt"] = new objects.MinuteRange {
+      min = 7
+      max = 12
+    }
+    ["scrap_quality_inspection_stock"] = new objects.MinuteRange {
+      min = 5
+      max = 10
+    }
+    ["release_quality_inspection_stock"] = new objects.MinuteRange {
       min = 5
       max = 10
     }
@@ -88,10 +108,64 @@ runSettings: objects.RunSettings = new objects.RunSettings {
       max = 180
     }
     new objects.InterStepDelayRange {
+      fromStepType = "create_purchase_requisition"
+      toStepType = "create_purchase_order_with_delivery_address"
+      min = 30
+      max = 180
+    }
+    new objects.InterStepDelayRange {
       fromStepType = "create_purchase_order"
       toStepType = "post_goods_receipt"
       min = 240
       max = 2880
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "create_purchase_order_with_delivery_address"
+      toStepType = "post_goods_receipt"
+      min = 240
+      max = 2880
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "create_purchase_order_with_delivery_address"
+      toStepType = "post_larceny5_goods_receipt"
+      min = 240
+      max = 2880
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "post_larceny5_goods_receipt"
+      toStepType = "enter_incoming_invoice"
+      min = 120
+      max = 1440
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "create_purchase_order"
+      toStepType = "post_split_goods_receipt"
+      min = 240
+      max = 2880
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "post_split_goods_receipt"
+      toStepType = "scrap_quality_inspection_stock"
+      min = 30
+      max = 240
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "scrap_quality_inspection_stock"
+      toStepType = "enter_incoming_invoice"
+      min = 120
+      max = 1440
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "post_split_goods_receipt"
+      toStepType = "release_quality_inspection_stock"
+      min = 30
+      max = 240
+    }
+    new objects.InterStepDelayRange {
+      fromStepType = "release_quality_inspection_stock"
+      toStepType = "enter_incoming_invoice"
+      min = 120
+      max = 1440
     }
     new objects.InterStepDelayRange {
       fromStepType = "post_goods_receipt"
