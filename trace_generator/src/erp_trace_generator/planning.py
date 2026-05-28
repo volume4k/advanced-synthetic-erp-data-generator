@@ -23,7 +23,7 @@ def plan_cases(config: GenerationConfig, rng: Random, *, demand_releases: list[D
     vendor_flipflop = config.active_vendor_flipflop_config()
     for index, release in enumerate(releases, start=1):
         case_scenario_type = scenario_types[index - 1]
-        master_data = _master_data_for_release(config, release, rng)
+        master_data = _master_data_for_release(config, release, case_scenario_type, rng)
         quantity = release.target_quantity
         if quantity is None:
             quantity = rng.randint(master_data.quantity_min, master_data.quantity_max)
@@ -298,25 +298,31 @@ def _step_id_for(process, step_type: str) -> str:
 def _scenario_types_for_cases(config: GenerationConfig, rng: Random) -> list[str]:
     case_count = config.run_settings.case_count
     scenario_types = ["NORMAL"] * case_count
-    enabled = tuple(scenario for scenario in config.fraud_scenarios if scenario.enabled)
+    enabled = tuple(
+        scenario
+        for scenario in (*config.fraud_scenarios, *config.routine_scenarios)
+        if scenario.enabled
+    )
     if not enabled:
         return scenario_types
 
-    scenario = enabled[0]
-    fraud_count = round(case_count * scenario.target_share)
-    if scenario.target_share > 0 and fraud_count == 0:
-        fraud_count = 1
-    fraud_count = min(fraud_count, case_count)
-    if fraud_count == case_count:
-        return [scenario.id] * case_count
-
-    for index in rng.sample(range(case_count), fraud_count):
-        scenario_types[index] = scenario.id
+    available_indexes = list(range(case_count))
+    for scenario in enabled:
+        scenario_count = round(case_count * scenario.target_share)
+        if scenario.target_share > 0 and scenario_count == 0:
+            scenario_count = 1
+        if scenario_count > len(available_indexes):
+            raise TraceGenerationError("Enabled scenario targetShare counts exceed configured caseCount")
+        sampled = rng.sample(available_indexes, scenario_count)
+        sampled_set = set(sampled)
+        for index in sampled:
+            scenario_types[index] = scenario.id
+        available_indexes = [index for index in available_indexes if index not in sampled_set]
     return scenario_types
 
 
-def _master_data_for_release(config: GenerationConfig, release: DemandRelease, rng: Random):
-    active_master_data = _active_master_data(config)
+def _master_data_for_release(config: GenerationConfig, release: DemandRelease, scenario_type: str, rng: Random):
+    active_master_data = _active_master_data(config, scenario_type)
     if release.material_id:
         match = next((item for item in active_master_data if item.material_id == release.material_id), None)
         if match is None:
@@ -329,11 +335,11 @@ def _master_data_for_release(config: GenerationConfig, release: DemandRelease, r
     return rng.choice(active_master_data)
 
 
-def _active_master_data(config: GenerationConfig):
+def _active_master_data(config: GenerationConfig, scenario_type: str | None = None):
     blocked_materials = set(config.run_settings.realism.blocked_materials)
     active = tuple(item for item in config.master_data if item.material_id not in blocked_materials)
     vendor_flipflop = config.active_vendor_flipflop_config()
-    if vendor_flipflop is not None:
+    if vendor_flipflop is not None and scenario_type == "VENDOR_FLIPFLOP":
         active = tuple(item for item in active if vendor_flipflop.vendor_id in item.valid_vendors)
     if not active:
         raise TraceGenerationError("No unblocked master data remains for case planning")
@@ -341,7 +347,10 @@ def _active_master_data(config: GenerationConfig):
 
 
 def _step_labels(scenario_type: str, step_type: str) -> dict[str, str]:
-    labels = {"step_label": "normal"}
+    labels = {
+        "step_label": "normal",
+        "case_outcome": "non_fraud" if scenario_type == "NORMAL" or scenario_type.startswith("ROUTINE_") else "fraud",
+    }
     if scenario_type == "VENDOR_FLIPFLOP":
         if step_type == "change_vendor_bank_data":
             labels["step_label"] = "fraud_step"
@@ -352,13 +361,46 @@ def _step_labels(scenario_type: str, step_type: str) -> dict[str, str]:
         elif step_type == "revert_vendor_bank_data":
             labels["step_label"] = "cleanup_step"
             labels["scenario_family"] = "vendor_master_manipulation"
+    elif scenario_type == "LARCENY3":
+        if step_type == "scrap_quality_inspection_stock":
+            labels["step_label"] = "fraud_step"
+            labels["scenario_family"] = "inventory_misappropriation"
+        elif step_type == "post_split_goods_receipt":
+            labels["step_label"] = "fraud_supporting_step"
+            labels["scenario_family"] = "inventory_misappropriation"
+    elif scenario_type == "LARCENY5":
+        if step_type == "create_purchase_order_with_delivery_address":
+            labels["step_label"] = "fraud_step"
+            labels["scenario_family"] = "delivery_address_manipulation"
+        elif step_type == "post_larceny5_goods_receipt":
+            labels["step_label"] = "fraud_supporting_step"
+            labels["scenario_family"] = "delivery_address_manipulation"
+    elif scenario_type == "ROUTINE_ADDRESS_CHANGE":
+        if step_type == "create_purchase_order_with_delivery_address":
+            labels["step_label"] = "routine_step"
+            labels["scenario_family"] = "routine_delivery_address_change"
+    elif scenario_type == "ROUTINE_QUALITY_INSPECTION":
+        if step_type in {"post_split_goods_receipt", "release_quality_inspection_stock"}:
+            labels["step_label"] = "routine_step"
+            labels["scenario_family"] = "routine_quality_inspection"
+    elif scenario_type == "ROUTINE_VENDOR_BANK_CHANGE":
+        if step_type == "change_vendor_bank_data":
+            labels["step_label"] = "routine_step"
+            labels["scenario_family"] = "routine_vendor_master_update"
     return labels
 
 
 def _material_valuation_lock_key(config: GenerationConfig, case: CasePlan, step_type: str) -> str | None:
     if not config.run_settings.realism.material_valuation_lock_enabled:
         return None
-    if step_type not in {"post_goods_receipt", "enter_incoming_invoice"}:
+    if step_type not in {
+        "post_goods_receipt",
+        "post_larceny5_goods_receipt",
+        "post_split_goods_receipt",
+        "scrap_quality_inspection_stock",
+        "release_quality_inspection_stock",
+        "enter_incoming_invoice",
+    }:
         return None
     return f"{case.plant}:{case.material_id}"
 
@@ -378,7 +420,14 @@ def _default_actor_criteria(config: GenerationConfig) -> dict[str, ActorRealismC
 def _business_date_gate(config: GenerationConfig, case: CasePlan, step_type: str) -> datetime:
     tz = ZoneInfo(config.run_settings.target_timezone)
     work_start = time.fromisoformat(config.run_settings.working_hours.core_start)
-    if step_type in {"post_goods_receipt", "enter_incoming_invoice"}:
+    if step_type in {
+        "post_goods_receipt",
+        "post_larceny5_goods_receipt",
+        "post_split_goods_receipt",
+        "scrap_quality_inspection_stock",
+        "release_quality_inspection_stock",
+        "enter_incoming_invoice",
+    }:
         return datetime.combine(case.delivery_date, work_start, tz)
     if step_type == "post_outgoing_payment":
         payment_date = case.delivery_date + timedelta(days=1)

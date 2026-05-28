@@ -255,9 +255,48 @@ def _input_bindings(step_type: str) -> list[dict]:
             _binding("quantity", "case", "quantity"),
             _binding("net_price", "case", "target_price"),
         ],
+        "create_purchase_order_with_delivery_address": [
+            _binding("purchase_requisition", "prior_output", "purchase_requisition.pr_number"),
+            _binding("storage_location", "case", "storage_location"),
+            _binding("supplier", "master_data", "vendor_id"),
+            _binding("quantity", "case", "quantity"),
+            _binding("net_price", "case", "target_price"),
+            _binding("delivery_address.name", "literal", "Tatiana Karsova"),
+            _binding("delivery_address.street_and_house_number", "literal", "1840 Brickell Ave"),
+            _binding("delivery_address.house_number", "literal", "1840"),
+            _binding("delivery_address.postal_code", "literal", "33129"),
+            _binding("delivery_address.city", "literal", "Miami"),
+            _binding("delivery_address.country", "literal", "US"),
+            _binding("delivery_address.region", "literal", "FL"),
+        ],
         "post_goods_receipt": [
             _binding("purchase_order", "prior_output", "purchase_order.po_number"),
             _binding("storage_location", "derived", "storage_location_label"),
+        ],
+        "post_larceny5_goods_receipt": [
+            _binding("purchase_order", "prior_output", "purchase_order.po_number"),
+            _binding("storage_location", "derived", "storage_location_label"),
+        ],
+        "post_split_goods_receipt": [
+            _binding("purchase_order", "prior_output", "purchase_order.po_number"),
+            _binding("storage_location", "derived", "storage_location_label"),
+            _binding("unrestricted_quantity", "derived", "unrestricted_quantity"),
+            _binding("quality_inspection_quantity", "derived", "quality_inspection_quantity"),
+        ],
+        "scrap_quality_inspection_stock": [
+            _binding("material", "case", "material_id"),
+            _binding("stock_location_label", "literal", "DC Miami"),
+            _binding("movement", "literal", "scrap"),
+            _binding("quantity", "derived", "quality_inspection_quantity"),
+            _binding("cost_center", "literal", "NAPC1000"),
+            _binding("document_item_text", "literal", "Muss leider verschrottet werden."),
+        ],
+        "release_quality_inspection_stock": [
+            _binding("material", "case", "material_id"),
+            _binding("stock_location_label", "literal", "DC Miami"),
+            _binding("movement", "literal", "release_to_unrestricted"),
+            _binding("quantity", "derived", "quality_inspection_quantity"),
+            _binding("document_item_text", "literal", "Qualitätsprüfung bestanden."),
         ],
         "enter_incoming_invoice": [
             _binding("gross_amount", "derived", "gross_amount"),
@@ -281,10 +320,21 @@ def _planned_date_input_bindings(step_type: str) -> list[dict]:
     return {
         "create_purchase_requisition": [_binding("delivery_date", "derived", "fiori_delivery_date")],
         "create_purchase_order": [],
+        "create_purchase_order_with_delivery_address": [],
         "post_goods_receipt": [
             _binding("document_date", "derived", "fiori_delivery_date"),
             _binding("posting_date", "derived", "fiori_delivery_date"),
         ],
+        "post_larceny5_goods_receipt": [
+            _binding("document_date", "derived", "fiori_delivery_date"),
+            _binding("posting_date", "derived", "fiori_delivery_date"),
+        ],
+        "post_split_goods_receipt": [
+            _binding("document_date", "derived", "fiori_delivery_date"),
+            _binding("posting_date", "derived", "fiori_delivery_date"),
+        ],
+        "scrap_quality_inspection_stock": [_binding("posting_date", "derived", "fiori_delivery_date")],
+        "release_quality_inspection_stock": [_binding("posting_date", "derived", "fiori_delivery_date")],
         "enter_incoming_invoice": [_binding("invoice_date", "derived", "fiori_delivery_date")],
         "post_outgoing_payment": [
             _binding("posting_document_date", "derived", "fiori_delivery_date"),
@@ -301,7 +351,12 @@ def _required_sap_object_keys(step_type: str) -> list[str]:
     return {
         "create_purchase_requisition": ["purchase_requisition.pr_number"],
         "create_purchase_order": ["purchase_order.po_number"],
+        "create_purchase_order_with_delivery_address": ["purchase_order.po_number"],
         "post_goods_receipt": ["material_document.material_document_number"],
+        "post_larceny5_goods_receipt": ["material_document.material_document_number"],
+        "post_split_goods_receipt": ["material_document.material_document_number"],
+        "scrap_quality_inspection_stock": ["scrap_material_document.material_document_number"],
+        "release_quality_inspection_stock": ["stock_release_material_document.material_document_number"],
         "enter_incoming_invoice": ["supplier_invoice.invoice_number", "supplier_invoice.fiscal_year"],
         "post_outgoing_payment": ["payment_document.payment_document_number"],
     }[step_type]
@@ -404,6 +459,143 @@ def _vendor_bank_step(step_id: str, step_type: str, account_number: str, account
         "plannedDateInputBindings": [],
         "requiredSapObjectKeys": [],
     }
+
+
+def _scenario_mix_config_payload() -> dict:
+    payload = _vendor_flipflop_config_payload()
+    payload["runSettings"]["caseCount"] = 50
+    payload["masterData"][0]["validVendors"] = ["1003070", "V17121"]
+    payload["toolRequirements"].update(
+        {
+            "fiori.create_purchase_order_with_delivery_address": _tool(
+                "fiori.create_purchase_order_with_delivery_address",
+                ["purchase_requisition", "storage_location", "supplier", "quantity", "net_price", "delivery_address"],
+            ),
+            "fiori.create_split_goods_receipt": _tool(
+                "fiori.create_split_goods_receipt",
+                ["purchase_order", "storage_location", "unrestricted_quantity", "quality_inspection_quantity"],
+            ),
+            "fiori.manage_quality_inspection_stock": _tool(
+                "fiori.manage_quality_inspection_stock",
+                ["material", "stock_location_label", "movement", "quantity", "document_item_text"],
+            ),
+        }
+    )
+    payload["fraudScenarios"] = [
+        {
+            **payload["fraudScenarios"][0],
+            "enabled": True,
+            "targetShare": 0.02,
+        },
+        {"id": "LARCENY3", "enabled": True, "targetShare": 0.04},
+        {"id": "LARCENY5", "enabled": True, "targetShare": 0.04},
+    ]
+    payload["routineScenarios"] = [
+        {"id": "ROUTINE_ADDRESS_CHANGE", "enabled": True, "targetShare": 0.06},
+        {"id": "ROUTINE_QUALITY_INSPECTION", "enabled": True, "targetShare": 0.06},
+        {"id": "ROUTINE_VENDOR_BANK_CHANGE", "enabled": True, "targetShare": 0.04},
+    ]
+    payload["actors"][0]["capabilities"][0]["stepTypes"].extend(
+        ["create_purchase_order_with_delivery_address", "post_larceny5_goods_receipt"]
+    )
+    payload["actors"][1]["capabilities"][0]["stepTypes"].extend(
+        ["post_split_goods_receipt", "scrap_quality_inspection_stock", "release_quality_inspection_stock"]
+    )
+    payload["runSettings"]["stepDurationMinutes"].update(
+        {
+            "create_purchase_order_with_delivery_address": {"min": 7, "max": 7},
+            "post_larceny5_goods_receipt": {"min": 6, "max": 6},
+            "post_split_goods_receipt": {"min": 7, "max": 7},
+            "scrap_quality_inspection_stock": {"min": 5, "max": 5},
+            "release_quality_inspection_stock": {"min": 5, "max": 5},
+        }
+    )
+    payload["runSettings"]["interStepDelayMinutes"].extend(
+        [
+            {"fromStepType": "create_purchase_requisition", "toStepType": "create_purchase_order_with_delivery_address", "min": 30, "max": 30},
+            {"fromStepType": "create_purchase_order_with_delivery_address", "toStepType": "post_goods_receipt", "min": 60, "max": 60},
+            {"fromStepType": "create_purchase_order_with_delivery_address", "toStepType": "post_larceny5_goods_receipt", "min": 60, "max": 60},
+            {"fromStepType": "post_larceny5_goods_receipt", "toStepType": "enter_incoming_invoice", "min": 45, "max": 45},
+            {"fromStepType": "create_purchase_order", "toStepType": "post_split_goods_receipt", "min": 60, "max": 60},
+            {"fromStepType": "post_split_goods_receipt", "toStepType": "scrap_quality_inspection_stock", "min": 30, "max": 30},
+            {"fromStepType": "scrap_quality_inspection_stock", "toStepType": "enter_incoming_invoice", "min": 45, "max": 45},
+            {"fromStepType": "post_split_goods_receipt", "toStepType": "release_quality_inspection_stock", "min": 30, "max": 30},
+            {"fromStepType": "release_quality_inspection_stock", "toStepType": "enter_incoming_invoice", "min": 45, "max": 45},
+        ]
+    )
+
+    normal_steps = payload["processes"][0]["steps"]
+    create_pr, create_po, post_gr, invoice, payment = normal_steps
+    po_address = _step("B2", "create_purchase_order_with_delivery_address", "fiori.create_purchase_order_with_delivery_address")
+    larceny5_gr = _step("B3", "post_larceny5_goods_receipt", "fiori.create_goods_receipt")
+    split_gr = _step("Q1", "post_split_goods_receipt", "fiori.create_split_goods_receipt")
+    scrap_qi = _step("Q2", "scrap_quality_inspection_stock", "fiori.manage_quality_inspection_stock")
+    release_qi = _step("Q3", "release_quality_inspection_stock", "fiori.manage_quality_inspection_stock")
+    routine_bank = _vendor_bank_step("R1", "change_vendor_bank_data", "55551234", "Mid-West Supply, Inc.")
+
+    payload["processes"].extend(
+        [
+            {
+                "processType": "procure_to_pay",
+                "scenarioType": "LARCENY3",
+                "steps": [create_pr, create_po, split_gr, scrap_qi, invoice, payment],
+                "dependencies": [
+                    _dependency("create_purchase_requisition", "create_purchase_order"),
+                    _dependency("create_purchase_order", "post_split_goods_receipt"),
+                    _dependency("post_split_goods_receipt", "scrap_quality_inspection_stock"),
+                    _dependency("scrap_quality_inspection_stock", "enter_incoming_invoice"),
+                    _dependency("enter_incoming_invoice", "post_outgoing_payment"),
+                ],
+            },
+            {
+                "processType": "procure_to_pay",
+                "scenarioType": "LARCENY5",
+                "steps": [create_pr, po_address, larceny5_gr, invoice, payment],
+                "dependencies": [
+                    _dependency("create_purchase_requisition", "create_purchase_order_with_delivery_address"),
+                    _dependency("create_purchase_order_with_delivery_address", "post_larceny5_goods_receipt"),
+                    _dependency("post_larceny5_goods_receipt", "enter_incoming_invoice"),
+                    _dependency("enter_incoming_invoice", "post_outgoing_payment"),
+                ],
+            },
+            {
+                "processType": "procure_to_pay",
+                "scenarioType": "ROUTINE_ADDRESS_CHANGE",
+                "steps": [create_pr, po_address, post_gr, invoice, payment],
+                "dependencies": [
+                    _dependency("create_purchase_requisition", "create_purchase_order_with_delivery_address"),
+                    _dependency("create_purchase_order_with_delivery_address", "post_goods_receipt"),
+                    _dependency("post_goods_receipt", "enter_incoming_invoice"),
+                    _dependency("enter_incoming_invoice", "post_outgoing_payment"),
+                ],
+            },
+            {
+                "processType": "procure_to_pay",
+                "scenarioType": "ROUTINE_QUALITY_INSPECTION",
+                "steps": [create_pr, create_po, split_gr, release_qi, invoice, payment],
+                "dependencies": [
+                    _dependency("create_purchase_requisition", "create_purchase_order"),
+                    _dependency("create_purchase_order", "post_split_goods_receipt"),
+                    _dependency("post_split_goods_receipt", "release_quality_inspection_stock"),
+                    _dependency("release_quality_inspection_stock", "enter_incoming_invoice"),
+                    _dependency("enter_incoming_invoice", "post_outgoing_payment"),
+                ],
+            },
+            {
+                "processType": "procure_to_pay",
+                "scenarioType": "ROUTINE_VENDOR_BANK_CHANGE",
+                "steps": [create_pr, create_po, post_gr, invoice, routine_bank, payment],
+                "dependencies": [
+                    _dependency("create_purchase_requisition", "create_purchase_order"),
+                    _dependency("create_purchase_order", "post_goods_receipt"),
+                    _dependency("post_goods_receipt", "enter_incoming_invoice"),
+                    _dependency("enter_incoming_invoice", "change_vendor_bank_data"),
+                    _dependency("change_vendor_bank_data", "post_outgoing_payment"),
+                ],
+            },
+        ]
+    )
+    return payload
 
 
 def test_config_loader_rejects_active_null_tool(tmp_path: Path) -> None:
@@ -767,6 +959,96 @@ def test_vendor_flipflop_partial_share_mixes_normal_and_fraud_cases(tmp_path: Pa
         "NORMAL",
         "VENDOR_FLIPFLOP",
     }
+
+
+def test_multiple_fraud_and_routine_scenarios_sample_exact_counts_and_validate_inputs(tmp_path: Path) -> None:
+    payload = _scenario_mix_config_payload()
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+
+    cases = plan_cases(
+        config,
+        Random(17),
+        demand_releases=[
+            DemandRelease(f"C{index:03d}", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025")
+            for index in range(1, 51)
+        ],
+    )
+    planned_steps = plan_steps(config, cases, Random(17))
+
+    scenario_counts = {
+        scenario_type: sum(1 for case in cases if case.case_scenario_type == scenario_type)
+        for scenario_type in {
+            "NORMAL",
+            "VENDOR_FLIPFLOP",
+            "LARCENY3",
+            "LARCENY5",
+            "ROUTINE_ADDRESS_CHANGE",
+            "ROUTINE_QUALITY_INSPECTION",
+            "ROUTINE_VENDOR_BANK_CHANGE",
+        }
+    }
+    assert scenario_counts == {
+        "NORMAL": 37,
+        "VENDOR_FLIPFLOP": 1,
+        "LARCENY3": 2,
+        "LARCENY5": 2,
+        "ROUTINE_ADDRESS_CHANGE": 3,
+        "ROUTINE_QUALITY_INSPECTION": 3,
+        "ROUTINE_VENDOR_BANK_CHANGE": 2,
+    }
+    assert scenario_counts["VENDOR_FLIPFLOP"] + scenario_counts["LARCENY3"] + scenario_counts["LARCENY5"] == 5
+    assert (
+        scenario_counts["NORMAL"]
+        + scenario_counts["ROUTINE_ADDRESS_CHANGE"]
+        + scenario_counts["ROUTINE_QUALITY_INSPECTION"]
+        + scenario_counts["ROUTINE_VENDOR_BANK_CHANGE"]
+        == 45
+    )
+
+    larceny5_case = next(case for case in cases if case.case_scenario_type == "LARCENY5")
+    larceny5_steps = [step for step in planned_steps if step.case_id == larceny5_case.case_id]
+    assert next(step for step in larceny5_steps if step.step_type == "create_purchase_order_with_delivery_address").synthetic_actor_id == "procurement_01"
+    assert next(step for step in larceny5_steps if step.step_type == "post_larceny5_goods_receipt").synthetic_actor_id == "procurement_01"
+
+    routine_address_case = next(case for case in cases if case.case_scenario_type == "ROUTINE_ADDRESS_CHANGE")
+    routine_address_steps = [step for step in planned_steps if step.case_id == routine_address_case.case_id]
+    assert next(step for step in routine_address_steps if step.step_type == "post_goods_receipt").synthetic_actor_id == "warehouse_01"
+
+    larceny3_case = next(case for case in cases if case.case_scenario_type == "LARCENY3")
+    larceny3_steps = [step for step in planned_steps if step.case_id == larceny3_case.case_id]
+    larceny3_step_types = [step.step_type for step in larceny3_steps]
+    assert "release_quality_inspection_stock" not in larceny3_step_types
+    split_step = next(step for step in larceny3_steps if step.step_type == "post_split_goods_receipt")
+    scrap_step = next(step for step in larceny3_steps if step.step_type == "scrap_quality_inspection_stock")
+    assert split_step.inputs["quality_inspection_quantity"] == 2.0
+    assert split_step.inputs["unrestricted_quantity"] == 8.0
+    assert scrap_step.inputs["quantity"] == split_step.inputs["quality_inspection_quantity"]
+    assert scrap_step.labels["step_label"] == "fraud_step"
+    assert scrap_step.labels["case_outcome"] == "fraud"
+
+    routine_quality_case = next(case for case in cases if case.case_scenario_type == "ROUTINE_QUALITY_INSPECTION")
+    routine_quality_steps = [step for step in planned_steps if step.case_id == routine_quality_case.case_id]
+    release_step = next(step for step in routine_quality_steps if step.step_type == "release_quality_inspection_stock")
+    routine_split_step = next(step for step in routine_quality_steps if step.step_type == "post_split_goods_receipt")
+    assert release_step.inputs["quantity"] == routine_split_step.inputs["quality_inspection_quantity"]
+    assert release_step.labels["step_label"] == "routine_step"
+    assert release_step.labels["case_outcome"] == "non_fraud"
+
+    validate_planned_step_tool_inputs(planned_steps)
+
+
+def test_config_loader_rejects_enabled_scenario_shares_above_one(tmp_path: Path) -> None:
+    payload = _scenario_mix_config_payload()
+    payload["fraudScenarios"][0]["targetShare"] = 0.9
+    payload["routineScenarios"][0]["targetShare"] = 0.2
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="scenario targetShare total"):
+        load_generation_config(config_path)
 
 
 def test_fraud_transformer_registration_rejects_duplicates() -> None:

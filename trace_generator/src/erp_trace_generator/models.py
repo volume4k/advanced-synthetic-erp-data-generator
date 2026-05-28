@@ -264,6 +264,17 @@ class FraudScenario:
 
 
 @dataclass(frozen=True)
+class RoutineScenario:
+    id: str
+    enabled: bool
+    target_share: float
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.target_share <= 1.0:
+            raise ValueError("target_share must be between 0 and 1")
+
+
+@dataclass(frozen=True)
 class GenerationConfig:
     source_path: Path
     version: str
@@ -277,6 +288,7 @@ class GenerationConfig:
     run_settings: RunSettings
     raw: dict
     fraud_scenarios: tuple[FraudScenario, ...] = ()
+    routine_scenarios: tuple[RoutineScenario, ...] = ()
 
     def active_process(self) -> ProcessDefinition:
         return self.process_for_scenario(self.active_scenario_type())

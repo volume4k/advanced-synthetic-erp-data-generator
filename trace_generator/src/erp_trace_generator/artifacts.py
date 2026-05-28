@@ -223,7 +223,7 @@ def _case_record(case: CasePlan) -> dict[str, Any]:
 def _planned_date_input_overrides(planned_steps: list[PlannedStep]) -> list[dict[str, str]]:
     overrides: list[dict[str, str]] = []
     for node in planned_steps:
-        if node.step_type == "post_goods_receipt":
+        if node.step_type in {"post_goods_receipt", "post_larceny5_goods_receipt", "post_split_goods_receipt"}:
             for field in ("document_date", "posting_date"):
                 planned_value = node.planned_date_inputs.get(field)
                 if planned_value is None:
@@ -241,6 +241,28 @@ def _planned_date_input_overrides(planned_steps: list[PlannedStep]) -> list[dict
                         "reason": "sap_runtime_forces_current_date",
                     }
                 )
+        if node.step_type in {"scrap_quality_inspection_stock", "release_quality_inspection_stock"}:
+            planned_value = node.planned_date_inputs.get("posting_date")
+            if planned_value is None:
+                continue
+            object_type = (
+                "scrap_material_document"
+                if node.step_type == "scrap_quality_inspection_stock"
+                else "stock_release_material_document"
+            )
+            overrides.append(
+                {
+                    "planned_step_id": node.planned_step_id,
+                    "case_id": node.case_id,
+                    "step_type": node.step_type,
+                    "object_type": object_type,
+                    "field": "posting_date",
+                    "planned_value": planned_value,
+                    "runtime_value_policy": "sap_current_date",
+                    "source": "planned_date_inputs",
+                    "reason": "sap_runtime_forces_current_date",
+                }
+            )
         if node.step_type == "enter_incoming_invoice":
             planned_value = node.planned_date_inputs.get("invoice_date")
             if planned_value is None:

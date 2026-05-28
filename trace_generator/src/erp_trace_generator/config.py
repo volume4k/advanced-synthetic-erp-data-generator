@@ -27,6 +27,7 @@ from erp_trace_generator.models import (
     ProcessStep,
     RealismGuardrails,
     RealismSettings,
+    RoutineScenario,
     RunSettings,
     TechnicalUser,
     ToolRequirement,
@@ -63,6 +64,7 @@ def load_generation_config(path: str | Path) -> GenerationConfig:
         master_data=tuple(_master_data(item) for item in _list(payload, "masterData")),
         processes=tuple(_process(item, payload.get("toolRequirements", {})) for item in _list(payload, "processes")),
         fraud_scenarios=tuple(_fraud_scenario(item) for item in payload.get("fraudScenarios", [])),
+        routine_scenarios=tuple(_routine_scenario(item) for item in payload.get("routineScenarios", [])),
         tool_requirements=_tool_requirements(payload.get("toolRequirements", {})),
         run_settings=_run_settings(payload.get("runSettings", {})),
         raw=payload,
@@ -263,6 +265,18 @@ def _vendor_flipflop_config(item: dict[str, Any]) -> VendorFlipflopConfig:
     )
 
 
+def _routine_scenario(item: dict[str, Any]) -> RoutineScenario:
+    enabled = bool(item["enabled"])
+    target_share = float(item["targetShare"])
+    if enabled and not 0 < target_share <= 1.0:
+        raise TraceGenerationError("Enabled routine scenarios must have targetShare in range (0, 1.0]")
+    return RoutineScenario(
+        id=str(item["id"]),
+        enabled=enabled,
+        target_share=target_share,
+    )
+
+
 def _bank_account_details(item: dict[str, Any]) -> BankAccountDetails:
     return BankAccountDetails(
         bank_key=str(item["bankKey"]),
@@ -356,29 +370,35 @@ def _validate(config: GenerationConfig) -> None:
     missing_processes = active_process_types - process_types
     if missing_processes:
         raise TraceGenerationError(f"Active process type not configured: {sorted(missing_processes)}")
-    enabled_fraud_scenarios = tuple(scenario for scenario in config.fraud_scenarios if scenario.enabled)
-    if len(enabled_fraud_scenarios) > 1:
-        raise TraceGenerationError("Trace generator v1 supports only one enabled fraud scenario")
     scenario_types_for_run = {"NORMAL"}
-    if enabled_fraud_scenarios:
-        scenario = enabled_fraud_scenarios[0]
+    enabled_fraud_scenarios = tuple(scenario for scenario in config.fraud_scenarios if scenario.enabled)
+    enabled_routine_scenarios = tuple(scenario for scenario in config.routine_scenarios if scenario.enabled)
+    target_share_total = sum(scenario.target_share for scenario in (*enabled_fraud_scenarios, *enabled_routine_scenarios))
+    if target_share_total > 1.0:
+        raise TraceGenerationError("Enabled scenario targetShare total must be <= 1.0")
+    for scenario in enabled_fraud_scenarios:
         if not 0 < scenario.target_share <= 1.0:
             raise TraceGenerationError("Enabled fraud scenarios must have targetShare in range (0, 1.0]")
         if scenario.id == "VENDOR_FLIPFLOP" and scenario.vendor_flipflop is None:
             raise TraceGenerationError("Enabled VENDOR_FLIPFLOP scenario requires vendorFlipflop config")
         scenario_types_for_run.add(scenario.id)
-        scenario_processes = {
-            (process.process_type, process.scenario_type)
-            for process in config.processes
-        }
-        for process_type in active_process_types:
-            if (process_type, scenario.id) not in scenario_processes:
+    for scenario in enabled_routine_scenarios:
+        if not 0 < scenario.target_share <= 1.0:
+            raise TraceGenerationError("Enabled routine scenarios must have targetShare in range (0, 1.0]")
+        scenario_types_for_run.add(scenario.id)
+    scenario_processes = {
+        (process.process_type, process.scenario_type)
+        for process in config.processes
+    }
+    for process_type in active_process_types:
+        if (process_type, "NORMAL") not in scenario_processes:
+            raise TraceGenerationError(
+                f"No NORMAL process variant configured for active process '{process_type}'"
+            )
+        for scenario_type in sorted(scenario_types_for_run - {"NORMAL"}):
+            if (process_type, scenario_type) not in scenario_processes:
                 raise TraceGenerationError(
-                    f"No process variant configured for active process '{process_type}' and fraud scenario '{scenario.id}'"
-                )
-            if (process_type, "NORMAL") not in scenario_processes:
-                raise TraceGenerationError(
-                    f"No NORMAL process variant configured for active process '{process_type}'"
+                    f"No process variant configured for active process '{process_type}' and scenario '{scenario_type}'"
                 )
     master_material_ids = {item.material_id for item in config.master_data}
     blocked_material_ids = set(config.run_settings.realism.blocked_materials)
@@ -446,10 +466,11 @@ def _bound_root_fields(bindings: tuple[InputBinding, ...]) -> set[str]:
 
 
 def _validate_actor_capabilities(config: GenerationConfig) -> None:
-    process_step_types = {
-        process.process_type: {step.step_type for step in process.steps}
-        for process in config.processes
-    }
+    process_step_types: dict[str, set[str]] = {}
+    for process in config.processes:
+        process_step_types.setdefault(process.process_type, set()).update(
+            step.step_type for step in process.steps
+        )
     process_types = set(process_step_types)
     for actor in config.actors:
         _validate_actor_realism(actor)

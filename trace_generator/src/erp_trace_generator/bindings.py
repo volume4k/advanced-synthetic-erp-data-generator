@@ -85,6 +85,10 @@ def _planned_date_input_binding_value(binding: InputBinding, case: CasePlan) -> 
 def _derived_value(case: CasePlan, value: str) -> Any:
     if value == "gross_amount":
         return case.gross_amount
+    if value == "quality_inspection_quantity":
+        return round(case.quantity * 0.2, 3)
+    if value == "unrestricted_quantity":
+        return round(case.quantity * 0.8, 3)
     if value == "fiori_delivery_date":
         return _fiori_date(case.delivery_date)
     if value == "fiori_payment_posting_date":
