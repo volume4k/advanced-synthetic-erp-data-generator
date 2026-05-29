@@ -105,6 +105,15 @@ class ToolInputBinding {
   ) = "string"
 }
 
+/// Declarative runtime-date override metadata for post-processing reconciliation.
+class RuntimeDateOverride {
+  objectType: String(this.length > 0)
+  fields: Listing<String(this.length > 0)>
+  runtimeValuePolicy: String(this.length > 0)
+  source: String(this == "planned_date_inputs") = "planned_date_inputs"
+  reason: String(this.length > 0)
+}
+
 /// Logical SAP export group the post processor should expect for reconciliation.
 class PostProcessingExportGroup {
   id: String(this.length > 0)
@@ -156,6 +165,14 @@ class ProcessStep {
   plannedDateInputBindings: Listing<ToolInputBinding> = new Listing {}
   requiredSapObjectKeys: Listing<String> = new Listing {}
   objectOutputRequired: Boolean = true
+  labels: Mapping<String, String> = new Mapping {}
+  businessDateGate: String(
+    this == "none"
+      || this == "delivery_date"
+      || this == "payment_posting_date",
+  ) = "none"
+  materialValuationLock: Boolean = false
+  runtimeDateOverrides: Listing<RuntimeDateOverride> = new Listing {}
 }
 
 /// Directed dependency between two configured process step types.
@@ -180,11 +197,33 @@ class BankAccountDetails {
   accountOwner: String(this.length > 0)
 }
 
+/// Configurable bank-account validation rules.
+class BankAccountRules {
+  allowedBankKeys: Listing<String(this.length > 0)> = new Listing {}
+  accountNumberMinLength: Int(this >= 0) = 0
+  accountNumberMaxLength: Int(this >= accountNumberMinLength) = 1000
+  requireNumericAccountNumber: Boolean = false
+}
+
+/// Configurable case-field computation used by derived input bindings.
+class ComputedValue {
+  source: String(this == "case") = "case"
+  field: String(this.length > 0)
+  operator: String(this == "multiply")
+  factor: Float
+  precision: Int(this >= 0) = 3
+}
+
 /// Vendor Flipflop scenario data, kept outside the process template.
 class VendorFlipflopConfig {
   vendorId: String(this.length > 0)
   fraudulentBankAccount: BankAccountDetails
   originalBankAccount: BankAccountDetails
+}
+
+/// Generic scenario-level case selection constraints.
+class ScenarioCaseSelection {
+  fixedVendorId: String? = null
 }
 
 /// Valid master-data combination and hard sampling guardrails.
@@ -213,7 +252,9 @@ class FraudScenario {
   id: String(this.length > 0)
   enabled: Boolean
   targetShare: Float(this >= 0 && this <= 1)
-  vendorFlipflop: VendorFlipflopConfig? = null
+  caseOutcome: String(this == "fraud" || this == "non_fraud") = "fraud"
+  labels: Mapping<String, String> = new Mapping {}
+  caseSelection: ScenarioCaseSelection = new ScenarioCaseSelection {}
 }
 
 /// Non-fraud process variation switch and target share.
@@ -221,6 +262,9 @@ class RoutineScenario {
   id: String(this.length > 0)
   enabled: Boolean
   targetShare: Float(this >= 0 && this <= 1)
+  caseOutcome: String(this == "fraud" || this == "non_fraud") = "non_fraud"
+  labels: Mapping<String, String> = new Mapping {}
+  caseSelection: ScenarioCaseSelection = new ScenarioCaseSelection {}
 }
 
 /// Top-level generation run settings.

@@ -77,22 +77,55 @@ vendorBankAccounts: Mapping<String, objects.BankAccountDetails> = new Mapping {
   }
 }
 
+computedValues: Mapping<String, objects.ComputedValue> = new Mapping {
+  ["qualityInspectionQuantity"] = new objects.ComputedValue {
+    source = "case"
+    field = "quantity"
+    operator = "multiply"
+    factor = 0.2
+    precision = 3
+  }
+  ["unrestrictedQuantity"] = new objects.ComputedValue {
+    source = "case"
+    field = "quantity"
+    operator = "multiply"
+    factor = 0.8
+    precision = 3
+  }
+}
+
+bankAccountRules: objects.BankAccountRules = new objects.BankAccountRules {
+  allowedBankKeys {
+    "011000390"
+    "820800001"
+    "ABNAUS33XXX"
+  }
+  accountNumberMinLength = 8
+  accountNumberMaxLength = 10
+  requireNumericAccountNumber = true
+}
+
 fraudScenarios: Listing<objects.FraudScenario> = new Listing {
   new objects.FraudScenario {
     id = "VENDOR_FLIPFLOP"
     enabled = true
     targetShare = 0.02
-    vendorFlipflop = vendorFlipflopConfig
+    caseOutcome = "fraud"
+    caseSelection {
+      fixedVendorId = vendorFlipflopConfig.vendorId
+    }
   }
   new objects.FraudScenario {
     id = "LARCENY3"
     enabled = true
     targetShare = 0.04
+    caseOutcome = "fraud"
   }
   new objects.FraudScenario {
     id = "LARCENY5"
     enabled = true
     targetShare = 0.04
+    caseOutcome = "fraud"
   }
 }
 
@@ -101,15 +134,18 @@ routineScenarios: Listing<objects.RoutineScenario> = new Listing {
     id = "ROUTINE_ADDRESS_CHANGE"
     enabled = true
     targetShare = 0.06
+    caseOutcome = "non_fraud"
   }
   new objects.RoutineScenario {
     id = "ROUTINE_QUALITY_INSPECTION"
     enabled = true
     targetShare = 0.06
+    caseOutcome = "non_fraud"
   }
   new objects.RoutineScenario {
     id = "ROUTINE_VENDOR_BANK_CHANGE"
     enabled = true
     targetShare = 0.04
+    caseOutcome = "non_fraud"
   }
 }

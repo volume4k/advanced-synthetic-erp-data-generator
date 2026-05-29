@@ -83,10 +83,33 @@ def _base_config() -> dict:
             }
         ],
         "fraudScenarios": [
-            {"id": "VENDOR_FLIPFLOP", "enabled": False, "targetShare": 0.0},
-            {"id": "LARCENY", "enabled": False, "targetShare": 0.0},
+            _scenario("VENDOR_FLIPFLOP", False, 0.0, "fraud"),
+            _scenario("LARCENY", False, 0.0, "fraud"),
         ],
+        "routineScenarios": [],
         "vendorBankAccounts": {},
+        "computedValues": {
+            "qualityInspectionQuantity": {
+                "source": "case",
+                "field": "quantity",
+                "operator": "multiply",
+                "factor": 0.2,
+                "precision": 3,
+            },
+            "unrestrictedQuantity": {
+                "source": "case",
+                "field": "quantity",
+                "operator": "multiply",
+                "factor": 0.8,
+                "precision": 3,
+            },
+        },
+        "bankAccountRules": {
+            "allowedBankKeys": ["011000390", "820800001", "ABNAUS33XXX"],
+            "accountNumberMinLength": 8,
+            "accountNumberMaxLength": 10,
+            "requireNumericAccountNumber": True,
+        },
         "runSettings": {
             "caseCount": 2,
             "maxParallelActorSessions": 2,
@@ -216,6 +239,25 @@ def _tool(name: str, required_fields: list[str]) -> dict:
     }
 
 
+def _scenario(
+    scenario_id: str,
+    enabled: bool,
+    target_share: float,
+    case_outcome: str,
+    *,
+    fixed_vendor_id: str | None = None,
+    labels: dict[str, str] | None = None,
+) -> dict:
+    return {
+        "id": scenario_id,
+        "enabled": enabled,
+        "targetShare": target_share,
+        "caseOutcome": case_outcome,
+        "labels": labels or {},
+        "caseSelection": {"fixedVendorId": fixed_vendor_id},
+    }
+
+
 def _step(step_id: str, step_type: str, tool_name: str) -> dict:
     return {
         "stepId": step_id,
@@ -224,6 +266,10 @@ def _step(step_id: str, step_type: str, tool_name: str) -> dict:
         "inputBindings": _input_bindings(step_type),
         "plannedDateInputBindings": _planned_date_input_bindings(step_type),
         "requiredSapObjectKeys": _required_sap_object_keys(step_type),
+        "labels": _step_labels_for_config(step_type),
+        "businessDateGate": _business_date_gate_for_config(step_type),
+        "materialValuationLock": step_type in _MATERIAL_VALUATION_LOCK_STEPS,
+        "runtimeDateOverrides": _runtime_date_overrides_for_config(step_type),
     }
 
 
@@ -233,6 +279,72 @@ def _dependency(from_step_type: str, to_step_type: str) -> dict:
         "toStepType": to_step_type,
         "description": f"{from_step_type} before {to_step_type}",
     }
+
+
+_MATERIAL_VALUATION_LOCK_STEPS = {
+    "post_goods_receipt",
+    "post_larceny5_goods_receipt",
+    "post_split_goods_receipt",
+    "scrap_quality_inspection_stock",
+    "release_quality_inspection_stock",
+    "enter_incoming_invoice",
+}
+
+
+def _business_date_gate_for_config(step_type: str) -> str:
+    if step_type in _MATERIAL_VALUATION_LOCK_STEPS:
+        return "delivery_date"
+    if step_type == "post_outgoing_payment":
+        return "payment_posting_date"
+    return "none"
+
+
+def _runtime_date_overrides_for_config(step_type: str) -> list[dict]:
+    if step_type in {"post_goods_receipt", "post_larceny5_goods_receipt", "post_split_goods_receipt"}:
+        return [
+            {
+                "objectType": "material_document",
+                "fields": ["document_date", "posting_date"],
+                "runtimeValuePolicy": "sap_current_date",
+                "source": "planned_date_inputs",
+                "reason": "sap_runtime_forces_current_date",
+            }
+        ]
+    if step_type == "scrap_quality_inspection_stock":
+        return [
+            {
+                "objectType": "scrap_material_document",
+                "fields": ["posting_date"],
+                "runtimeValuePolicy": "sap_current_date",
+                "source": "planned_date_inputs",
+                "reason": "sap_runtime_forces_current_date",
+            }
+        ]
+    if step_type == "release_quality_inspection_stock":
+        return [
+            {
+                "objectType": "stock_release_material_document",
+                "fields": ["posting_date"],
+                "runtimeValuePolicy": "sap_current_date",
+                "source": "planned_date_inputs",
+                "reason": "sap_runtime_forces_current_date",
+            }
+        ]
+    if step_type == "enter_incoming_invoice":
+        return [
+            {
+                "objectType": "supplier_invoice",
+                "fields": ["invoice_date"],
+                "runtimeValuePolicy": "executor_current_date",
+                "source": "planned_date_inputs",
+                "reason": "executor_posts_invoice_with_current_date",
+            }
+        ]
+    return []
+
+
+def _step_labels_for_config(step_type: str) -> dict[str, str]:
+    return {}
 
 
 def _input_bindings(step_type: str) -> list[dict]:
@@ -281,14 +393,14 @@ def _input_bindings(step_type: str) -> list[dict]:
         "post_split_goods_receipt": [
             _binding("purchase_order", "prior_output", "purchase_order.po_number"),
             _binding("storage_location", "derived", "storage_location_label"),
-            _binding("unrestricted_quantity", "derived", "unrestricted_quantity"),
-            _binding("quality_inspection_quantity", "derived", "quality_inspection_quantity"),
+            _binding("unrestricted_quantity", "derived", "unrestrictedQuantity"),
+            _binding("quality_inspection_quantity", "derived", "qualityInspectionQuantity"),
         ],
         "scrap_quality_inspection_stock": [
             _binding("material", "case", "material_id"),
             _binding("stock_location_label", "literal", "DC Miami"),
             _binding("movement", "literal", "scrap"),
-            _binding("quantity", "derived", "quality_inspection_quantity"),
+            _binding("quantity", "derived", "qualityInspectionQuantity"),
             _binding("cost_center", "literal", "NAPC1000"),
             _binding("document_item_text", "literal", "Muss leider verschrottet werden."),
         ],
@@ -296,7 +408,7 @@ def _input_bindings(step_type: str) -> list[dict]:
             _binding("material", "case", "material_id"),
             _binding("stock_location_label", "literal", "DC Miami"),
             _binding("movement", "literal", "release_to_unrestricted"),
-            _binding("quantity", "derived", "quality_inspection_quantity"),
+            _binding("quantity", "derived", "qualityInspectionQuantity"),
             _binding("document_item_text", "literal", "Qualitätsprüfung bestanden."),
         ],
         "enter_incoming_invoice": [
@@ -370,24 +482,13 @@ def _vendor_flipflop_config_payload() -> dict:
         "fiori.change_vendor_bank_details",
         ["vendor_id", "bank_account_credentials"],
     )
-    payload["fraudScenarios"][0] = {
-        "id": "VENDOR_FLIPFLOP",
-        "enabled": True,
-        "targetShare": 1.0,
-        "vendorFlipflop": {
-            "vendorId": "1003070",
-            "fraudulentBankAccount": {
-                "bankKey": "ABNAUS33XXX",
-                "accountNumber": "87654321",
-                "accountOwner": "Jonas Schnepf",
-            },
-            "originalBankAccount": {
-                "bankKey": "ABNAUS33XXX",
-                "accountNumber": "12345678",
-                "accountOwner": "Mid-West Supply, Inc.",
-            },
-        },
-    }
+    payload["fraudScenarios"][0] = _scenario(
+        "VENDOR_FLIPFLOP",
+        True,
+        1.0,
+        "fraud",
+        fixed_vendor_id="1003070",
+    )
     payload["actors"][2]["capabilities"][0]["stepTypes"].extend(
         ["change_vendor_bank_data", "revert_vendor_bank_data"]
     )
@@ -406,6 +507,10 @@ def _vendor_flipflop_config_payload() -> dict:
     )
 
     normal_steps = payload["processes"][0]["steps"]
+    fraud_payment_step = {
+        **normal_steps[4],
+        "labels": {"step_label": "fraud_supporting_step", "scenario_family": "vendor_master_manipulation"},
+    }
     payload["processes"].append(
         {
             "processType": "procure_to_pay",
@@ -417,13 +522,15 @@ def _vendor_flipflop_config_payload() -> dict:
                     "change_vendor_bank_data",
                     "87654321",
                     "Jonas Schnepf",
+                    labels={"step_label": "fraud_step", "scenario_family": "vendor_master_manipulation"},
                 ),
-                normal_steps[4],
+                fraud_payment_step,
                 _vendor_bank_step(
                     "F2",
                     "revert_vendor_bank_data",
                     "12345678",
                     "Mid-West Supply, Inc.",
+                    labels={"step_label": "cleanup_step", "scenario_family": "vendor_master_manipulation"},
                 ),
             ],
             "dependencies": [
@@ -453,6 +560,7 @@ def _vendor_bank_step(
     account_number_value: str | None = None,
     account_owner_source: str = "literal",
     account_owner_value: str | None = None,
+    labels: dict[str, str] | None = None,
 ) -> dict:
     resolved_account_number_value = account_number if account_number_value is None else account_number_value
     resolved_account_owner_value = account_owner if account_owner_value is None else account_owner_value
@@ -483,6 +591,10 @@ def _vendor_bank_step(
         ],
         "plannedDateInputBindings": [],
         "requiredSapObjectKeys": [],
+        "labels": labels or {},
+        "businessDateGate": "none",
+        "materialValuationLock": False,
+        "runtimeDateOverrides": [],
     }
 
 
@@ -524,13 +636,13 @@ def _scenario_mix_config_payload() -> dict:
             "enabled": True,
             "targetShare": 0.02,
         },
-        {"id": "LARCENY3", "enabled": True, "targetShare": 0.04},
-        {"id": "LARCENY5", "enabled": True, "targetShare": 0.04},
+        _scenario("LARCENY3", True, 0.04, "fraud"),
+        _scenario("LARCENY5", True, 0.04, "fraud"),
     ]
     payload["routineScenarios"] = [
-        {"id": "ROUTINE_ADDRESS_CHANGE", "enabled": True, "targetShare": 0.06},
-        {"id": "ROUTINE_QUALITY_INSPECTION", "enabled": True, "targetShare": 0.06},
-        {"id": "ROUTINE_VENDOR_BANK_CHANGE", "enabled": True, "targetShare": 0.04},
+        _scenario("ROUTINE_ADDRESS_CHANGE", True, 0.06, "non_fraud"),
+        _scenario("ROUTINE_QUALITY_INSPECTION", True, 0.06, "non_fraud"),
+        _scenario("ROUTINE_VENDOR_BANK_CHANGE", True, 0.04, "non_fraud"),
     ]
     payload["actors"][0]["capabilities"][0]["stepTypes"].extend(
         ["create_purchase_order_with_delivery_address", "post_larceny5_goods_receipt"]
@@ -588,7 +700,14 @@ def _scenario_mix_config_payload() -> dict:
             {
                 "processType": "procure_to_pay",
                 "scenarioType": "LARCENY3",
-                "steps": [create_pr, create_po, split_gr, scrap_qi, invoice, payment],
+                "steps": [
+                    create_pr,
+                    create_po,
+                    {**split_gr, "labels": {"step_label": "fraud_supporting_step", "scenario_family": "inventory_misappropriation"}},
+                    {**scrap_qi, "labels": {"step_label": "fraud_step", "scenario_family": "inventory_misappropriation"}},
+                    invoice,
+                    payment,
+                ],
                 "dependencies": [
                     _dependency("create_purchase_requisition", "create_purchase_order"),
                     _dependency("create_purchase_order", "post_split_goods_receipt"),
@@ -600,7 +719,13 @@ def _scenario_mix_config_payload() -> dict:
             {
                 "processType": "procure_to_pay",
                 "scenarioType": "LARCENY5",
-                "steps": [create_pr, po_address, larceny5_gr, invoice, payment],
+                "steps": [
+                    create_pr,
+                    {**po_address, "labels": {"step_label": "fraud_step", "scenario_family": "delivery_address_manipulation"}},
+                    {**larceny5_gr, "labels": {"step_label": "fraud_supporting_step", "scenario_family": "delivery_address_manipulation"}},
+                    invoice,
+                    payment,
+                ],
                 "dependencies": [
                     _dependency("create_purchase_requisition", "create_purchase_order_with_delivery_address"),
                     _dependency("create_purchase_order_with_delivery_address", "post_larceny5_goods_receipt"),
@@ -611,7 +736,13 @@ def _scenario_mix_config_payload() -> dict:
             {
                 "processType": "procure_to_pay",
                 "scenarioType": "ROUTINE_ADDRESS_CHANGE",
-                "steps": [create_pr, po_address, post_gr, invoice, payment],
+                "steps": [
+                    create_pr,
+                    {**po_address, "labels": {"step_label": "routine_step", "scenario_family": "routine_delivery_address_change"}},
+                    post_gr,
+                    invoice,
+                    payment,
+                ],
                 "dependencies": [
                     _dependency("create_purchase_requisition", "create_purchase_order_with_delivery_address"),
                     _dependency("create_purchase_order_with_delivery_address", "post_goods_receipt"),
@@ -622,7 +753,14 @@ def _scenario_mix_config_payload() -> dict:
             {
                 "processType": "procure_to_pay",
                 "scenarioType": "ROUTINE_QUALITY_INSPECTION",
-                "steps": [create_pr, create_po, split_gr, release_qi, invoice, payment],
+                "steps": [
+                    create_pr,
+                    create_po,
+                    {**split_gr, "labels": {"step_label": "routine_step", "scenario_family": "routine_quality_inspection"}},
+                    {**release_qi, "labels": {"step_label": "routine_step", "scenario_family": "routine_quality_inspection"}},
+                    invoice,
+                    payment,
+                ],
                 "dependencies": [
                     _dependency("create_purchase_requisition", "create_purchase_order"),
                     _dependency("create_purchase_order", "post_split_goods_receipt"),
@@ -634,7 +772,14 @@ def _scenario_mix_config_payload() -> dict:
             {
                 "processType": "procure_to_pay",
                 "scenarioType": "ROUTINE_VENDOR_BANK_CHANGE",
-                "steps": [create_pr, create_po, post_gr, invoice, routine_bank, payment],
+                "steps": [
+                    create_pr,
+                    create_po,
+                    post_gr,
+                    invoice,
+                    {**routine_bank, "labels": {"step_label": "routine_step", "scenario_family": "routine_vendor_master_update"}},
+                    payment,
+                ],
                 "dependencies": [
                     _dependency("create_purchase_requisition", "create_purchase_order"),
                     _dependency("create_purchase_order", "post_goods_receipt"),
@@ -1174,6 +1319,246 @@ def test_config_loader_rejects_invalid_vendor_bank_account_details(tmp_path: Pat
 
     with pytest.raises(TraceGenerationError, match="vendorBankAccounts"):
         load_generation_config(config_path)
+
+
+def test_arbitrary_scenario_uses_configured_fixed_vendor_selection(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["caseCount"] = 3
+    payload["masterData"] = [
+        {
+            **payload["masterData"][0],
+            "materialId": "MA025",
+            "validVendors": ["V17121"],
+        },
+        {
+            **payload["masterData"][0],
+            "materialId": "MB001",
+            "validVendors": ["FIXED_VENDOR"],
+        },
+    ]
+    payload["fraudScenarios"].append(
+        _scenario(
+            "CUSTOM_FIXED_VENDOR_SCENARIO",
+            True,
+            1 / 3,
+            "fraud",
+            fixed_vendor_id="FIXED_VENDOR",
+        )
+    )
+    payload["processes"].append(
+        {
+            **payload["processes"][0],
+            "scenarioType": "CUSTOM_FIXED_VENDOR_SCENARIO",
+        }
+    )
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+
+    cases = plan_cases(
+        config,
+        Random(17),
+        demand_releases=[
+            DemandRelease("C001", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025"),
+            DemandRelease("C002", datetime(2026, 5, 18, 8, 30, tzinfo=tz), "MB001"),
+            DemandRelease("C003", datetime(2026, 5, 18, 9, 0, tzinfo=tz), "MA025"),
+        ],
+    )
+
+    fixed_vendor_case = next(case for case in cases if case.case_scenario_type == "CUSTOM_FIXED_VENDOR_SCENARIO")
+    normal_cases = [case for case in cases if case.case_scenario_type == "NORMAL"]
+    assert fixed_vendor_case.case_id == "C002"
+    assert fixed_vendor_case.material_id == "MB001"
+    assert fixed_vendor_case.vendor_id == "FIXED_VENDOR"
+    assert {case.vendor_id for case in normal_cases} == {"V17121"}
+
+
+def test_scenario_and_step_labels_are_config_driven_for_arbitrary_ids(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["routineScenarios"] = [
+        _scenario(
+            "SAFETY_VARIANT",
+            True,
+            1.0,
+            "non_fraud",
+            labels={"scenario_family": "configured_family"},
+        )
+    ]
+    labeled_steps = [
+        {
+            **step,
+            "labels": {"step_label": "configured_step", "scenario_family": "configured_step_family"},
+        }
+        if step["stepType"] == "post_goods_receipt"
+        else step
+        for step in payload["processes"][0]["steps"]
+    ]
+    payload["processes"].append(
+        {
+            **payload["processes"][0],
+            "scenarioType": "SAFETY_VARIANT",
+            "steps": labeled_steps,
+        }
+    )
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+    cases = plan_cases(
+        config,
+        Random(17),
+        demand_releases=[
+            DemandRelease("C001", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025"),
+            DemandRelease("C002", datetime(2026, 5, 18, 8, 30, tzinfo=tz), "MA025"),
+        ],
+    )
+    planned_steps = plan_steps(config, cases, Random(17))
+
+    labeled_step = next(step for step in planned_steps if step.step_type == "post_goods_receipt")
+    assert labeled_step.labels["case_outcome"] == "non_fraud"
+    assert labeled_step.labels["step_label"] == "configured_step"
+    assert labeled_step.labels["scenario_family"] == "configured_step_family"
+
+
+def test_computed_quantity_bindings_are_configurable(tmp_path: Path) -> None:
+    payload = _scenario_mix_config_payload()
+    payload["runSettings"]["caseCount"] = 2
+    payload["fraudScenarios"] = [
+        _scenario("LARCENY3", True, 1.0, "fraud"),
+    ]
+    payload["routineScenarios"] = []
+    payload["computedValues"]["qualityInspectionQuantity"]["factor"] = 0.5
+    payload["computedValues"]["unrestrictedQuantity"]["factor"] = 0.5
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+    cases = plan_cases(
+        config,
+        Random(17),
+        demand_releases=[
+            DemandRelease("C001", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025", target_quantity=10),
+            DemandRelease("C002", datetime(2026, 5, 18, 8, 30, tzinfo=tz), "MA025", target_quantity=10),
+        ],
+    )
+    planned_steps = plan_steps(config, cases, Random(17))
+
+    split_step = next(step for step in planned_steps if step.step_type == "post_split_goods_receipt")
+    scrap_step = next(step for step in planned_steps if step.step_type == "scrap_quality_inspection_stock")
+    assert split_step.inputs["quality_inspection_quantity"] == 5.0
+    assert split_step.inputs["unrestricted_quantity"] == 5.0
+    assert scrap_step.inputs["quantity"] == 5.0
+
+
+def test_runtime_date_overrides_are_read_from_step_config(tmp_path: Path) -> None:
+    payload = _base_config()
+    goods_receipt = next(step for step in payload["processes"][0]["steps"] if step["stepType"] == "post_goods_receipt")
+    goods_receipt["runtimeDateOverrides"] = [
+        {
+            "objectType": "configured_material_document",
+            "fields": ["posting_date"],
+            "runtimeValuePolicy": "configured_current_date",
+            "source": "planned_date_inputs",
+            "reason": "configured_reason",
+        }
+    ]
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+    cases = plan_cases(
+        config,
+        Random(17),
+        demand_releases=[
+            DemandRelease("C001", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025"),
+            DemandRelease("C002", datetime(2026, 5, 18, 8, 30, tzinfo=tz), "MA025"),
+        ],
+    )
+    planned_steps = plan_steps(config, cases, Random(17))
+    manifest = _post_processing_manifest(
+        config,
+        cases,
+        planned_steps,
+        run_id="RUN_TEST",
+        config_hash="abc",
+        realism_criteria=CompiledRealismCriteria(
+            actor_criteria={},
+            demand_releases=[],
+            criteria_hash="criteria",
+            llm_metadata={},
+            actor_day_profiles={},
+            price_anchors={},
+            material_demand_profiles={},
+            demand_patterns=[],
+        ),
+    )
+
+    assert {
+        (item["step_type"], item["object_type"], item["field"], item["runtime_value_policy"], item["reason"])
+        for item in manifest["planned_date_input_overrides"]
+        if item["step_type"] == "post_goods_receipt"
+    } == {
+        (
+            "post_goods_receipt",
+            "configured_material_document",
+            "posting_date",
+            "configured_current_date",
+            "configured_reason",
+        )
+    }
+
+
+def test_bank_account_rules_are_configurable(tmp_path: Path) -> None:
+    payload = _scenario_mix_config_payload()
+    payload["bankAccountRules"] = {
+        "allowedBankKeys": ["CUSTOMBANK"],
+        "accountNumberMinLength": 4,
+        "accountNumberMaxLength": 12,
+        "requireNumericAccountNumber": True,
+    }
+    payload["vendorBankAccounts"]["1003070"]["bankKey"] = "CUSTOMBANK"
+    payload["vendorBankAccounts"]["V17121"]["bankKey"] = "CUSTOMBANK"
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    config = load_generation_config(config_path)
+
+    assert config.vendor_bank_accounts["1003070"].bank_key == "CUSTOMBANK"
+
+
+def test_trace_generator_core_has_no_current_business_scenario_ids() -> None:
+    source_paths = [
+        Path("trace_generator/src/erp_trace_generator/artifacts.py"),
+        Path("trace_generator/src/erp_trace_generator/bindings.py"),
+        Path("trace_generator/src/erp_trace_generator/config.py"),
+        Path("trace_generator/src/erp_trace_generator/models.py"),
+        Path("trace_generator/src/erp_trace_generator/planning.py"),
+        Path("trace_generator/src/erp_trace_generator/realism.py"),
+    ]
+    forbidden_tokens = {
+        "VENDOR_FLIPFLOP",
+        "LARCENY3",
+        "LARCENY5",
+        "ROUTINE_ADDRESS_CHANGE",
+        "ROUTINE_QUALITY_INSPECTION",
+        "ROUTINE_VENDOR_BANK_CHANGE",
+        "post_larceny5_goods_receipt",
+        "post_split_goods_receipt",
+        "scrap_quality_inspection_stock",
+        "release_quality_inspection_stock",
+        "quality_inspection_quantity",
+        "unrestricted_quantity",
+        "011000390",
+        "820800001",
+        "ABNAUS33XXX",
+    }
+
+    violations = {
+        str(path): sorted(token for token in forbidden_tokens if token in path.read_text(encoding="utf-8"))
+        for path in source_paths
+    }
+    assert {path: tokens for path, tokens in violations.items() if tokens} == {}
 
 
 def test_fraud_transformer_registration_rejects_duplicates() -> None:

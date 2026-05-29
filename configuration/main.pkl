@@ -30,6 +30,10 @@ routineScenarios = fraudConfig.routineScenarios
 
 vendorBankAccounts = fraudConfig.vendorBankAccounts
 
+computedValues = fraudConfig.computedValues
+
+bankAccountRules = fraudConfig.bankAccountRules
+
 runSettings = runConfig.runSettings
 
 toolRequirements = generatedTools.toolRequirements

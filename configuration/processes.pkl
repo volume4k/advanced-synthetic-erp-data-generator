@@ -5,6 +5,45 @@ import "objects.pkl"
 toolRequirements = generated_tool_config.toolRequirements
 vendorFlipflop = fraudConfig.vendorFlipflopConfig
 
+materialDocumentCurrentDateOverride: objects.RuntimeDateOverride = new objects.RuntimeDateOverride {
+  objectType = "material_document"
+  fields {
+    "document_date"
+    "posting_date"
+  }
+  runtimeValuePolicy = "sap_current_date"
+  reason = "sap_runtime_forces_current_date"
+}
+
+scrapMaterialDocumentCurrentDateOverride: objects.RuntimeDateOverride = new objects
+  .RuntimeDateOverride {
+  objectType = "scrap_material_document"
+  fields {
+    "posting_date"
+  }
+  runtimeValuePolicy = "sap_current_date"
+  reason = "sap_runtime_forces_current_date"
+}
+
+stockReleaseMaterialDocumentCurrentDateOverride: objects.RuntimeDateOverride = new objects
+  .RuntimeDateOverride {
+  objectType = "stock_release_material_document"
+  fields {
+    "posting_date"
+  }
+  runtimeValuePolicy = "sap_current_date"
+  reason = "sap_runtime_forces_current_date"
+}
+
+supplierInvoiceCurrentDateOverride: objects.RuntimeDateOverride = new objects.RuntimeDateOverride {
+  objectType = "supplier_invoice"
+  fields {
+    "invoice_date"
+  }
+  runtimeValuePolicy = "executor_current_date"
+  reason = "executor_uses_current_date_for_sap_runtime"
+}
+
 createPurchaseRequisitionStep: objects.ProcessStep = new objects.ProcessStep {
   stepId = "A1"
   stepType = "create_purchase_requisition"
@@ -179,6 +218,10 @@ createPurchaseOrderWithDeliveryAddressStep: objects.ProcessStep = new objects.Pr
   requiredSapObjectKeys {
     "purchase_order.po_number"
   }
+  labels {
+    ["step_label"] = "fraud_step"
+    ["scenario_family"] = "delivery_address_manipulation"
+  }
 }
 
 routineCreatePurchaseOrderWithDeliveryAddressStep: objects.ProcessStep = new objects.ProcessStep {
@@ -250,6 +293,10 @@ routineCreatePurchaseOrderWithDeliveryAddressStep: objects.ProcessStep = new obj
   requiredSapObjectKeys {
     "purchase_order.po_number"
   }
+  labels {
+    ["step_label"] = "routine_step"
+    ["scenario_family"] = "routine_delivery_address_change"
+  }
 }
 
 postGoodsReceiptStep: objects.ProcessStep = new objects.ProcessStep {
@@ -282,6 +329,11 @@ postGoodsReceiptStep: objects.ProcessStep = new objects.ProcessStep {
   }
   requiredSapObjectKeys {
     "material_document.material_document_number"
+  }
+  businessDateGate = "delivery_date"
+  materialValuationLock = true
+  runtimeDateOverrides {
+    materialDocumentCurrentDateOverride
   }
 }
 
@@ -316,6 +368,15 @@ postLarceny5GoodsReceiptStep: objects.ProcessStep = new objects.ProcessStep {
   requiredSapObjectKeys {
     "material_document.material_document_number"
   }
+  labels {
+    ["step_label"] = "fraud_supporting_step"
+    ["scenario_family"] = "delivery_address_manipulation"
+  }
+  businessDateGate = "delivery_date"
+  materialValuationLock = true
+  runtimeDateOverrides {
+    materialDocumentCurrentDateOverride
+  }
 }
 
 postSplitGoodsReceiptStep: objects.ProcessStep = new objects.ProcessStep {
@@ -336,12 +397,12 @@ postSplitGoodsReceiptStep: objects.ProcessStep = new objects.ProcessStep {
     new objects.ToolInputBinding {
       field = "unrestricted_quantity"
       source = "derived"
-      value = "unrestricted_quantity"
+      value = "unrestrictedQuantity"
     }
     new objects.ToolInputBinding {
       field = "quality_inspection_quantity"
       source = "derived"
-      value = "quality_inspection_quantity"
+      value = "qualityInspectionQuantity"
     }
   }
   plannedDateInputBindings {
@@ -358,6 +419,22 @@ postSplitGoodsReceiptStep: objects.ProcessStep = new objects.ProcessStep {
   }
   requiredSapObjectKeys {
     "material_document.material_document_number"
+  }
+  labels {
+    ["step_label"] = "fraud_supporting_step"
+    ["scenario_family"] = "inventory_misappropriation"
+  }
+  businessDateGate = "delivery_date"
+  materialValuationLock = true
+  runtimeDateOverrides {
+    materialDocumentCurrentDateOverride
+  }
+}
+
+routinePostSplitGoodsReceiptStep: objects.ProcessStep = (postSplitGoodsReceiptStep) {
+  labels {
+    ["step_label"] = "routine_step"
+    ["scenario_family"] = "routine_quality_inspection"
   }
 }
 
@@ -384,7 +461,7 @@ scrapQualityInspectionStockStep: objects.ProcessStep = new objects.ProcessStep {
     new objects.ToolInputBinding {
       field = "quantity"
       source = "derived"
-      value = "quality_inspection_quantity"
+      value = "qualityInspectionQuantity"
     }
     new objects.ToolInputBinding {
       field = "document_item_text"
@@ -406,6 +483,15 @@ scrapQualityInspectionStockStep: objects.ProcessStep = new objects.ProcessStep {
   }
   requiredSapObjectKeys {
     "scrap_material_document.material_document_number"
+  }
+  labels {
+    ["step_label"] = "fraud_step"
+    ["scenario_family"] = "inventory_misappropriation"
+  }
+  businessDateGate = "delivery_date"
+  materialValuationLock = true
+  runtimeDateOverrides {
+    scrapMaterialDocumentCurrentDateOverride
   }
 }
 
@@ -432,7 +518,7 @@ releaseQualityInspectionStockStep: objects.ProcessStep = new objects.ProcessStep
     new objects.ToolInputBinding {
       field = "quantity"
       source = "derived"
-      value = "quality_inspection_quantity"
+      value = "qualityInspectionQuantity"
     }
     new objects.ToolInputBinding {
       field = "document_item_text"
@@ -449,6 +535,15 @@ releaseQualityInspectionStockStep: objects.ProcessStep = new objects.ProcessStep
   }
   requiredSapObjectKeys {
     "stock_release_material_document.material_document_number"
+  }
+  labels {
+    ["step_label"] = "routine_step"
+    ["scenario_family"] = "routine_quality_inspection"
+  }
+  businessDateGate = "delivery_date"
+  materialValuationLock = true
+  runtimeDateOverrides {
+    stockReleaseMaterialDocumentCurrentDateOverride
   }
 }
 
@@ -483,6 +578,11 @@ enterIncomingInvoiceStep: objects.ProcessStep = new objects.ProcessStep {
   requiredSapObjectKeys {
     "supplier_invoice.invoice_number"
     "supplier_invoice.fiscal_year"
+  }
+  businessDateGate = "delivery_date"
+  materialValuationLock = true
+  runtimeDateOverrides {
+    supplierInvoiceCurrentDateOverride
   }
 }
 
@@ -547,6 +647,14 @@ postOutgoingPaymentStep: objects.ProcessStep = new objects.ProcessStep {
   requiredSapObjectKeys {
     "payment_document.payment_document_number"
   }
+  businessDateGate = "payment_posting_date"
+}
+
+fraudSupportingPostOutgoingPaymentStep: objects.ProcessStep = (postOutgoingPaymentStep) {
+  labels {
+    ["step_label"] = "fraud_supporting_step"
+    ["scenario_family"] = "vendor_master_manipulation"
+  }
 }
 
 changeVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
@@ -575,6 +683,10 @@ changeVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
       source = "literal"
       value = vendorFlipflop.fraudulentBankAccount.accountOwner
     }
+  }
+  labels {
+    ["step_label"] = "fraud_step"
+    ["scenario_family"] = "vendor_master_manipulation"
   }
 }
 
@@ -605,6 +717,10 @@ revertVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
       value = vendorFlipflop.originalBankAccount.accountOwner
     }
   }
+  labels {
+    ["step_label"] = "cleanup_step"
+    ["scenario_family"] = "vendor_master_manipulation"
+  }
 }
 
 routineVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
@@ -633,6 +749,10 @@ routineVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
       source = "vendor_bank_account"
       value = "account_owner"
     }
+  }
+  labels {
+    ["step_label"] = "routine_step"
+    ["scenario_family"] = "routine_vendor_master_update"
   }
 }
 
@@ -765,7 +885,7 @@ vendorFlipflopProcureToPayProcess: objects.ProcessDefinition = new objects.Proce
     postGoodsReceiptStep
     enterIncomingInvoiceStep
     changeVendorBankDataStep
-    postOutgoingPaymentStep
+    fraudSupportingPostOutgoingPaymentStep
     revertVendorBankDataStep
   }
   dependencies {
@@ -841,7 +961,7 @@ routineQualityInspectionProcureToPayProcess: objects.ProcessDefinition = new obj
   steps {
     createPurchaseRequisitionStep
     createPurchaseOrderStep
-    postSplitGoodsReceiptStep
+    routinePostSplitGoodsReceiptStep
     releaseQualityInspectionStockStep
     enterIncomingInvoiceStep
     postOutgoingPaymentStep

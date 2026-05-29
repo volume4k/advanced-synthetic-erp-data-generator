@@ -12,9 +12,14 @@ from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.models import (
     Actor,
     ActorCapability,
+    BankAccountRules,
     BankAccountDetails,
     BindingSource,
     BindingValueType,
+    BusinessDateGate,
+    ComputedValue,
+    ComputedValueOperator,
+    ComputedValueSource,
     FraudScenario,
     GenerationConfig,
     IdentityMapping,
@@ -27,11 +32,12 @@ from erp_trace_generator.models import (
     ProcessStep,
     RealismGuardrails,
     RealismSettings,
+    RuntimeDateOverride,
     RoutineScenario,
     RunSettings,
+    ScenarioCaseSelection,
     TechnicalUser,
     ToolRequirement,
-    VendorFlipflopConfig,
     WorkingHours,
 )
 from erp_trace_generator.fraud import ensure_fraud_scenarios_supported
@@ -46,9 +52,6 @@ DEFAULT_STEP_DURATION_MINUTES = {
     "post_outgoing_payment": {"min": 5, "max": 10},
     "revert_vendor_bank_data": {"min": 5, "max": 8},
 }
-ALLOWED_BANK_KEYS = {"011000390", "820800001", "ABNAUS33XXX"}
-
-
 def load_generation_config(path: str | Path) -> GenerationConfig:
     config_path = Path(path)
     payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
@@ -67,6 +70,8 @@ def load_generation_config(path: str | Path) -> GenerationConfig:
         fraud_scenarios=tuple(_fraud_scenario(item) for item in payload.get("fraudScenarios", [])),
         routine_scenarios=tuple(_routine_scenario(item) for item in payload.get("routineScenarios", [])),
         vendor_bank_accounts=_vendor_bank_accounts(payload.get("vendorBankAccounts", {})),
+        computed_values=_computed_values(payload.get("computedValues", {})),
+        bank_account_rules=_bank_account_rules(payload.get("bankAccountRules", {})),
         tool_requirements=_tool_requirements(payload.get("toolRequirements", {})),
         run_settings=_run_settings(payload.get("runSettings", {})),
         raw=payload,
@@ -188,6 +193,12 @@ def _process(item: dict[str, Any], tool_requirements: dict[str, Any]) -> Process
                 ),
                 required_sap_object_keys=tuple(str(value) for value in step.get("requiredSapObjectKeys", [])),
                 object_output_required=bool(step.get("objectOutputRequired", True)),
+                labels=_string_mapping(step.get("labels", {}), "step.labels"),
+                business_date_gate=_business_date_gate(step.get("businessDateGate", "none")),
+                material_valuation_lock=bool(step.get("materialValuationLock", False)),
+                runtime_date_overrides=tuple(
+                    _runtime_date_override(value) for value in step.get("runtimeDateOverrides", [])
+                ),
             )
         )
 
@@ -250,6 +261,34 @@ def _binding_value_type(value: object) -> BindingValueType:
     return value_type  # type: ignore[return-value]
 
 
+def _business_date_gate(value: object) -> BusinessDateGate:
+    gate = str(value)
+    if gate not in {"none", "delivery_date", "payment_posting_date"}:
+        raise TraceGenerationError(f"unsupported businessDateGate '{gate}'")
+    return gate  # type: ignore[return-value]
+
+
+def _runtime_date_override(item: dict[str, Any]) -> RuntimeDateOverride:
+    fields = tuple(str(field) for field in item.get("fields", []))
+    if not fields:
+        raise TraceGenerationError("runtimeDateOverrides entries must declare at least one field")
+    return RuntimeDateOverride(
+        object_type=str(item["objectType"]),
+        fields=fields,
+        runtime_value_policy=str(item["runtimeValuePolicy"]),
+        source=str(item.get("source", "planned_date_inputs")),
+        reason=str(item["reason"]),
+    )
+
+
+def _string_mapping(value: object, path: str) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise TraceGenerationError(f"{path} must be a mapping")
+    return {str(key): str(item) for key, item in value.items()}
+
+
 def _fraud_scenario(item: dict[str, Any]) -> FraudScenario:
     enabled = bool(item["enabled"])
     target_share = float(item["targetShare"])
@@ -259,19 +298,27 @@ def _fraud_scenario(item: dict[str, Any]) -> FraudScenario:
         id=str(item["id"]),
         enabled=enabled,
         target_share=target_share,
-        vendor_flipflop=(
-            _vendor_flipflop_config(item["vendorFlipflop"])
-            if item.get("vendorFlipflop") is not None
-            else None
-        ),
+        case_outcome=_case_outcome(item.get("caseOutcome", "fraud")),
+        labels=_string_mapping(item.get("labels", {}), f"fraudScenarios[{item.get('id')}].labels"),
+        case_selection=_scenario_case_selection(item.get("caseSelection", {})),
     )
 
 
-def _vendor_flipflop_config(item: dict[str, Any]) -> VendorFlipflopConfig:
-    return VendorFlipflopConfig(
-        vendor_id=str(item["vendorId"]),
-        fraudulent_bank_account=_bank_account_details(item["fraudulentBankAccount"]),
-        original_bank_account=_bank_account_details(item["originalBankAccount"]),
+def _case_outcome(value: object) -> str:
+    outcome = str(value)
+    if outcome not in {"fraud", "non_fraud"}:
+        raise TraceGenerationError("caseOutcome must be 'fraud' or 'non_fraud'")
+    return outcome
+
+
+def _scenario_case_selection(item: dict[str, Any] | None) -> ScenarioCaseSelection:
+    if item is None:
+        return ScenarioCaseSelection()
+    if not isinstance(item, dict):
+        raise TraceGenerationError("caseSelection must be a mapping")
+    fixed_vendor_id = item.get("fixedVendorId")
+    return ScenarioCaseSelection(
+        fixed_vendor_id=str(fixed_vendor_id) if fixed_vendor_id is not None else None,
     )
 
 
@@ -293,6 +340,53 @@ def _routine_scenario(item: dict[str, Any]) -> RoutineScenario:
         id=str(item["id"]),
         enabled=enabled,
         target_share=target_share,
+        case_outcome=_case_outcome(item.get("caseOutcome", "non_fraud")),
+        labels=_string_mapping(item.get("labels", {}), f"routineScenarios[{item.get('id')}].labels"),
+        case_selection=_scenario_case_selection(item.get("caseSelection", {})),
+    )
+
+
+def _computed_values(items: dict[str, Any]) -> dict[str, ComputedValue]:
+    if not isinstance(items, dict):
+        raise TraceGenerationError("Configuration field 'computedValues' must be a mapping")
+    return {
+        str(name): _computed_value(item)
+        for name, item in items.items()
+    }
+
+
+def _computed_value(item: dict[str, Any]) -> ComputedValue:
+    return ComputedValue(
+        source=_computed_value_source(item.get("source", "case")),
+        field=str(item["field"]),
+        operator=_computed_value_operator(item["operator"]),
+        factor=float(item["factor"]),
+        precision=int(item.get("precision", 3)),
+    )
+
+
+def _computed_value_source(value: object) -> ComputedValueSource:
+    source = str(value)
+    if source != "case":
+        raise TraceGenerationError(f"unsupported computed value source '{source}'")
+    return source  # type: ignore[return-value]
+
+
+def _computed_value_operator(value: object) -> ComputedValueOperator:
+    operator = str(value)
+    if operator != "multiply":
+        raise TraceGenerationError(f"unsupported computed value operator '{operator}'")
+    return operator  # type: ignore[return-value]
+
+
+def _bank_account_rules(item: dict[str, Any]) -> BankAccountRules:
+    if not isinstance(item, dict):
+        raise TraceGenerationError("Configuration field 'bankAccountRules' must be a mapping")
+    return BankAccountRules(
+        allowed_bank_keys=tuple(str(value) for value in item.get("allowedBankKeys", [])),
+        account_number_min_length=int(item.get("accountNumberMinLength", 0)),
+        account_number_max_length=int(item.get("accountNumberMaxLength", 1000)),
+        require_numeric_account_number=bool(item.get("requireNumericAccountNumber", False)),
     )
 
 
@@ -398,8 +492,6 @@ def _validate(config: GenerationConfig) -> None:
     for scenario in enabled_fraud_scenarios:
         if not 0 < scenario.target_share <= 1.0:
             raise TraceGenerationError("Enabled fraud scenarios must have targetShare in range (0, 1.0]")
-        if scenario.id == "VENDOR_FLIPFLOP" and scenario.vendor_flipflop is None:
-            raise TraceGenerationError("Enabled VENDOR_FLIPFLOP scenario requires vendorFlipflop config")
         scenario_types_for_run.add(scenario.id)
     for scenario in enabled_routine_scenarios:
         if not 0 < scenario.target_share <= 1.0:
@@ -483,18 +575,11 @@ def _validate(config: GenerationConfig) -> None:
 
 def _validate_bank_accounts(config: GenerationConfig) -> None:
     for vendor_id, account in config.vendor_bank_accounts.items():
-        _validate_bank_account_details(f"vendorBankAccounts[{vendor_id!r}]", account)
+        _validate_bank_account_details(f"vendorBankAccounts[{vendor_id!r}]", account, config.bank_account_rules)
     for scenario in config.fraud_scenarios:
-        if scenario.vendor_flipflop is None:
-            continue
-        _validate_bank_account_details(
-            f"fraudScenarios[{scenario.id!r}].vendorFlipflop.fraudulentBankAccount",
-            scenario.vendor_flipflop.fraudulent_bank_account,
-        )
-        _validate_bank_account_details(
-            f"fraudScenarios[{scenario.id!r}].vendorFlipflop.originalBankAccount",
-            scenario.vendor_flipflop.original_bank_account,
-        )
+        _validate_scenario_case_selection(config, scenario.id, scenario.case_selection)
+    for scenario in config.routine_scenarios:
+        _validate_scenario_case_selection(config, scenario.id, scenario.case_selection)
     if _uses_vendor_bank_account_bindings(config):
         configured_vendors = set(config.vendor_bank_accounts)
         required_vendors = {
@@ -510,15 +595,38 @@ def _validate_bank_accounts(config: GenerationConfig) -> None:
             )
 
 
-def _validate_bank_account_details(path: str, account: BankAccountDetails) -> None:
-    if account.bank_key not in ALLOWED_BANK_KEYS:
+def _validate_scenario_case_selection(
+    config: GenerationConfig,
+    scenario_id: str,
+    case_selection: ScenarioCaseSelection,
+) -> None:
+    if case_selection.fixed_vendor_id is None:
+        return
+    configured_vendors = {
+        vendor_id
+        for item in config.master_data
+        if item.material_id not in set(config.run_settings.realism.blocked_materials)
+        for vendor_id in item.valid_vendors
+    }
+    if case_selection.fixed_vendor_id not in configured_vendors:
         raise TraceGenerationError(
-            f"{path} bankKey must be one of {sorted(ALLOWED_BANK_KEYS)}"
+            f"Scenario '{scenario_id}' caseSelection.fixedVendorId references unknown or blocked vendor "
+            f"'{case_selection.fixed_vendor_id}'"
         )
-    if not (8 <= len(account.account_number) <= 10 and account.account_number.isdigit()):
+
+
+def _validate_bank_account_details(path: str, account: BankAccountDetails, rules: BankAccountRules) -> None:
+    if rules.allowed_bank_keys and account.bank_key not in rules.allowed_bank_keys:
         raise TraceGenerationError(
-            f"{path} accountNumber must contain 8 to 10 digits"
+            f"{path} bankKey must be one of {sorted(rules.allowed_bank_keys)}"
         )
+    if not (rules.account_number_min_length <= len(account.account_number) <= rules.account_number_max_length):
+        raise TraceGenerationError(
+            f"{path} accountNumber must contain {rules.account_number_min_length} to "
+            f"{rules.account_number_max_length} characters"
+        )
+    if rules.require_numeric_account_number and not account.account_number.isdigit():
+        raise TraceGenerationError(f"{path} accountNumber must contain only digits")
 
 
 def _uses_vendor_bank_account_bindings(config: GenerationConfig) -> bool:
