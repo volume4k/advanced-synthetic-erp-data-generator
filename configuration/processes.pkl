@@ -143,7 +143,7 @@ createPurchaseOrderWithDeliveryAddressStep: objects.ProcessStep = new objects.Pr
     new objects.ToolInputBinding {
       field = "delivery_address.name"
       source = "literal"
-      value = "Tatiana Karsova"
+      value = "Alberto Conti"
     }
     new objects.ToolInputBinding {
       field = "delivery_address.street_and_house_number"
@@ -159,6 +159,77 @@ createPurchaseOrderWithDeliveryAddressStep: objects.ProcessStep = new objects.Pr
       field = "delivery_address.postal_code"
       source = "literal"
       value = "33129"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.city"
+      source = "literal"
+      value = "Miami"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.country"
+      source = "literal"
+      value = "US"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.region"
+      source = "literal"
+      value = "FL"
+    }
+  }
+  requiredSapObjectKeys {
+    "purchase_order.po_number"
+  }
+}
+
+routineCreatePurchaseOrderWithDeliveryAddressStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "B2"
+  stepType = "create_purchase_order_with_delivery_address"
+  tool = toolRequirements["fiori.create_purchase_order_with_delivery_address"]
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "purchase_requisition"
+      source = "prior_output"
+      value = "purchase_requisition.pr_number"
+    }
+    new objects.ToolInputBinding {
+      field = "storage_location"
+      source = "case"
+      value = "storage_location"
+    }
+    new objects.ToolInputBinding {
+      field = "supplier"
+      source = "master_data"
+      value = "vendor_id"
+    }
+    new objects.ToolInputBinding {
+      field = "quantity"
+      source = "case"
+      value = "quantity"
+    }
+    new objects.ToolInputBinding {
+      field = "net_price"
+      source = "case"
+      value = "target_price"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.name"
+      source = "literal"
+      value = "Global Bike Inc."
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.street_and_house_number"
+      source = "literal"
+      value = "3100 NW 72nd Ave"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.house_number"
+      source = "literal"
+      value = "3100"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.postal_code"
+      source = "literal"
+      value = "33122"
     }
     new objects.ToolInputBinding {
       field = "delivery_address.city"
@@ -750,7 +821,7 @@ routineAddressChangeProcureToPayProcess: objects.ProcessDefinition = new objects
   scenarioType = "ROUTINE_ADDRESS_CHANGE"
   steps {
     createPurchaseRequisitionStep
-    createPurchaseOrderWithDeliveryAddressStep
+    routineCreatePurchaseOrderWithDeliveryAddressStep
     postGoodsReceiptStep
     enterIncomingInvoiceStep
     postOutgoingPaymentStep
