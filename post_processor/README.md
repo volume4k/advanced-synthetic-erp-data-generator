@@ -32,11 +32,12 @@ uv run --project post_processor erp-sap-export download \
   --user-from LEARN-800 \
   --user-to LEARN-899 \
   --window-padding-min 30 \
+  --max-keys-per-batch 20 \
   --max-runtime-min 60
 ```
 
 By default, downloads are written to `post_processor/downloads/<run_id>/`, where `run_id` comes from the Post-Processing Manifest. Use `--out-dir PATH` to override that destination while keeping the same file layout.
-The command logs each SAP phase, request count, filter summary, row count, and elapsed time to stdout. `--max-runtime-min` stops scheduling new WebGUI requests after the budget is reached, writes any rows collected so far, records a warning in `export-report.json`, and exits with code `124`; use `0` to disable the guard.
+The command logs each SAP phase, request count, filter summary, row count, and elapsed time to stdout. `--max-keys-per-batch` keeps range requests small enough for WebGUI list extraction while avoiding one request per object. `--max-runtime-min` stops scheduling new WebGUI requests after the budget is reached, writes any rows collected so far, records a warning in `export-report.json`, and exits with code `124`; use `0` to disable the guard.
 
 Outputs:
 

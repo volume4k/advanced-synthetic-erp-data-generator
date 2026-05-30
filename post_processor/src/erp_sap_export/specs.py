@@ -103,6 +103,7 @@ def p2p_batched_requests_from_registry(
     trace_steps: dict[str, dict[str, Any]],
     *,
     default_company_code: str | None = None,
+    max_keys_per_batch: int = 20,
 ) -> list[TableRequest]:
     exact_requests = p2p_requests_from_registry(
         registry_entries,
@@ -113,7 +114,12 @@ def p2p_batched_requests_from_registry(
     for request in exact_requests:
         key = _batch_key(request)
         by_bucket.setdefault(key, []).append(request)
-    return [_range_request(table, requests) for (table, _fields, _bucket), requests in by_bucket.items()]
+    batched: list[TableRequest] = []
+    for table, _fields, _bucket in by_bucket:
+        requests = sorted(by_bucket[(table, _fields, _bucket)], key=_request_sort_key)
+        for chunk in _chunks(requests, max_keys_per_batch):
+            batched.append(_range_request(table, chunk))
+    return batched
 
 
 def _batch_key(request: TableRequest) -> tuple[str, tuple[str, ...], str]:
@@ -140,6 +146,19 @@ def _range_request(table: str, requests: list[TableRequest]) -> TableRequest:
         high = values[-1] if values[0] != values[-1] else None
         selection.append(SelectionRange(field, values[0], high))
     return TableRequest(table, selection)
+
+
+def _chunks(requests: list[TableRequest], size: int) -> list[list[TableRequest]]:
+    if size <= 0:
+        return [requests]
+    return [requests[index : index + size] for index in range(0, len(requests), size)]
+
+
+def _request_sort_key(request: TableRequest) -> tuple[int, str]:
+    value = request.selection[0].low if request.selection else ""
+    if value.isdigit():
+        return (0, value.zfill(40))
+    return (1, value)
 
 
 def _requests_for_registry_entry(

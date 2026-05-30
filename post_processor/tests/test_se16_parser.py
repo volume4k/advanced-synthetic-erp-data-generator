@@ -162,3 +162,22 @@ def test_p2p_batched_requests_split_wide_numeric_prefix_gaps() -> None:
         ("MKPF", [SelectionRange("MBLNR", "4900038018", "4900038020")]),
         ("MSEG", [SelectionRange("MBLNR", "4900038018", "4900038020")]),
     ]
+
+
+def test_p2p_batched_requests_chunk_large_ranges() -> None:
+    registry_entries = [
+        {"object_type": "purchase_requisition", "keys": {"pr_number": str(number)}}
+        for number in range(10000172, 10000197)
+    ]
+
+    requests = p2p_batched_requests_from_registry(
+        registry_entries,
+        {},
+        default_company_code="US00",
+        max_keys_per_batch=20,
+    )
+
+    assert [(item.table, item.selection) for item in requests] == [
+        ("EBAN", [SelectionRange("BANFN", "10000172", "10000191")]),
+        ("EBAN", [SelectionRange("BANFN", "10000192", "10000196")]),
+    ]

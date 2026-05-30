@@ -147,12 +147,13 @@ def _download(args: argparse.Namespace) -> int:
             registry_entries,
             trace_steps,
             default_company_code=args.default_company_code,
+            max_keys_per_batch=args.max_keys_per_batch,
         )
     ]
     _log(
         "P2P "
         f"registry_entries={len(registry_entries)} exact_keys={len(exact_p2p_requests)} "
-        f"batched_requests={len(p2p_requests)}"
+        f"max_keys_per_batch={args.max_keys_per_batch} batched_requests={len(p2p_requests)}"
     )
 
     for request_index, request in enumerate(p2p_requests, start=1):
@@ -385,6 +386,7 @@ def _build_parser() -> argparse.ArgumentParser:
     download.add_argument("--user-to", default="LEARN-899")
     download.add_argument("--window-padding-min", type=int, default=30)
     download.add_argument("--max-rows-per-request", type=int, default=5_000)
+    download.add_argument("--max-keys-per-batch", type=int, default=20)
     download.add_argument("--max-runtime-min", type=float, default=60)
     download.add_argument("--default-company-code", default="US00")
     download.add_argument("--headed", action="store_true")
