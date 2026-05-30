@@ -888,6 +888,20 @@ def test_config_loader_rejects_invalid_material_order_multiple(tmp_path: Path) -
         load_generation_config(config_path)
 
 
+def test_config_loader_rejects_master_data_order_multiple_outside_allowed_values(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["realism"] = {
+        "enabled": True,
+        "allowedOrderMultiples": [1, 5],
+    }
+    payload["masterData"][0]["orderMultiple"] = 10
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match=r"orderMultiple.*MA025.*allowedOrderMultiples"):
+        load_generation_config(config_path)
+
+
 def test_config_loader_loads_material_valuation_lock_guardrails(tmp_path: Path) -> None:
     payload = _base_config()
     payload["runSettings"]["realism"] = {

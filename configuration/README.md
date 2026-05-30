@@ -147,7 +147,7 @@ Demand patterns must sum to `caseCount`. The trace generator expands them into d
 
 Material assignment is controlled by **Material Demand Profiles**, not by daily demand patterns. Each active material must appear once in the LLM response by default. The LLM emits a positive `relative_demand_weight`; the trace generator normalizes those weights into exact process-case counts, shuffles assignments with `schedulerSeed`, and rejects missing, duplicate, or unexpected material IDs. Use `maxMaterialSharePerHorizon` to cap one material's horizon share when a run should force diversity.
 
-Quantity generation is controlled by each material's **Quantity Profile**. The LLM proposes `typical_order_quantity`, `quantity_variation_pct`, `bulk_order_share`, and `order_multiple`. The trace generator samples the final process-case quantity, rounds to the order multiple, and clamps to the material's hard `quantityMin` and `quantityMax`. Configure guardrails in `run_settings.pkl`:
+Quantity generation is controlled by each material's **Quantity Profile** plus the configured master-data `orderMultiple`. The LLM proposes `typical_order_quantity`, `quantity_variation_pct`, and `bulk_order_share`; it echoes the configured order multiple for context, but the trace generator uses the material master value as the source of truth. The trace generator samples the final process-case quantity, rounds to the material `orderMultiple`, and clamps to the hard `quantityMin` and `quantityMax`. Configure allowed multiples in `run_settings.pkl`:
 
 ```pkl
 realism {

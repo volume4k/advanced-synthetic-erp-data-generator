@@ -162,6 +162,7 @@ def _master_data(item: dict[str, Any]) -> MasterDataEntry:
         currency=str(item["currency"]),
         delivery_lead_time_min_days=int(item["deliveryLeadTimeMinDays"]),
         delivery_lead_time_max_days=int(item["deliveryLeadTimeMaxDays"]),
+        order_multiple=int(item.get("orderMultiple", 1)),
     )
 
 
@@ -522,6 +523,13 @@ def _validate(config: GenerationConfig) -> None:
         )
     if len(blocked_material_ids) >= len(master_material_ids):
         raise TraceGenerationError("runSettings.realism.blockedMaterials cannot block all configured materials")
+    allowed_order_multiples = set(config.run_settings.realism.allowed_order_multiples)
+    for item in config.master_data:
+        if item.order_multiple not in allowed_order_multiples:
+            raise TraceGenerationError(
+                f"masterData orderMultiple for material '{item.material_id}' must be listed in "
+                "runSettings.realism.allowedOrderMultiples"
+            )
     _validate_bank_accounts(config)
 
     actor_ids = {actor.id for actor in config.actors}

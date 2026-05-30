@@ -20,7 +20,7 @@ from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.models import Actor, GenerationConfig, MasterDataEntry
 
 
-REALISM_COMPILER_SCHEMA_VERSION = "3"
+REALISM_COMPILER_SCHEMA_VERSION = "4"
 WORKLOAD_FACTORS = {"low": -0.5, "normal": 0.0, "high": 1.0}
 
 
@@ -511,8 +511,7 @@ class RealismCompiler:
                 raise TraceGenerationError(f"quantity_variation_pct for material '{material_id}' outside guardrails")
             if not 0 <= profile.bulk_order_share <= settings.max_bulk_order_share:
                 raise TraceGenerationError(f"bulk_order_share for material '{material_id}' outside guardrails")
-            if profile.order_multiple not in settings.allowed_order_multiples:
-                raise TraceGenerationError(f"order_multiple for material '{material_id}' outside guardrails")
+            profiles[material_id] = profile.model_copy(update={"order_multiple": material.order_multiple})
         return profiles
 
     def _demand_patterns_from_json(self, raw_response: str) -> list[DemandPattern]:
@@ -883,6 +882,7 @@ class RealismCompiler:
                     "price_max": item.price_max,
                     "delivery_lead_time_min_days": item.delivery_lead_time_min_days,
                     "delivery_lead_time_max_days": item.delivery_lead_time_max_days,
+                    "configured_order_multiple": item.order_multiple,
                 }
                 for item in active_master_data
             ],
@@ -906,7 +906,7 @@ class RealismCompiler:
                         "typical_order_quantity": "integer inside hard quantity bounds",
                         "quantity_variation_pct": "number",
                         "bulk_order_share": "number",
-                        "order_multiple": "allowed integer",
+                        "order_multiple": "echo configured_order_multiple; the generator enforces material config",
                     }
                 ]
             },

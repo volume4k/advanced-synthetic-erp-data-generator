@@ -73,10 +73,13 @@ class MasterDataEntry:
     currency: str
     delivery_lead_time_min_days: int
     delivery_lead_time_max_days: int
+    order_multiple: int = 1
 
     def __post_init__(self) -> None:
         if self.quantity_min > self.quantity_max:
             raise ValueError("quantity_min must be <= quantity_max")
+        if self.order_multiple < 1:
+            raise ValueError("order_multiple must be >= 1")
         if self.price_min > self.price_max:
             raise ValueError("price_min must be <= price_max")
         if self.delivery_lead_time_min_days > self.delivery_lead_time_max_days:

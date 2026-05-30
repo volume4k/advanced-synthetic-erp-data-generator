@@ -235,6 +235,7 @@ class MasterDataEntry {
   validStorageLocations: Listing<String>
   quantityMin: Int(this >= 1)
   quantityMax: Int(this >= quantityMin)
+  orderMultiple: Int(this >= 1) = 1
   priceMin: Float(this > 0)
   priceMax: Float(this >= priceMin)
   currency: String(this.length > 0)
