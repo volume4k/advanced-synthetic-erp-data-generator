@@ -5,6 +5,45 @@ import "objects.pkl"
 toolRequirements = generated_tool_config.toolRequirements
 vendorFlipflop = fraudConfig.vendorFlipflopConfig
 
+materialDocumentCurrentDateOverride: objects.RuntimeDateOverride = new objects.RuntimeDateOverride {
+  objectType = "material_document"
+  fields {
+    "document_date"
+    "posting_date"
+  }
+  runtimeValuePolicy = "sap_current_date"
+  reason = "sap_runtime_forces_current_date"
+}
+
+scrapMaterialDocumentCurrentDateOverride: objects.RuntimeDateOverride = new objects
+  .RuntimeDateOverride {
+  objectType = "scrap_material_document"
+  fields {
+    "posting_date"
+  }
+  runtimeValuePolicy = "sap_current_date"
+  reason = "sap_runtime_forces_current_date"
+}
+
+stockReleaseMaterialDocumentCurrentDateOverride: objects.RuntimeDateOverride = new objects
+  .RuntimeDateOverride {
+  objectType = "stock_release_material_document"
+  fields {
+    "posting_date"
+  }
+  runtimeValuePolicy = "sap_current_date"
+  reason = "sap_runtime_forces_current_date"
+}
+
+supplierInvoiceCurrentDateOverride: objects.RuntimeDateOverride = new objects.RuntimeDateOverride {
+  objectType = "supplier_invoice"
+  fields {
+    "invoice_date"
+  }
+  runtimeValuePolicy = "executor_current_date"
+  reason = "executor_uses_current_date_for_sap_runtime"
+}
+
 createPurchaseRequisitionStep: objects.ProcessStep = new objects.ProcessStep {
   stepId = "A1"
   stepType = "create_purchase_requisition"
@@ -110,6 +149,156 @@ createPurchaseOrderStep: objects.ProcessStep = new objects.ProcessStep {
   }
 }
 
+createPurchaseOrderWithDeliveryAddressStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "B2"
+  stepType = "create_purchase_order_with_delivery_address"
+  tool = toolRequirements["fiori.create_purchase_order_with_delivery_address"]
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "purchase_requisition"
+      source = "prior_output"
+      value = "purchase_requisition.pr_number"
+    }
+    new objects.ToolInputBinding {
+      field = "storage_location"
+      source = "case"
+      value = "storage_location"
+    }
+    new objects.ToolInputBinding {
+      field = "supplier"
+      source = "master_data"
+      value = "vendor_id"
+    }
+    new objects.ToolInputBinding {
+      field = "quantity"
+      source = "case"
+      value = "quantity"
+    }
+    new objects.ToolInputBinding {
+      field = "net_price"
+      source = "case"
+      value = "target_price"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.name"
+      source = "literal"
+      value = "Alberto Conti"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.street_and_house_number"
+      source = "literal"
+      value = "1840 Brickell Ave"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.house_number"
+      source = "literal"
+      value = "1840"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.postal_code"
+      source = "literal"
+      value = "33129"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.city"
+      source = "literal"
+      value = "Miami"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.country"
+      source = "literal"
+      value = "US"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.region"
+      source = "literal"
+      value = "FL"
+    }
+  }
+  requiredSapObjectKeys {
+    "purchase_order.po_number"
+  }
+  labels {
+    ["step_label"] = "fraud_step"
+    ["scenario_family"] = "delivery_address_manipulation"
+  }
+}
+
+routineCreatePurchaseOrderWithDeliveryAddressStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "B2"
+  stepType = "create_purchase_order_with_delivery_address"
+  tool = toolRequirements["fiori.create_purchase_order_with_delivery_address"]
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "purchase_requisition"
+      source = "prior_output"
+      value = "purchase_requisition.pr_number"
+    }
+    new objects.ToolInputBinding {
+      field = "storage_location"
+      source = "case"
+      value = "storage_location"
+    }
+    new objects.ToolInputBinding {
+      field = "supplier"
+      source = "master_data"
+      value = "vendor_id"
+    }
+    new objects.ToolInputBinding {
+      field = "quantity"
+      source = "case"
+      value = "quantity"
+    }
+    new objects.ToolInputBinding {
+      field = "net_price"
+      source = "case"
+      value = "target_price"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.name"
+      source = "literal"
+      value = "Global Bike Inc."
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.street_and_house_number"
+      source = "literal"
+      value = "3100 NW 72nd Ave"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.house_number"
+      source = "literal"
+      value = "3100"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.postal_code"
+      source = "literal"
+      value = "33122"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.city"
+      source = "literal"
+      value = "Miami"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.country"
+      source = "literal"
+      value = "US"
+    }
+    new objects.ToolInputBinding {
+      field = "delivery_address.region"
+      source = "literal"
+      value = "FL"
+    }
+  }
+  requiredSapObjectKeys {
+    "purchase_order.po_number"
+  }
+  labels {
+    ["step_label"] = "routine_step"
+    ["scenario_family"] = "routine_delivery_address_change"
+  }
+}
+
 postGoodsReceiptStep: objects.ProcessStep = new objects.ProcessStep {
   stepId = "A3"
   stepType = "post_goods_receipt"
@@ -140,6 +329,221 @@ postGoodsReceiptStep: objects.ProcessStep = new objects.ProcessStep {
   }
   requiredSapObjectKeys {
     "material_document.material_document_number"
+  }
+  businessDateGate = "delivery_date"
+  materialValuationLock = true
+  runtimeDateOverrides {
+    materialDocumentCurrentDateOverride
+  }
+}
+
+postLarceny5GoodsReceiptStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "B3"
+  stepType = "post_larceny5_goods_receipt"
+  tool = toolRequirements["fiori.create_goods_receipt"]
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "purchase_order"
+      source = "prior_output"
+      value = "purchase_order.po_number"
+    }
+    new objects.ToolInputBinding {
+      field = "storage_location"
+      source = "derived"
+      value = "storage_location_label"
+    }
+  }
+  plannedDateInputBindings {
+    new objects.ToolInputBinding {
+      field = "document_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+    new objects.ToolInputBinding {
+      field = "posting_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+  }
+  requiredSapObjectKeys {
+    "material_document.material_document_number"
+  }
+  labels {
+    ["step_label"] = "fraud_supporting_step"
+    ["scenario_family"] = "delivery_address_manipulation"
+  }
+  businessDateGate = "delivery_date"
+  materialValuationLock = true
+  runtimeDateOverrides {
+    materialDocumentCurrentDateOverride
+  }
+}
+
+postSplitGoodsReceiptStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "Q1"
+  stepType = "post_split_goods_receipt"
+  tool = toolRequirements["fiori.create_split_goods_receipt"]
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "purchase_order"
+      source = "prior_output"
+      value = "purchase_order.po_number"
+    }
+    new objects.ToolInputBinding {
+      field = "storage_location"
+      source = "derived"
+      value = "storage_location_label"
+    }
+    new objects.ToolInputBinding {
+      field = "unrestricted_quantity"
+      source = "derived"
+      value = "unrestrictedQuantity"
+    }
+    new objects.ToolInputBinding {
+      field = "quality_inspection_quantity"
+      source = "derived"
+      value = "qualityInspectionQuantity"
+    }
+  }
+  plannedDateInputBindings {
+    new objects.ToolInputBinding {
+      field = "document_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+    new objects.ToolInputBinding {
+      field = "posting_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+  }
+  requiredSapObjectKeys {
+    "material_document.material_document_number"
+  }
+  labels {
+    ["step_label"] = "fraud_supporting_step"
+    ["scenario_family"] = "inventory_misappropriation"
+  }
+  businessDateGate = "delivery_date"
+  materialValuationLock = true
+  runtimeDateOverrides {
+    materialDocumentCurrentDateOverride
+  }
+}
+
+routinePostSplitGoodsReceiptStep: objects.ProcessStep = (postSplitGoodsReceiptStep) {
+  labels {
+    ["step_label"] = "routine_step"
+    ["scenario_family"] = "routine_quality_inspection"
+  }
+}
+
+scrapQualityInspectionStockStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "Q2"
+  stepType = "scrap_quality_inspection_stock"
+  tool = toolRequirements["fiori.manage_quality_inspection_stock"]
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "material"
+      source = "case"
+      value = "material_id"
+    }
+    new objects.ToolInputBinding {
+      field = "stock_location_label"
+      source = "literal"
+      value = "DC Miami"
+    }
+    new objects.ToolInputBinding {
+      field = "movement"
+      source = "literal"
+      value = "scrap"
+    }
+    new objects.ToolInputBinding {
+      field = "quantity"
+      source = "derived"
+      value = "qualityInspectionQuantity"
+    }
+    new objects.ToolInputBinding {
+      field = "document_item_text"
+      source = "literal"
+      value = "Muss leider verschrottet werden."
+    }
+    new objects.ToolInputBinding {
+      field = "cost_center"
+      source = "literal"
+      value = "NAPC1000"
+    }
+  }
+  plannedDateInputBindings {
+    new objects.ToolInputBinding {
+      field = "posting_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+  }
+  requiredSapObjectKeys {
+    "scrap_material_document.material_document_number"
+  }
+  labels {
+    ["step_label"] = "fraud_step"
+    ["scenario_family"] = "inventory_misappropriation"
+  }
+  businessDateGate = "delivery_date"
+  materialValuationLock = true
+  runtimeDateOverrides {
+    scrapMaterialDocumentCurrentDateOverride
+  }
+}
+
+releaseQualityInspectionStockStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "Q3"
+  stepType = "release_quality_inspection_stock"
+  tool = toolRequirements["fiori.manage_quality_inspection_stock"]
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "material"
+      source = "case"
+      value = "material_id"
+    }
+    new objects.ToolInputBinding {
+      field = "stock_location_label"
+      source = "literal"
+      value = "DC Miami"
+    }
+    new objects.ToolInputBinding {
+      field = "movement"
+      source = "literal"
+      value = "release_to_unrestricted"
+    }
+    new objects.ToolInputBinding {
+      field = "quantity"
+      source = "derived"
+      value = "qualityInspectionQuantity"
+    }
+    new objects.ToolInputBinding {
+      field = "document_item_text"
+      source = "literal"
+      value = "Qualitätsprüfung bestanden."
+    }
+  }
+  plannedDateInputBindings {
+    new objects.ToolInputBinding {
+      field = "posting_date"
+      source = "derived"
+      value = "fiori_delivery_date"
+    }
+  }
+  requiredSapObjectKeys {
+    "stock_release_material_document.material_document_number"
+  }
+  labels {
+    ["step_label"] = "routine_step"
+    ["scenario_family"] = "routine_quality_inspection"
+  }
+  businessDateGate = "delivery_date"
+  materialValuationLock = true
+  runtimeDateOverrides {
+    stockReleaseMaterialDocumentCurrentDateOverride
   }
 }
 
@@ -174,6 +578,11 @@ enterIncomingInvoiceStep: objects.ProcessStep = new objects.ProcessStep {
   requiredSapObjectKeys {
     "supplier_invoice.invoice_number"
     "supplier_invoice.fiscal_year"
+  }
+  businessDateGate = "delivery_date"
+  materialValuationLock = true
+  runtimeDateOverrides {
+    supplierInvoiceCurrentDateOverride
   }
 }
 
@@ -238,6 +647,14 @@ postOutgoingPaymentStep: objects.ProcessStep = new objects.ProcessStep {
   requiredSapObjectKeys {
     "payment_document.payment_document_number"
   }
+  businessDateGate = "payment_posting_date"
+}
+
+fraudSupportingPostOutgoingPaymentStep: objects.ProcessStep = (postOutgoingPaymentStep) {
+  labels {
+    ["step_label"] = "fraud_supporting_step"
+    ["scenario_family"] = "vendor_master_manipulation"
+  }
 }
 
 changeVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
@@ -266,6 +683,10 @@ changeVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
       source = "literal"
       value = vendorFlipflop.fraudulentBankAccount.accountOwner
     }
+  }
+  labels {
+    ["step_label"] = "fraud_step"
+    ["scenario_family"] = "vendor_master_manipulation"
   }
 }
 
@@ -296,6 +717,43 @@ revertVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
       value = vendorFlipflop.originalBankAccount.accountOwner
     }
   }
+  labels {
+    ["step_label"] = "cleanup_step"
+    ["scenario_family"] = "vendor_master_manipulation"
+  }
+}
+
+routineVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
+  stepId = "R1"
+  stepType = "change_vendor_bank_data"
+  tool = toolRequirements["fiori.change_vendor_bank_details"]
+  objectOutputRequired = false
+  inputBindings {
+    new objects.ToolInputBinding {
+      field = "vendor_id"
+      source = "case"
+      value = "vendor_id"
+    }
+    new objects.ToolInputBinding {
+      field = "bank_account_credentials.bank_key"
+      source = "vendor_bank_account"
+      value = "bank_key"
+    }
+    new objects.ToolInputBinding {
+      field = "bank_account_credentials.account_number"
+      source = "vendor_bank_account"
+      value = "account_number"
+    }
+    new objects.ToolInputBinding {
+      field = "bank_account_credentials.account_owner"
+      source = "vendor_bank_account"
+      value = "account_owner"
+    }
+  }
+  labels {
+    ["step_label"] = "routine_step"
+    ["scenario_family"] = "routine_vendor_master_update"
+  }
 }
 
 prToPoDependency: objects.ProcessDependency = new objects.ProcessDependency {
@@ -305,11 +763,68 @@ prToPoDependency: objects.ProcessDependency = new objects.ProcessDependency {
     "Create purchase order after purchase requisition because A2 needs the purchase requisition number produced by A1."
 }
 
+prToPoWithAddressDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "create_purchase_requisition"
+  toStepType = "create_purchase_order_with_delivery_address"
+  description =
+    "Create purchase order with delivery address after purchase requisition because the order needs the purchase requisition number."
+}
+
 poToGoodsReceiptDependency: objects.ProcessDependency = new objects.ProcessDependency {
   fromStepType = "create_purchase_order"
   toStepType = "post_goods_receipt"
   description =
     "Post goods receipt after purchase order creation because A3 requires the purchase order created by A2."
+}
+
+poWithAddressToGoodsReceiptDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "create_purchase_order_with_delivery_address"
+  toStepType = "post_goods_receipt"
+  description = "Post goods receipt after address-change purchase order creation."
+}
+
+poWithAddressToLarceny5GoodsReceiptDependency: objects.ProcessDependency = new objects
+  .ProcessDependency {
+  fromStepType = "create_purchase_order_with_delivery_address"
+  toStepType = "post_larceny5_goods_receipt"
+  description =
+    "Post LARCENY5 goods receipt after the manipulated delivery-address purchase order exists."
+}
+
+larceny5GoodsReceiptToInvoiceDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "post_larceny5_goods_receipt"
+  toStepType = "enter_incoming_invoice"
+  description = "Enter incoming invoice after the LARCENY5 goods receipt."
+}
+
+poToSplitGoodsReceiptDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "create_purchase_order"
+  toStepType = "post_split_goods_receipt"
+  description = "Post split goods receipt after purchase order creation."
+}
+
+splitGoodsReceiptToScrapDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "post_split_goods_receipt"
+  toStepType = "scrap_quality_inspection_stock"
+  description = "Scrap quality-inspection stock after split goods receipt creates it."
+}
+
+scrapToInvoiceDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "scrap_quality_inspection_stock"
+  toStepType = "enter_incoming_invoice"
+  description = "Enter incoming invoice after the LARCENY3 quality-inspection stock movement."
+}
+
+splitGoodsReceiptToReleaseDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "post_split_goods_receipt"
+  toStepType = "release_quality_inspection_stock"
+  description = "Release quality-inspection stock after routine split goods receipt creates it."
+}
+
+releaseToInvoiceDependency: objects.ProcessDependency = new objects.ProcessDependency {
+  fromStepType = "release_quality_inspection_stock"
+  toStepType = "enter_incoming_invoice"
+  description = "Enter incoming invoice after quality-inspection stock release."
 }
 
 goodsReceiptToInvoiceDependency: objects.ProcessDependency = new objects.ProcessDependency {
@@ -370,7 +885,7 @@ vendorFlipflopProcureToPayProcess: objects.ProcessDefinition = new objects.Proce
     postGoodsReceiptStep
     enterIncomingInvoiceStep
     changeVendorBankDataStep
-    postOutgoingPaymentStep
+    fraudSupportingPostOutgoingPaymentStep
     revertVendorBankDataStep
   }
   dependencies {
@@ -383,7 +898,110 @@ vendorFlipflopProcureToPayProcess: objects.ProcessDefinition = new objects.Proce
   }
 }
 
+larceny3ProcureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
+  processType = "procure_to_pay"
+  scenarioType = "LARCENY3"
+  steps {
+    createPurchaseRequisitionStep
+    createPurchaseOrderStep
+    postSplitGoodsReceiptStep
+    scrapQualityInspectionStockStep
+    enterIncomingInvoiceStep
+    postOutgoingPaymentStep
+  }
+  dependencies {
+    prToPoDependency
+    poToSplitGoodsReceiptDependency
+    splitGoodsReceiptToScrapDependency
+    scrapToInvoiceDependency
+    invoiceToPaymentDependency
+  }
+}
+
+larceny5ProcureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
+  processType = "procure_to_pay"
+  scenarioType = "LARCENY5"
+  steps {
+    createPurchaseRequisitionStep
+    createPurchaseOrderWithDeliveryAddressStep
+    postLarceny5GoodsReceiptStep
+    enterIncomingInvoiceStep
+    postOutgoingPaymentStep
+  }
+  dependencies {
+    prToPoWithAddressDependency
+    poWithAddressToLarceny5GoodsReceiptDependency
+    larceny5GoodsReceiptToInvoiceDependency
+    invoiceToPaymentDependency
+  }
+}
+
+routineAddressChangeProcureToPayProcess: objects.ProcessDefinition = new objects.ProcessDefinition {
+  processType = "procure_to_pay"
+  scenarioType = "ROUTINE_ADDRESS_CHANGE"
+  steps {
+    createPurchaseRequisitionStep
+    routineCreatePurchaseOrderWithDeliveryAddressStep
+    postGoodsReceiptStep
+    enterIncomingInvoiceStep
+    postOutgoingPaymentStep
+  }
+  dependencies {
+    prToPoWithAddressDependency
+    poWithAddressToGoodsReceiptDependency
+    goodsReceiptToInvoiceDependency
+    invoiceToPaymentDependency
+  }
+}
+
+routineQualityInspectionProcureToPayProcess: objects.ProcessDefinition = new objects
+  .ProcessDefinition {
+  processType = "procure_to_pay"
+  scenarioType = "ROUTINE_QUALITY_INSPECTION"
+  steps {
+    createPurchaseRequisitionStep
+    createPurchaseOrderStep
+    routinePostSplitGoodsReceiptStep
+    releaseQualityInspectionStockStep
+    enterIncomingInvoiceStep
+    postOutgoingPaymentStep
+  }
+  dependencies {
+    prToPoDependency
+    poToSplitGoodsReceiptDependency
+    splitGoodsReceiptToReleaseDependency
+    releaseToInvoiceDependency
+    invoiceToPaymentDependency
+  }
+}
+
+routineVendorBankChangeProcureToPayProcess: objects.ProcessDefinition = new objects
+  .ProcessDefinition {
+  processType = "procure_to_pay"
+  scenarioType = "ROUTINE_VENDOR_BANK_CHANGE"
+  steps {
+    createPurchaseRequisitionStep
+    createPurchaseOrderStep
+    postGoodsReceiptStep
+    enterIncomingInvoiceStep
+    routineVendorBankDataStep
+    postOutgoingPaymentStep
+  }
+  dependencies {
+    prToPoDependency
+    poToGoodsReceiptDependency
+    goodsReceiptToInvoiceDependency
+    invoiceToBankChangeDependency
+    bankChangeToPaymentDependency
+  }
+}
+
 processes: Listing<objects.ProcessDefinition> = new Listing {
   procureToPayProcess
   vendorFlipflopProcureToPayProcess
+  larceny3ProcureToPayProcess
+  larceny5ProcureToPayProcess
+  routineAddressChangeProcureToPayProcess
+  routineQualityInspectionProcureToPayProcess
+  routineVendorBankChangeProcureToPayProcess
 }

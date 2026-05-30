@@ -73,10 +73,13 @@ class MasterDataEntry:
     currency: str
     delivery_lead_time_min_days: int
     delivery_lead_time_max_days: int
+    order_multiple: int = 1
 
     def __post_init__(self) -> None:
         if self.quantity_min > self.quantity_max:
             raise ValueError("quantity_min must be <= quantity_max")
+        if self.order_multiple < 1:
+            raise ValueError("order_multiple must be >= 1")
         if self.price_min > self.price_max:
             raise ValueError("price_min must be <= price_max")
         if self.delivery_lead_time_min_days > self.delivery_lead_time_max_days:
@@ -89,8 +92,19 @@ class ToolRequirement:
     required_input_fields: tuple[str, ...]
 
 
-BindingSource = Literal["literal", "master_data", "case", "planned_date", "prior_output", "derived"]
+BindingSource = Literal[
+    "literal",
+    "master_data",
+    "case",
+    "planned_date",
+    "prior_output",
+    "derived",
+    "vendor_bank_account",
+]
 BindingValueType = Literal["string", "int", "float", "bool"]
+BusinessDateGate = Literal["none", "delivery_date", "payment_posting_date"]
+ComputedValueSource = Literal["case"]
+ComputedValueOperator = Literal["multiply"]
 
 
 @dataclass(frozen=True)
@@ -103,6 +117,15 @@ class InputBinding:
 
 
 @dataclass(frozen=True)
+class RuntimeDateOverride:
+    object_type: str
+    fields: tuple[str, ...]
+    runtime_value_policy: str
+    source: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class ProcessStep:
     step_id: str
     step_type: str
@@ -111,6 +134,10 @@ class ProcessStep:
     planned_date_input_bindings: tuple[InputBinding, ...] = ()
     required_sap_object_keys: tuple[str, ...] = ()
     object_output_required: bool = True
+    labels: dict[str, str] = field(default_factory=dict)
+    business_date_gate: BusinessDateGate = "none"
+    material_valuation_lock: bool = False
+    runtime_date_overrides: tuple[RuntimeDateOverride, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -245,10 +272,25 @@ class BankAccountDetails:
 
 
 @dataclass(frozen=True)
-class VendorFlipflopConfig:
-    vendor_id: str
-    fraudulent_bank_account: BankAccountDetails
-    original_bank_account: BankAccountDetails
+class BankAccountRules:
+    allowed_bank_keys: tuple[str, ...] = ()
+    account_number_min_length: int = 0
+    account_number_max_length: int = 1000
+    require_numeric_account_number: bool = False
+
+
+@dataclass(frozen=True)
+class ComputedValue:
+    source: ComputedValueSource
+    field: str
+    operator: ComputedValueOperator
+    factor: float
+    precision: int = 3
+
+
+@dataclass(frozen=True)
+class ScenarioCaseSelection:
+    fixed_vendor_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -256,7 +298,23 @@ class FraudScenario:
     id: str
     enabled: bool
     target_share: float
-    vendor_flipflop: VendorFlipflopConfig | None = None
+    case_outcome: str = "fraud"
+    labels: dict[str, str] = field(default_factory=dict)
+    case_selection: ScenarioCaseSelection = field(default_factory=ScenarioCaseSelection)
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.target_share <= 1.0:
+            raise ValueError("target_share must be between 0 and 1")
+
+
+@dataclass(frozen=True)
+class RoutineScenario:
+    id: str
+    enabled: bool
+    target_share: float
+    case_outcome: str = "non_fraud"
+    labels: dict[str, str] = field(default_factory=dict)
+    case_selection: ScenarioCaseSelection = field(default_factory=ScenarioCaseSelection)
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.target_share <= 1.0:
@@ -277,6 +335,10 @@ class GenerationConfig:
     run_settings: RunSettings
     raw: dict
     fraud_scenarios: tuple[FraudScenario, ...] = ()
+    routine_scenarios: tuple[RoutineScenario, ...] = ()
+    vendor_bank_accounts: dict[str, BankAccountDetails] = field(default_factory=dict)
+    computed_values: dict[str, ComputedValue] = field(default_factory=dict)
+    bank_account_rules: BankAccountRules = field(default_factory=BankAccountRules)
 
     def active_process(self) -> ProcessDefinition:
         return self.process_for_scenario(self.active_scenario_type())
@@ -296,14 +358,20 @@ class GenerationConfig:
             return "NORMAL"
         return enabled[0].id
 
-    def active_vendor_flipflop_config(self) -> VendorFlipflopConfig | None:
+    def scenario_config(self, scenario_type: str) -> FraudScenario | RoutineScenario:
+        if scenario_type == "NORMAL":
+            return RoutineScenario(id="NORMAL", enabled=True, target_share=0.0, case_outcome="non_fraud")
         scenario = next(
-            (item for item in self.fraud_scenarios if item.enabled and item.id == "VENDOR_FLIPFLOP"),
+            (
+                item
+                for item in (*self.fraud_scenarios, *self.routine_scenarios)
+                if item.id == scenario_type
+            ),
             None,
         )
         if scenario is None:
-            return None
-        return scenario.vendor_flipflop
+            raise AssertionError("scenario existence is validated by loader")
+        return scenario
 
     def actors_capable_of(self, process_type: str, step_type: str) -> tuple[Actor, ...]:
         return tuple(
@@ -360,6 +428,7 @@ class PlannedStep:
     target_end: datetime
     case_scenario_type: str = "NORMAL"
     labels: dict[str, str] = field(default_factory=lambda: {"step_label": "normal"})
+    runtime_date_overrides: tuple[RuntimeDateOverride, ...] = ()
 
 
 @dataclass(frozen=True)

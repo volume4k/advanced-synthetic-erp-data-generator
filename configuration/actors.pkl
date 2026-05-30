@@ -63,6 +63,8 @@ actors: Listing<objects.SyntheticActor> = new Listing {
         processType = "procure_to_pay"
         stepTypes {
           "create_purchase_order"
+          "create_purchase_order_with_delivery_address"
+          "post_larceny5_goods_receipt"
         }
       }
     }
@@ -94,6 +96,9 @@ actors: Listing<objects.SyntheticActor> = new Listing {
         processType = "procure_to_pay"
         stepTypes {
           "post_goods_receipt"
+          "post_split_goods_receipt"
+          "scrap_quality_inspection_stock"
+          "release_quality_inspection_stock"
         }
       }
     }

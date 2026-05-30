@@ -187,6 +187,7 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     }
     quantityMin = 20
     quantityMax = 250
+    orderMultiple = 5
     priceMin = 8.0
     priceMax = 20.0
     currency = "USD"
@@ -239,6 +240,7 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     }
     quantityMin = 20
     quantityMax = 250
+    orderMultiple = 5
     priceMin = 10.0
     priceMax = 12.0
     currency = "USD"
@@ -265,6 +267,7 @@ masterData: Listing<objects.MasterDataEntry> = new Listing {
     }
     quantityMin = 20
     quantityMax = 250
+    orderMultiple = 5
     priceMin = 5.0
     priceMax = 15.0
     currency = "USD"

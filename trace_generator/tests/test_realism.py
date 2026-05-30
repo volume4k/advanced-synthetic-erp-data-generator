@@ -344,7 +344,7 @@ def test_trace_generation_uses_enabled_realism_compiler(tmp_path: Path) -> None:
 
     assert trace["llm_metadata"]["used"] is True
     assert trace["llm_metadata"]["realism_criteria_hash"]
-    assert trace["llm_metadata"]["realism_compiler_schema_version"] == "3"
+    assert trace["llm_metadata"]["realism_compiler_schema_version"] == "4"
     assert trace["llm_metadata"]["llm_request_count"] == 6
     assert trace["llm_metadata"]["llm_retry_count"] == 0
     assert trace["actor_sessions"][0]["human_delay_profile"] == {
@@ -455,6 +455,8 @@ def test_realism_compiler_rejects_invalid_quantity_profile(tmp_path: Path) -> No
 def test_realism_compiler_allocates_materials_and_quantities_from_profiles(tmp_path: Path) -> None:
     payload = _base_config_with_second_material()
     payload["runSettings"]["caseCount"] = 6
+    payload["masterData"][0]["orderMultiple"] = 5
+    payload["masterData"][1]["orderMultiple"] = 10
     config = _load_config(tmp_path, payload)
     client = FakeRealismClient(
         [
@@ -496,6 +498,33 @@ def test_realism_compiler_allocates_materials_and_quantities_from_profiles(tmp_p
             assert release.target_quantity % 10 == 0
     assert material_counts == {"MA025": 3, "MB025": 3}
     assert [release.material_id for release in criteria.demand_releases[:3]] != ["MA025", "MA025", "MA025"]
+
+
+def test_material_order_multiple_config_overrides_llm_profile(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["masterData"][0]["orderMultiple"] = 1
+    config = _load_config(tmp_path, payload)
+    client = FakeRealismClient(
+        [
+            _material_profiles_response(
+                _material_profile("MA025", relative_demand_weight=1, typical_order_quantity=10, order_multiple=10),
+            )
+        ]
+    )
+
+    profiles = RealismCompiler(config=config, client=client, cache_dir=tmp_path, max_retries=1).compile_material_demand_profiles()
+
+    assert profiles["MA025"].order_multiple == 1
+
+
+def test_default_realism_profiles_use_configured_material_order_multiple(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["masterData"][0]["orderMultiple"] = 5
+    config = _load_config(tmp_path, payload)
+
+    criteria = realism_module.default_realism_criteria(config)
+
+    assert criteria.material_demand_profiles["MA025"].order_multiple == 5
 
 
 def test_horizon_demand_prompt_lists_only_shared_lead_time_days(tmp_path: Path) -> None:

@@ -1,0 +1,198 @@
+trace_version: '0.3'
+run_id: RUN_EXAMPLE_LARCENY3_MANUAL
+config_hash: example
+tool_catalog_hash: example
+trace_generator_version: 0.1.0
+llm_metadata:
+  used: false
+  seed: 17
+actor_sessions:
+- actor_session_id: tour-user-1-session
+  synthetic_actor_id: tour-user-1
+  technical_sap_user_id: TU_EXAMPLE
+  username_env_var: SAP_USER_1_UN
+  password_env_var: SAP_USER_1_PW
+  login_url_env_var: SAP_URL
+  success_selector: '#userActionsMenuHeaderButton'
+cases:
+- case_id: LARCENY3_MANUAL_001
+  process_type: procure_to_pay
+  case_scenario_type: LARCENY3
+  line_items:
+  - line_id: LARCENY3_MANUAL_001_L1
+    material_id: CHSP1800
+    vendor_id: '102800'
+    plant: MI00
+    purchasing_org: US00
+    storage_location: TG00
+    quantity: 50
+    target_price: 26
+dependency_graph:
+  planned_steps:
+  - planned_step_id: larceny3-manual-001-create-pr
+    case_id: LARCENY3_MANUAL_001
+    step_type: create_purchase_requisition
+    tool_name: fiori.create_purchase_requisition
+    synthetic_actor_id: tour-user-1
+    technical_sap_user_id: TU_EXAMPLE
+    actor_session_id: tour-user-1-session
+    inputs:
+      material: CHSP1800
+      quantity: 50
+      valuation_price: 26
+      currency: USD
+      price_unit: 1
+      delivery_date: 06/20/2026
+      plant: MI00
+      purchasing_group: N00
+      purchasing_organization: US00
+      company_code: US00
+    required_sap_object_keys:
+    - purchase_requisition.pr_number
+    planned_date_inputs:
+      delivery_date: '2026-06-20'
+    planned_synthetic_time:
+      start: '2026-05-18T08:00:00+02:00'
+      end: '2026-05-18T08:09:00+02:00'
+    labels:
+      step_label: normal
+  - planned_step_id: larceny3-manual-001-create-po
+    case_id: LARCENY3_MANUAL_001
+    step_type: create_purchase_order
+    tool_name: fiori.create_purchase_order
+    synthetic_actor_id: tour-user-1
+    technical_sap_user_id: TU_EXAMPLE
+    actor_session_id: tour-user-1-session
+    inputs:
+      purchase_requisition: $purchase_requisition.pr_number
+      storage_location: TG00
+      supplier: '102800'
+      quantity: 50
+      net_price: 26
+    required_sap_object_keys:
+    - purchase_order.po_number
+    planned_date_inputs: {}
+    planned_synthetic_time:
+      start: '2026-05-18T09:00:00+02:00'
+      end: '2026-05-18T09:08:00+02:00'
+    labels:
+      step_label: normal
+  - planned_step_id: larceny3-manual-001-split-gr
+    case_id: LARCENY3_MANUAL_001
+    step_type: post_split_goods_receipt
+    tool_name: fiori.create_split_goods_receipt
+    synthetic_actor_id: tour-user-1
+    technical_sap_user_id: TU_EXAMPLE
+    actor_session_id: tour-user-1-session
+    inputs:
+      purchase_order: $purchase_order.po_number
+      storage_location: Trading Goods
+      unrestricted_quantity: 40
+      quality_inspection_quantity: 10
+    required_sap_object_keys:
+    - material_document.material_document_number
+    planned_date_inputs:
+      document_date: '2026-06-20'
+      posting_date: '2026-06-20'
+    planned_synthetic_time:
+      start: '2026-05-19T08:00:00+02:00'
+      end: '2026-05-19T08:08:00+02:00'
+    labels:
+      step_label: fraud_supporting_step
+      scenario_family: inventory_misappropriation
+  - planned_step_id: larceny3-manual-001-scrap-qi
+    case_id: LARCENY3_MANUAL_001
+    step_type: scrap_quality_inspection_stock
+    tool_name: fiori.manage_quality_inspection_stock
+    synthetic_actor_id: tour-user-1
+    technical_sap_user_id: TU_EXAMPLE
+    actor_session_id: tour-user-1-session
+    inputs:
+      material: CHSP1800
+      stock_location_label: DC Miami
+      movement: scrap
+      quantity: 5
+      cost_center: NAPC1000
+      document_item_text: Muss leider verschrottet werden.
+    required_sap_object_keys:
+    - scrap_material_document.material_document_number
+    planned_date_inputs:
+      posting_date: '2026-06-20'
+    planned_synthetic_time:
+      start: '2026-05-19T09:00:00+02:00'
+      end: '2026-05-19T09:05:00+02:00'
+    labels:
+      step_label: fraud_step
+      scenario_family: inventory_misappropriation
+  - planned_step_id: larceny3-manual-001-release-qi
+    case_id: LARCENY3_MANUAL_001
+    step_type: release_quality_inspection_stock
+    tool_name: fiori.manage_quality_inspection_stock
+    synthetic_actor_id: tour-user-1
+    technical_sap_user_id: TU_EXAMPLE
+    actor_session_id: tour-user-1-session
+    inputs:
+      material: CHSP1800
+      stock_location_label: DC Miami
+      movement: release_to_unrestricted
+      quantity: 5
+      document_item_text: Qualitätsprüfung bestanden
+    required_sap_object_keys:
+    - stock_release_material_document.material_document_number
+    planned_date_inputs:
+      posting_date: '2026-06-20'
+    planned_synthetic_time:
+      start: '2026-05-19T10:00:00+02:00'
+      end: '2026-05-19T10:05:00+02:00'
+    labels:
+      step_label: fraud_supporting_step
+      scenario_family: inventory_misappropriation
+  dependencies:
+  - type: data_dependency
+    reason: purchase requisition number feeds purchase order creation
+    from_planned_step_id: larceny3-manual-001-create-pr
+    to_planned_step_id: larceny3-manual-001-create-po
+  - type: data_dependency
+    reason: purchase order number feeds split goods receipt posting
+    from_planned_step_id: larceny3-manual-001-create-po
+    to_planned_step_id: larceny3-manual-001-split-gr
+  - type: process_dependency
+    reason: quality-inspection stock exists after split goods receipt
+    from_planned_step_id: larceny3-manual-001-split-gr
+    to_planned_step_id: larceny3-manual-001-scrap-qi
+  - type: process_dependency
+    reason: release the remaining quality-inspection stock after the scrap movement
+    from_planned_step_id: larceny3-manual-001-scrap-qi
+    to_planned_step_id: larceny3-manual-001-release-qi
+execution_schedule:
+  mode: waves
+  max_parallel_actor_sessions: 1
+  waves:
+  - wave_id: W001
+    sequence_no: 1
+    planned_steps:
+    - planned_step_id: larceny3-manual-001-create-pr
+      startup_order: 1
+  - wave_id: W002
+    sequence_no: 2
+    planned_steps:
+    - planned_step_id: larceny3-manual-001-create-po
+      startup_order: 1
+  - wave_id: W003
+    sequence_no: 3
+    planned_steps:
+    - planned_step_id: larceny3-manual-001-split-gr
+      startup_order: 1
+  - wave_id: W004
+    sequence_no: 4
+    planned_steps:
+    - planned_step_id: larceny3-manual-001-scrap-qi
+      startup_order: 1
+  - wave_id: W005
+    sequence_no: 5
+    planned_steps:
+    - planned_step_id: larceny3-manual-001-release-qi
+      startup_order: 1
+validation_report:
+  errors: []
+  warnings: []

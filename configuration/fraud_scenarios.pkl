@@ -5,25 +5,147 @@ vendorFlipflopConfig: objects.VendorFlipflopConfig = new objects.VendorFlipflopC
   fraudulentBankAccount {
     bankKey = "ABNAUS33XXX"
     accountNumber = "87654321"
-    accountOwner = "Jonas Schnepf"
+    accountOwner = "Silvia Cassano"
   }
   originalBankAccount {
     bankKey = "ABNAUS33XXX"
     accountNumber = "12345678"
-    accountOwner = "Mid-West Supply, Inc."
+    accountOwner = "Mid West Supply, Inc."
   }
+}
+
+vendorBankAccounts: Mapping<String, objects.BankAccountDetails> = new Mapping {
+  ["1003070"] = new objects.BankAccountDetails {
+    bankKey = "ABNAUS33XXX"
+    accountNumber = "12345678"
+    accountOwner = "Mid West Supply, Inc."
+  }
+  ["101800"] = new objects.BankAccountDetails {
+    bankKey = "011000390"
+    accountNumber = "681245903"
+    accountOwner = "Olympic Protective Gear, Inc."
+  }
+  ["102800"] = new objects.BankAccountDetails {
+    bankKey = "820800001"
+    accountNumber = "5108792641"
+    accountOwner = "Boomtown Tire & Wheel LTD"
+  }
+  ["103800"] = new objects.BankAccountDetails {
+    bankKey = "ABNAUS33XXX"
+    accountNumber = "36295174"
+    accountOwner = "Dallas Bike Basics, Co."
+  }
+  ["104800"] = new objects.BankAccountDetails {
+    bankKey = "011000390"
+    accountNumber = "805173629"
+    accountOwner = "Lightbulb Accessory Kits, Inc."
+  }
+  ["105800"] = new objects.BankAccountDetails {
+    bankKey = "820800001"
+    accountNumber = "6482309157"
+    accountOwner = "Space Bike Composites, Inc."
+  }
+  ["106800"] = new objects.BankAccountDetails {
+    bankKey = "ABNAUS33XXX"
+    accountNumber = "83016429"
+    accountOwner = "Night Rider Aluminum Products, Ltd."
+  }
+  ["107800"] = new objects.BankAccountDetails {
+    bankKey = "011000390"
+    accountNumber = "119704638"
+    accountOwner = "Spy Gear, Inc."
+  }
+  ["108800"] = new objects.BankAccountDetails {
+    bankKey = "820800001"
+    accountNumber = "4729083150"
+    accountOwner = "Rapids Nuts n Bolts LLC"
+  }
+  ["109800"] = new objects.BankAccountDetails {
+    bankKey = "ABNAUS33XXX"
+    accountNumber = "77420186"
+    accountOwner = "Green Blazers Seats Limited"
+  }
+  ["110800"] = new objects.BankAccountDetails {
+    bankKey = "011000390"
+    accountNumber = "246891735"
+    accountOwner = "Fun n the Sun Seats n Bars LLC"
+  }
+  ["112800"] = new objects.BankAccountDetails {
+    bankKey = "820800001"
+    accountNumber = "9307186420"
+    accountOwner = "Redwood Kits, Ltd."
+  }
+}
+
+computedValues: Mapping<String, objects.ComputedValue> = new Mapping {
+  ["qualityInspectionQuantity"] = new objects.ComputedValue {
+    source = "case"
+    field = "quantity"
+    operator = "multiply"
+    factor = 0.2
+    precision = 3
+  }
+  ["unrestrictedQuantity"] = new objects.ComputedValue {
+    source = "case"
+    field = "quantity"
+    operator = "multiply"
+    factor = 0.8
+    precision = 3
+  }
+}
+
+bankAccountRules: objects.BankAccountRules = new objects.BankAccountRules {
+  allowedBankKeys {
+    "011000390"
+    "820800001"
+    "ABNAUS33XXX"
+  }
+  accountNumberMinLength = 8
+  accountNumberMaxLength = 10
+  requireNumericAccountNumber = true
 }
 
 fraudScenarios: Listing<objects.FraudScenario> = new Listing {
   new objects.FraudScenario {
     id = "VENDOR_FLIPFLOP"
     enabled = true
-    targetShare = 0.1
-    vendorFlipflop = vendorFlipflopConfig
+    targetShare = 0.02
+    caseOutcome = "fraud"
+    caseSelection {
+      fixedVendorId = vendorFlipflopConfig.vendorId
+    }
   }
   new objects.FraudScenario {
-    id = "LARCENY"
-    enabled = false
-    targetShare = 0.0
+    id = "LARCENY3"
+    enabled = true
+    targetShare = 0.04
+    caseOutcome = "fraud"
+  }
+  new objects.FraudScenario {
+    id = "LARCENY5"
+    enabled = true
+    targetShare = 0.04
+    caseOutcome = "fraud"
+  }
+}
+
+routineScenarios: Listing<objects.RoutineScenario> = new Listing {
+  new objects.RoutineScenario {
+    id = "ROUTINE_ADDRESS_CHANGE"
+    enabled = true
+    targetShare = 0.06
+    caseOutcome = "non_fraud"
+  }
+  new objects.RoutineScenario {
+    id = "ROUTINE_QUALITY_INSPECTION"
+    enabled = true
+    targetShare = 0.06
+    caseOutcome = "non_fraud"
+  }
+  new objects.RoutineScenario {
+    id = "ROUTINE_VENDOR_BANK_CHANGE"
+    enabled = true
+    targetShare = 0.04
+    caseOutcome = "non_fraud"
   }
 }

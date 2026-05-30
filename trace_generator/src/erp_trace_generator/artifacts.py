@@ -223,41 +223,27 @@ def _case_record(case: CasePlan) -> dict[str, Any]:
 def _planned_date_input_overrides(planned_steps: list[PlannedStep]) -> list[dict[str, str]]:
     overrides: list[dict[str, str]] = []
     for node in planned_steps:
-        if node.step_type == "post_goods_receipt":
-            for field in ("document_date", "posting_date"):
+        for override in node.runtime_date_overrides:
+            for field in override.fields:
                 planned_value = node.planned_date_inputs.get(field)
                 if planned_value is None:
-                    continue
+                    raise ValueError(
+                        f"Planned step '{node.planned_step_id}' field '{field}' in node.runtime_date_overrides "
+                        "has no matching value in node.planned_date_inputs; planned_value=None"
+                    )
                 overrides.append(
                     {
                         "planned_step_id": node.planned_step_id,
                         "case_id": node.case_id,
                         "step_type": node.step_type,
-                        "object_type": "material_document",
+                        "object_type": override.object_type,
                         "field": field,
                         "planned_value": planned_value,
-                        "runtime_value_policy": "sap_current_date",
-                        "source": "planned_date_inputs",
-                        "reason": "sap_runtime_forces_current_date",
+                        "runtime_value_policy": override.runtime_value_policy,
+                        "source": override.source,
+                        "reason": override.reason,
                     }
                 )
-        if node.step_type == "enter_incoming_invoice":
-            planned_value = node.planned_date_inputs.get("invoice_date")
-            if planned_value is None:
-                continue
-            overrides.append(
-                {
-                    "planned_step_id": node.planned_step_id,
-                    "case_id": node.case_id,
-                    "step_type": node.step_type,
-                    "object_type": "supplier_invoice",
-                    "field": "invoice_date",
-                    "planned_value": planned_value,
-                    "runtime_value_policy": "executor_current_date",
-                    "source": "planned_date_inputs",
-                    "reason": "executor_uses_current_date_for_sap_runtime",
-                }
-            )
     return overrides
 
 
