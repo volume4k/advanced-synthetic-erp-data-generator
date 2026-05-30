@@ -7,6 +7,7 @@ from erp_sap_export.specs import (
     SelectionRange,
     cdhdr_selection,
     cdpos_requests_from_cdhdr,
+    p2p_batched_requests_from_registry,
     p2p_requests_from_registry,
 )
 
@@ -121,4 +122,43 @@ def test_p2p_requests_are_built_from_object_registry_keys() -> None:
         ("RSEG", [SelectionRange("BELNR", "5105600133"), SelectionRange("GJAHR", "2026")]),
         ("BKPF", [SelectionRange("BELNR", "1500000028"), SelectionRange("BUKRS", "US00")]),
         ("BSEG", [SelectionRange("BELNR", "1500000028"), SelectionRange("BUKRS", "US00")]),
+    ]
+
+
+def test_p2p_batched_requests_use_object_key_ranges() -> None:
+    registry_entries = [
+        {"object_type": "purchase_requisition", "keys": {"pr_number": "10000091"}},
+        {"object_type": "purchase_requisition", "keys": {"pr_number": "10000094"}},
+        {"object_type": "purchase_order", "keys": {"po_number": "4500000057"}},
+        {"object_type": "purchase_order", "keys": {"po_number": "4500000060"}},
+        {"object_type": "supplier_invoice", "keys": {"invoice_number": "5105600133", "fiscal_year": "2026"}},
+        {"object_type": "supplier_invoice", "keys": {"invoice_number": "5105600140", "fiscal_year": "2026"}},
+    ]
+
+    requests = p2p_batched_requests_from_registry(registry_entries, {}, default_company_code="US00")
+
+    assert [(item.table, item.selection) for item in requests] == [
+        ("EBAN", [SelectionRange("BANFN", "10000091", "10000094")]),
+        ("EKKO", [SelectionRange("EBELN", "4500000057", "4500000060")]),
+        ("EKPO", [SelectionRange("EBELN", "4500000057", "4500000060")]),
+        ("RBKP", [SelectionRange("BELNR", "5105600133", "5105600140"), SelectionRange("GJAHR", "2026")]),
+        ("RSEG", [SelectionRange("BELNR", "5105600133", "5105600140"), SelectionRange("GJAHR", "2026")]),
+    ]
+
+
+def test_p2p_batched_requests_split_wide_numeric_prefix_gaps() -> None:
+    registry_entries = [
+        {"object_type": "material_document", "keys": {"material_document_number": "5000000133"}},
+        {"object_type": "material_document", "keys": {"material_document_number": "5000000180"}},
+        {"object_type": "scrap_material_document", "keys": {"material_document_number": "4900038018"}},
+        {"object_type": "stock_release_material_document", "keys": {"material_document_number": "4900038020"}},
+    ]
+
+    requests = p2p_batched_requests_from_registry(registry_entries, {}, default_company_code="US00")
+
+    assert [(item.table, item.selection) for item in requests] == [
+        ("MKPF", [SelectionRange("MBLNR", "5000000133", "5000000180")]),
+        ("MSEG", [SelectionRange("MBLNR", "5000000133", "5000000180")]),
+        ("MKPF", [SelectionRange("MBLNR", "4900038018", "4900038020")]),
+        ("MSEG", [SelectionRange("MBLNR", "4900038018", "4900038020")]),
     ]

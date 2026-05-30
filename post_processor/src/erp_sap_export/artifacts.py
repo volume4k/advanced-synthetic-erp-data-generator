@@ -234,7 +234,14 @@ def _company_code_for_step(step: dict[str, Any] | None, default_company_code: st
 
 
 def _key(**values: Any) -> tuple[tuple[str, str], ...]:
-    return tuple((key, str(value)) for key, value in values.items() if value not in {None, ""})
+    return tuple((key, _normalize_key_value(value)) for key, value in values.items() if value not in {None, ""})
+
+
+def _normalize_key_value(value: Any) -> str:
+    text = str(value)
+    if text.isdigit():
+        return str(int(text))
+    return text
 
 
 def _stringify_key(key: tuple[tuple[str, str], ...]) -> str:

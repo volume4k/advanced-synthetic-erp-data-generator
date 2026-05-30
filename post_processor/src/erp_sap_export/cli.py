@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import time
 from collections import defaultdict
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from erp_sap_export.artifacts import (
     build_linkage_index,
@@ -21,10 +22,20 @@ from erp_sap_export.artifacts import (
     trace_steps_by_id,
 )
 from erp_sap_export.se16 import Se16Client, WebGuiCredentials, webgui_url_from_login_url
-from erp_sap_export.specs import SUPPORTED_TABLES, TableRequest, cdhdr_selection, cdpos_requests_from_cdhdr, p2p_requests_from_registry
+from erp_sap_export.specs import (
+    SUPPORTED_TABLES,
+    SelectionRange,
+    TableRequest,
+    cdhdr_selection,
+    cdpos_requests_from_cdhdr,
+    p2p_batched_requests_from_registry,
+    p2p_requests_from_registry,
+)
 
 
 DEFAULT_TABLES = SUPPORTED_TABLES
+POST_PROCESSOR_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_DOWNLOADS_DIR = POST_PROCESSOR_ROOT / "downloads"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -47,8 +58,10 @@ def _probe(args: argparse.Namespace) -> int:
 
 
 def _download(args: argparse.Namespace) -> int:
+    started_at = time.monotonic()
+    deadline = _deadline(started_at, args.max_runtime_min)
     trace = load_yaml(args.execution_trace)
-    _manifest = load_yaml(args.post_processing_manifest)
+    manifest = load_yaml(args.post_processing_manifest)
     env = load_env_file(args.env_file)
     username, password, login_url = first_actor_session_credentials(trace, env)
     credentials = WebGuiCredentials(
@@ -59,68 +72,212 @@ def _download(args: argparse.Namespace) -> int:
     trace_steps = trace_steps_by_id(trace)
     registry_entries = load_jsonl(args.object_registry)
     window = derive_execution_window(args.execution_log, padding_minutes=args.window_padding_min)
+    run_id = _run_id_from_manifest(manifest)
 
-    out_dir = Path(args.out_dir)
-    raw_dir = out_dir / "raw"
-    raw_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = _resolve_download_dir(args.out_dir, manifest)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    _log(f"run={run_id} output_dir={out_dir}")
+    _log(f"window={window.start.isoformat()}..{window.end.isoformat()} user_range={args.user_from}..{args.user_to}")
+    if deadline is not None:
+        _log(f"runtime_guard={args.max_runtime_min:g}min")
 
     client = Se16Client(credentials, headed=args.headed)
     report: dict[str, Any] = {
-        "run_id": trace.get("run_id"),
+        "run_id": run_id,
+        "download_dir": str(out_dir),
         "execution_window": {"start": window.start.isoformat(), "end": window.end.isoformat()},
         "user_range": {"from": args.user_from, "to": args.user_to},
         "tables": {},
         "warnings": [],
     }
+    trace_run_id = trace.get("run_id")
+    if trace_run_id and str(trace_run_id) != run_id:
+        report["warnings"].append(f"Trace run_id {trace_run_id} differs from manifest run_id {run_id}")
 
     rows_by_table: dict[str, list[dict[str, str]]] = defaultdict(list)
+    timed_out = False
     cdhdr_request = TableRequest(
         "CDHDR",
         cdhdr_selection(start=window.start, end=window.end, user_from=args.user_from, user_to=args.user_to),
         max_rows=args.max_rows_per_request,
     )
+    _log(f"CDHDR start filter={_selection_summary(cdhdr_request)}")
     cdhdr_rows = _post_filter_cdhdr(
         client.extract(cdhdr_request),
         user_from=args.user_from,
         user_to=args.user_to,
     )
+    _log(f"CDHDR done rows={len(cdhdr_rows)} elapsed={_elapsed(started_at)}")
     rows_by_table["CDHDR"].extend(cdhdr_rows)
     report["tables"]["CDHDR"] = _request_report(cdhdr_request, len(cdhdr_rows))
 
     cdpos_rows: list[dict[str, str]] = []
-    for request in cdpos_requests_from_cdhdr(cdhdr_rows):
-        request = TableRequest(request.table, request.selection, max_rows=args.max_rows_per_request)
-        cdpos_rows.extend(_post_filter_cdpos(client.extract(request), cdhdr_rows))
+    exact_cdpos_requests = cdpos_requests_from_cdhdr(cdhdr_rows)
+    cdpos_requests = [
+        TableRequest(request.table, request.selection, max_rows=args.max_rows_per_request)
+        for request in _batched_cdpos_requests_from_cdhdr(cdhdr_rows)
+    ]
+    _log(f"CDPOS exact_keys={len(exact_cdpos_requests)} batched_requests={len(cdpos_requests)}")
+    cdpos_results = _extract_requests(client, cdpos_requests, "CDPOS", started_at=started_at, deadline=deadline)
+    if len(cdpos_results) < len(cdpos_requests):
+        timed_out = True
+        warning = f"Runtime guard stopped CDPOS after {len(cdpos_results)}/{len(cdpos_requests)} requests"
+        report["warnings"].append(warning)
+        _log(warning)
+    for rows in cdpos_results:
+        cdpos_rows.extend(_post_filter_cdpos(rows, cdhdr_rows))
     rows_by_table["CDPOS"].extend(_dedupe_rows(cdpos_rows))
-    report["tables"]["CDPOS"] = {"source": "CDHDR composite keys", "rows": len(rows_by_table["CDPOS"])}
+    report["tables"]["CDPOS"] = {
+        "source": "CDHDR composite keys",
+        "exact_keys": len(exact_cdpos_requests),
+        "requests": len(cdpos_results),
+        "planned_requests": len(cdpos_requests),
+        "rows": len(rows_by_table["CDPOS"]),
+    }
 
-    p2p_requests = p2p_requests_from_registry(
+    index = build_linkage_index(registry_entries, trace_steps, default_company_code=args.default_company_code)
+    exact_p2p_requests = p2p_requests_from_registry(
         registry_entries,
         trace_steps,
         default_company_code=args.default_company_code,
     )
-    for request in p2p_requests:
-        request = TableRequest(request.table, request.selection, max_rows=args.max_rows_per_request)
+    p2p_requests = [
+        TableRequest(request.table, request.selection, max_rows=args.max_rows_per_request)
+        for request in p2p_batched_requests_from_registry(
+            registry_entries,
+            trace_steps,
+            default_company_code=args.default_company_code,
+        )
+    ]
+    _log(
+        "P2P "
+        f"registry_entries={len(registry_entries)} exact_keys={len(exact_p2p_requests)} "
+        f"batched_requests={len(p2p_requests)}"
+    )
+
+    for request_index, request in enumerate(p2p_requests, start=1):
+        if _deadline_reached(deadline):
+            timed_out = True
+            warning = f"Runtime guard stopped P2P after {request_index - 1}/{len(p2p_requests)} requests"
+            report["warnings"].append(warning)
+            _log(warning)
+            break
+        request_started = time.monotonic()
+        _log(f"P2P [{request_index}/{len(p2p_requests)}] {request.table} start filter={_selection_summary(request)}")
         try:
-            rows_by_table[request.table].extend(client.extract(request))
+            candidate_rows = client.extract(request)
+            rows = _post_filter_linked_rows(request.table, candidate_rows, index)
+            rows_by_table[request.table].extend(rows)
+            _log(
+                f"P2P [{request_index}/{len(p2p_requests)}] {request.table} done "
+                f"candidate_rows={len(candidate_rows)} linked_rows={len(rows)} "
+                f"request_elapsed={_elapsed(request_started)} total_elapsed={_elapsed(started_at)}"
+            )
         except RuntimeError as exc:
             report["warnings"].append(f"{request.table}: {exc}")
+            _log(f"P2P [{request_index}/{len(p2p_requests)}] {request.table} warning={exc}")
         report["tables"].setdefault(request.table, {"requests": 0, "rows": 0})
         report["tables"][request.table]["requests"] += 1
+        report["tables"][request.table]["selection"] = [asdict(item) for item in request.selection]
 
     for table in DEFAULT_TABLES:
         rows_by_table[table] = _dedupe_rows(rows_by_table.get(table, []))
         report["tables"].setdefault(table, {"requests": 0, "rows": 0})
         report["tables"][table]["rows"] = len(rows_by_table[table])
-        _write_csv(raw_dir / f"{table}.csv", rows_by_table[table])
+    _write_table_csvs(out_dir, rows_by_table, tables=DEFAULT_TABLES)
+    _log(f"wrote table CSVs count={len(DEFAULT_TABLES)} dir={out_dir}")
 
-    index = build_linkage_index(registry_entries, trace_steps, default_company_code=args.default_company_code)
     linkage_rows: list[dict[str, str]] = []
     for table, rows in rows_by_table.items():
         linkage_rows.extend(linkage_rows_for_table(table, rows, index))
     _write_csv(out_dir / "row-linkage.csv", linkage_rows)
     (out_dir / "export-report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return 0
+    _log(f"wrote row-linkage.csv rows={len(linkage_rows)}")
+    _log(f"wrote export-report.json elapsed={_elapsed(started_at)}")
+    return 124 if timed_out else 0
+
+
+def _run_id_from_manifest(manifest: dict[str, Any]) -> str:
+    run_id = str(manifest.get("run_id") or "").strip()
+    if not run_id:
+        raise ValueError("Post-processing manifest is missing required run_id")
+    return run_id
+
+
+def _resolve_download_dir(
+    out_dir: Path | None,
+    manifest: dict[str, Any],
+    *,
+    downloads_root: Path = DEFAULT_DOWNLOADS_DIR,
+) -> Path:
+    if out_dir is not None:
+        return Path(out_dir)
+    return downloads_root / _run_id_from_manifest(manifest)
+
+
+def _write_table_csvs(
+    out_dir: Path,
+    rows_by_table: dict[str, list[dict[str, str]]],
+    *,
+    tables: Sequence[str] = DEFAULT_TABLES,
+) -> None:
+    for table in tables:
+        _write_csv(out_dir / f"{table}.csv", rows_by_table.get(table, []))
+
+
+def _extract_requests(
+    client: Se16Client,
+    requests: Sequence[TableRequest],
+    phase: str,
+    *,
+    started_at: float,
+    deadline: float | None,
+) -> list[list[dict[str, str]]]:
+    request_started: dict[int, float] = {}
+
+    def on_start(index: int, request: TableRequest) -> None:
+        request_started[index] = time.monotonic()
+        _log(f"{phase} [{index}/{len(requests)}] {request.table} start filter={_selection_summary(request)}")
+
+    def on_done(index: int, request: TableRequest, rows: list[dict[str, str]]) -> None:
+        _log(
+            f"{phase} [{index}/{len(requests)}] {request.table} done "
+            f"rows={len(rows)} request_elapsed={_elapsed(request_started[index])} total_elapsed={_elapsed(started_at)}"
+        )
+
+    return client.extract_many(
+        requests,
+        on_start=on_start,
+        on_done=on_done,
+        should_continue=lambda: not _deadline_reached(deadline),
+    )
+
+
+def _batched_cdpos_requests_from_cdhdr(cdhdr_rows: list[dict[str, str]]) -> list[TableRequest]:
+    changes_by_class: dict[str, set[str]] = defaultdict(set)
+    for row in cdhdr_rows:
+        object_class = str(row.get("OBJECTCLAS") or "")
+        change_number = str(row.get("CHANGENR") or "")
+        if object_class and change_number:
+            changes_by_class[object_class].add(change_number)
+    requests: list[TableRequest] = []
+    for object_class in sorted(changes_by_class):
+        change_numbers = sorted(changes_by_class[object_class])
+        high = change_numbers[-1] if change_numbers[0] != change_numbers[-1] else None
+        requests.append(
+            TableRequest(
+                "CDPOS",
+                [
+                    SelectionRange("OBJECTCLAS", object_class),
+                    SelectionRange("CHANGENR", change_numbers[0], high),
+                ],
+            )
+        )
+    return requests
+
+
+def _post_filter_linked_rows(table: str, rows: list[dict[str, str]], index) -> list[dict[str, str]]:
+    return [row for row in rows if index.find(table, row) is not None]
 
 
 def _credentials_from_args(args: argparse.Namespace) -> WebGuiCredentials:
@@ -178,6 +335,35 @@ def _request_report(request: TableRequest, row_count: int) -> dict[str, Any]:
     return {"selection": [asdict(item) for item in request.selection], "rows": row_count}
 
 
+def _deadline(started_at: float, max_runtime_min: float) -> float | None:
+    if max_runtime_min <= 0:
+        return None
+    return started_at + (max_runtime_min * 60)
+
+
+def _deadline_reached(deadline: float | None) -> bool:
+    return deadline is not None and time.monotonic() >= deadline
+
+
+def _selection_summary(request: TableRequest) -> str:
+    return ",".join(
+        f"{item.field}={item.low}" + (f"..{item.high}" if item.high is not None else "")
+        for item in request.selection
+    )
+
+
+def _elapsed(started_at: float) -> str:
+    elapsed = time.monotonic() - started_at
+    if elapsed < 60:
+        return f"{elapsed:.1f}s"
+    minutes, seconds = divmod(elapsed, 60)
+    return f"{int(minutes)}m{seconds:04.1f}s"
+
+
+def _log(message: str) -> None:
+    print(f"[sap-export] {message}", flush=True)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="erp-sap-export")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -194,11 +380,12 @@ def _build_parser() -> argparse.ArgumentParser:
     download.add_argument("--execution-log", type=Path, required=True)
     download.add_argument("--object-registry", type=Path, required=True)
     download.add_argument("--env-file", type=Path, default=Path("configuration/.env"))
-    download.add_argument("--out-dir", type=Path, required=True)
+    download.add_argument("--out-dir", type=Path)
     download.add_argument("--user-from", default="LEARN-800")
     download.add_argument("--user-to", default="LEARN-899")
     download.add_argument("--window-padding-min", type=int, default=30)
     download.add_argument("--max-rows-per-request", type=int, default=5_000)
+    download.add_argument("--max-runtime-min", type=float, default=60)
     download.add_argument("--default-company-code", default="US00")
     download.add_argument("--headed", action="store_true")
     return parser

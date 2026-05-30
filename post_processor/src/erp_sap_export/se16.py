@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Sequence
 from urllib.parse import parse_qs, quote, urlparse
 
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
@@ -90,19 +89,44 @@ class Se16Client:
         return result
 
     def extract(self, request: TableRequest) -> list[dict[str, str]]:
+        return self.extract_many([request])[0]
+
+    def extract_many(
+        self,
+        requests: Sequence[TableRequest],
+        *,
+        on_start: Callable[[int, TableRequest], None] | None = None,
+        on_done: Callable[[int, TableRequest, list[dict[str, str]]], None] | None = None,
+        should_continue: Callable[[], bool] | None = None,
+    ) -> list[list[dict[str, str]]]:
+        if not requests:
+            return []
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=not self.headed)
             context = browser.new_context(viewport={"width": self.viewport_width, "height": self.viewport_height})
             page = context.new_page()
             try:
-                self._open_table_selection(page, request.table)
-                self._apply_selection(page, request.selection)
-                self._set_standard_limits(page, request.max_rows)
-                self._execute(page)
-                self._wait_for_result(page, request.table)
-                return parse_abap_list(_extract_abap_items(page))
+                results: list[list[dict[str, str]]] = []
+                for index, request in enumerate(requests, start=1):
+                    if should_continue is not None and not should_continue():
+                        break
+                    if on_start is not None:
+                        on_start(index, request)
+                    rows = self._extract_on_page(page, request)
+                    results.append(rows)
+                    if on_done is not None:
+                        on_done(index, request, rows)
+                return results
             finally:
                 browser.close()
+
+    def _extract_on_page(self, page: Page, request: TableRequest) -> list[dict[str, str]]:
+        self._open_table_selection(page, request.table)
+        self._apply_selection(page, request.selection)
+        self._set_standard_limits(page, request.max_rows)
+        self._execute(page)
+        self._wait_for_result(page, request.table)
+        return parse_abap_list(_extract_abap_items(page))
 
     def _probe_table(self, page: Page, table: str) -> dict[str, Any]:
         self._open_table_selection(page, table)

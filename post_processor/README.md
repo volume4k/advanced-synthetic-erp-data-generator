@@ -29,23 +29,26 @@ uv run --project post_processor erp-sap-export download \
   --execution-log trace_generator/build/RUN.execution-log.jsonl \
   --object-registry trace_generator/build/RUN.object-registry.jsonl \
   --env-file configuration/.env \
-  --out-dir post_processor/build/RUN \
   --user-from LEARN-800 \
   --user-to LEARN-899 \
-  --window-padding-min 30
+  --window-padding-min 30 \
+  --max-runtime-min 60
 ```
+
+By default, downloads are written to `post_processor/downloads/<run_id>/`, where `run_id` comes from the Post-Processing Manifest. Use `--out-dir PATH` to override that destination while keeping the same file layout.
+The command logs each SAP phase, request count, filter summary, row count, and elapsed time to stdout. `--max-runtime-min` stops scheduling new WebGUI requests after the budget is reached, writes any rows collected so far, records a warning in `export-report.json`, and exits with code `124`; use `0` to disable the guard.
 
 Outputs:
 
-- `raw/<TABLE>.csv`: SAP rows parsed from WebGUI `SE16` list output.
+- `<TABLE>.csv`: SAP rows parsed from WebGUI `SE16` list output, written directly under the run download folder.
 - `export-report.json`: run id, real extraction window, user range, table counts, warnings.
 - `row-linkage.csv`: SAP row keys linked to process cases, planned steps, actors, technical SAP users, and SAP transaction code when available.
 
 Supported tables:
 
 - `CDHDR`, filtered by `USERNAME`, `UDATE`, and same-day `UTIME`.
-- `CDPOS`, derived from exact `CDHDR` `OBJECTCLAS` / `OBJECTID` / `CHANGENR` keys.
-- `EBAN`, `EKKO`, `EKPO`, `MKPF`, `MSEG`, `RBKP`, `RSEG`, `BKPF`, `BSEG`, derived from Object Registry keys.
+- `CDPOS`, derived from `CDHDR` change numbers through batched `OBJECTCLAS` / `CHANGENR` ranges and exact local composite-key post-filtering.
+- `EBAN`, `EKKO`, `EKPO`, `MKPF`, `MSEG`, `RBKP`, `RSEG`, `BKPF`, `BSEG`, derived from Object Registry keys through batched table ranges and exact local object-key post-filtering.
 
 The extraction window comes from real `Execution Log` timestamps plus padding. Planned Synthetic Time remains chronology truth for the final Synthetic Dataset, but raw SAP extraction must use physical SAP write time.
 

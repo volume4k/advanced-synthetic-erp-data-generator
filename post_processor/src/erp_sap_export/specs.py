@@ -98,6 +98,50 @@ def p2p_requests_from_registry(
     return requests
 
 
+def p2p_batched_requests_from_registry(
+    registry_entries: list[dict[str, Any]],
+    trace_steps: dict[str, dict[str, Any]],
+    *,
+    default_company_code: str | None = None,
+) -> list[TableRequest]:
+    exact_requests = p2p_requests_from_registry(
+        registry_entries,
+        trace_steps,
+        default_company_code=default_company_code,
+    )
+    by_bucket: dict[tuple[str, tuple[str, ...], str], list[TableRequest]] = {}
+    for request in exact_requests:
+        key = _batch_key(request)
+        by_bucket.setdefault(key, []).append(request)
+    return [_range_request(table, requests) for (table, _fields, _bucket), requests in by_bucket.items()]
+
+
+def _batch_key(request: TableRequest) -> tuple[str, tuple[str, ...], str]:
+    fields = tuple(item.field for item in request.selection)
+    primary_value = request.selection[0].low if request.selection else ""
+    bucket = primary_value[:2] if primary_value.isdigit() and len(primary_value) > 2 else primary_value
+    return (request.table, fields, bucket)
+
+
+def _range_request(table: str, requests: list[TableRequest]) -> TableRequest:
+    fields = [item.field for item in requests[0].selection]
+    selection: list[SelectionRange] = []
+    for field in fields:
+        values = sorted(
+            {
+                item.low
+                for request in requests
+                for item in request.selection
+                if item.field == field and item.low
+            }
+        )
+        if not values:
+            continue
+        high = values[-1] if values[0] != values[-1] else None
+        selection.append(SelectionRange(field, values[0], high))
+    return TableRequest(table, selection)
+
+
 def _requests_for_registry_entry(
     entry: dict[str, Any],
     trace_steps: dict[str, dict[str, Any]],
