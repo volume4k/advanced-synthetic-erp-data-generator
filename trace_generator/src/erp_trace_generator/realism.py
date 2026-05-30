@@ -1224,7 +1224,7 @@ def _default_material_demand_profiles(config: GenerationConfig) -> dict[str, Mat
             typical_order_quantity=max(item.quantity_min, min(item.quantity_max, round((item.quantity_min + item.quantity_max) / 2))),
             quantity_variation_pct=config.run_settings.realism.quantity_variation_pct_min,
             bulk_order_share=0.0,
-            order_multiple=1,
+            order_multiple=item.order_multiple,
         )
         for item in _active_master_data(config)
     }

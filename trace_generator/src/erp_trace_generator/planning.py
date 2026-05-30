@@ -305,7 +305,15 @@ def _scenario_types_for_cases(config: GenerationConfig, rng: Random, releases: l
         return scenario_types
 
     available_indexes = list(range(case_count))
-    for scenario in enabled:
+    scenario_eligibility = [
+        (
+            len(_eligible_indexes_for_scenario(config, scenario.case_selection.fixed_vendor_id, available_indexes, releases)),
+            index,
+            scenario,
+        )
+        for index, scenario in enumerate(enabled)
+    ]
+    for _, _, scenario in sorted(scenario_eligibility, key=lambda item: (item[0], item[1])):
         scenario_count = round(case_count * scenario.target_share)
         if scenario.target_share > 0 and scenario_count == 0:
             scenario_count = 1

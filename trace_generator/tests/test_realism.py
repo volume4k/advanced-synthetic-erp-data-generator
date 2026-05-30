@@ -517,6 +517,16 @@ def test_material_order_multiple_config_overrides_llm_profile(tmp_path: Path) ->
     assert profiles["MA025"].order_multiple == 1
 
 
+def test_default_realism_profiles_use_configured_material_order_multiple(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["masterData"][0]["orderMultiple"] = 5
+    config = _load_config(tmp_path, payload)
+
+    criteria = realism_module.default_realism_criteria(config)
+
+    assert criteria.material_demand_profiles["MA025"].order_multiple == 5
+
+
 def test_horizon_demand_prompt_lists_only_shared_lead_time_days(tmp_path: Path) -> None:
     payload = _base_config_with_second_material()
     payload["masterData"][0]["deliveryLeadTimeMinDays"] = 5

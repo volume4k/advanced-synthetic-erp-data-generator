@@ -10,14 +10,14 @@ import pytest
 import yaml
 
 from erp_trace_generator.artifact_models import ExecutionTraceArtifact, PostProcessingManifestArtifact
-from erp_trace_generator.artifacts import _human_delay_profile, _post_processing_manifest, _session_records
+from erp_trace_generator.artifacts import _human_delay_profile, _planned_date_input_overrides, _post_processing_manifest, _session_records
 from erp_trace_generator.bindings import planned_date_inputs_for_step, resolve_step_inputs
 from erp_trace_generator.cli import main
 from erp_trace_generator.config import load_generation_config
 from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.fraud import FRAUD_TRANSFORMERS, register_fraud_transformer
 from erp_trace_generator.generator import generate_trace_artifacts
-from erp_trace_generator.models import CasePlan, FraudScenario, InputBinding, MasterDataEntry, MinuteRange, PlannedStep, ProcessStep
+from erp_trace_generator.models import CasePlan, FraudScenario, InputBinding, MasterDataEntry, MinuteRange, PlannedStep, ProcessStep, RuntimeDateOverride
 from erp_trace_generator.planning import plan_cases, plan_steps, plan_waves
 from erp_trace_generator.realism import ActorRealismCriteria, CompiledRealismCriteria, DemandRelease, default_demand_releases
 from erp_trace_generator.schema_export import schema_output_paths
@@ -1313,6 +1313,66 @@ def test_vendor_flipflop_samples_only_compatible_material_releases(tmp_path: Pat
     assert {case.vendor_id for case in normal_cases} == {"V17121"}
 
 
+def test_constrained_scenarios_allocate_before_broad_scenarios(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["caseCount"] = 3
+    payload["masterData"] = [
+        {
+            **payload["masterData"][0],
+            "materialId": "MA025",
+            "validVendors": ["V17121"],
+        },
+        {
+            **payload["masterData"][0],
+            "materialId": "MB001",
+            "validVendors": ["FIXED_VENDOR"],
+        },
+    ]
+    payload["fraudScenarios"] = [
+        _scenario("BROAD_SCENARIO", True, 2 / 3, "fraud"),
+    ]
+    payload["routineScenarios"] = [
+        _scenario(
+            "CUSTOM_FIXED_VENDOR_SCENARIO",
+            True,
+            1 / 3,
+            "non_fraud",
+            fixed_vendor_id="FIXED_VENDOR",
+        )
+    ]
+    payload["processes"].extend(
+        [
+            {
+                **payload["processes"][0],
+                "scenarioType": "BROAD_SCENARIO",
+            },
+            {
+                **payload["processes"][0],
+                "scenarioType": "CUSTOM_FIXED_VENDOR_SCENARIO",
+            },
+        ]
+    )
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+
+    cases = plan_cases(
+        config,
+        Random(17),
+        demand_releases=[
+            DemandRelease("C001", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025"),
+            DemandRelease("C002", datetime(2026, 5, 18, 8, 30, tzinfo=tz), "MB001"),
+            DemandRelease("C003", datetime(2026, 5, 18, 9, 0, tzinfo=tz), "MA025"),
+        ],
+    )
+
+    constrained_case = next(case for case in cases if case.case_scenario_type == "CUSTOM_FIXED_VENDOR_SCENARIO")
+    assert constrained_case.case_id == "C002"
+    assert constrained_case.vendor_id == "FIXED_VENDOR"
+    assert sum(1 for case in cases if case.case_scenario_type == "BROAD_SCENARIO") == 2
+
+
 def test_config_loader_rejects_enabled_scenario_shares_above_one(tmp_path: Path) -> None:
     payload = _scenario_mix_config_payload()
     payload["fraudScenarios"][0]["targetShare"] = 0.9
@@ -1472,7 +1532,7 @@ def test_runtime_date_overrides_are_read_from_step_config(tmp_path: Path) -> Non
         {
             "objectType": "configured_material_document",
             "fields": ["posting_date"],
-            "runtimeValuePolicy": "configured_current_date",
+            "runtimeValuePolicy": "sap_current_date",
             "source": "planned_date_inputs",
             "reason": "configured_reason",
         }
@@ -1517,10 +1577,78 @@ def test_runtime_date_overrides_are_read_from_step_config(tmp_path: Path) -> Non
             "post_goods_receipt",
             "configured_material_document",
             "posting_date",
-            "configured_current_date",
+            "sap_current_date",
             "configured_reason",
         )
     }
+
+
+def test_config_loader_rejects_invalid_runtime_date_override_policy(tmp_path: Path) -> None:
+    payload = _base_config()
+    goods_receipt = next(step for step in payload["processes"][0]["steps"] if step["stepType"] == "post_goods_receipt")
+    goods_receipt["runtimeDateOverrides"] = [
+        {
+            "objectType": "material_document",
+            "fields": ["posting_date"],
+            "runtimeValuePolicy": "configured_current_date",
+            "source": "planned_date_inputs",
+            "reason": "configured_reason",
+        }
+    ]
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="RuntimeDateOverride.*runtimeValuePolicy.*configured_current_date"):
+        load_generation_config(config_path)
+
+
+def test_config_loader_rejects_invalid_runtime_date_override_source(tmp_path: Path) -> None:
+    payload = _base_config()
+    goods_receipt = next(step for step in payload["processes"][0]["steps"] if step["stepType"] == "post_goods_receipt")
+    goods_receipt["runtimeDateOverrides"] = [
+        {
+            "objectType": "material_document",
+            "fields": ["posting_date"],
+            "runtimeValuePolicy": "sap_current_date",
+            "source": "case",
+            "reason": "configured_reason",
+        }
+    ]
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="RuntimeDateOverride.*source.*case"):
+        load_generation_config(config_path)
+
+
+def test_runtime_date_override_requires_configured_planned_date_input() -> None:
+    planned_step = PlannedStep(
+        planned_step_id="C001_A3",
+        case_id="C001",
+        step_id="A3",
+        step_type="post_goods_receipt",
+        tool_name="fiori.create_goods_receipt",
+        synthetic_actor_id="warehouse_01",
+        technical_sap_user_id="GBGEN_P02",
+        actor_session_id="warehouse_01-session",
+        inputs={},
+        required_sap_object_keys=[],
+        planned_date_inputs={},
+        target_start=datetime(2026, 5, 18, 8, 0),
+        target_end=datetime(2026, 5, 18, 8, 5),
+        runtime_date_overrides=(
+            RuntimeDateOverride(
+                object_type="material_document",
+                fields=("posting_date",),
+                runtime_value_policy="sap_current_date",
+                source="planned_date_inputs",
+                reason="configured_reason",
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="C001_A3.*posting_date.*runtime_date_overrides.*planned_date_inputs"):
+        _planned_date_input_overrides([planned_step])
 
 
 def test_bank_account_rules_are_configurable(tmp_path: Path) -> None:

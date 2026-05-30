@@ -227,7 +227,10 @@ def _planned_date_input_overrides(planned_steps: list[PlannedStep]) -> list[dict
             for field in override.fields:
                 planned_value = node.planned_date_inputs.get(field)
                 if planned_value is None:
-                    continue
+                    raise ValueError(
+                        f"Planned step '{node.planned_step_id}' field '{field}' in node.runtime_date_overrides "
+                        "has no matching value in node.planned_date_inputs; planned_value=None"
+                    )
                 overrides.append(
                     {
                         "planned_step_id": node.planned_step_id,

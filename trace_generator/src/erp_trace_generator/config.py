@@ -273,11 +273,19 @@ def _runtime_date_override(item: dict[str, Any]) -> RuntimeDateOverride:
     fields = tuple(str(field) for field in item.get("fields", []))
     if not fields:
         raise TraceGenerationError("runtimeDateOverrides entries must declare at least one field")
+    runtime_value_policy = str(item["runtimeValuePolicy"])
+    if runtime_value_policy not in {"sap_current_date", "executor_current_date"}:
+        raise TraceGenerationError(
+            f"RuntimeDateOverride runtimeValuePolicy '{runtime_value_policy}' is unsupported"
+        )
+    source = str(item.get("source", "planned_date_inputs"))
+    if source != "planned_date_inputs":
+        raise TraceGenerationError(f"RuntimeDateOverride source '{source}' is unsupported")
     return RuntimeDateOverride(
         object_type=str(item["objectType"]),
         fields=fields,
-        runtime_value_policy=str(item["runtimeValuePolicy"]),
-        source=str(item.get("source", "planned_date_inputs")),
+        runtime_value_policy=runtime_value_policy,
+        source=source,
         reason=str(item["reason"]),
     )
 
