@@ -1,0 +1,81 @@
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+from erp_sap_export.artifacts import (
+    build_linkage_index,
+    derive_execution_window,
+    load_jsonl,
+)
+
+
+def test_derive_execution_window_uses_log_timestamps_with_padding(tmp_path: Path) -> None:
+    log_path = tmp_path / "run.execution-log.jsonl"
+    log_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"timestamp": "2026-05-21T08:00:00+00:00", "event_type": "run_started"}),
+                json.dumps({"timestamp": "2026-05-21T08:42:10+00:00", "event_type": "planned_step_succeeded"}),
+                json.dumps({"event_type": "missing_timestamp"}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    window = derive_execution_window(log_path, padding_minutes=30)
+
+    assert window.start == datetime(2026, 5, 21, 7, 30, tzinfo=UTC)
+    assert window.end == datetime(2026, 5, 21, 9, 12, 10, tzinfo=UTC)
+
+
+def test_load_jsonl_skips_blank_lines(tmp_path: Path) -> None:
+    path = tmp_path / "objects.jsonl"
+    path.write_text('{"case_id":"C001"}\n\n{"case_id":"C002"}\n', encoding="utf-8")
+
+    assert load_jsonl(path) == [{"case_id": "C001"}, {"case_id": "C002"}]
+
+
+def test_build_linkage_index_maps_registry_objects_to_sap_tables() -> None:
+    registry_entries = [
+        {
+            "case_id": "C001",
+            "planned_step_id": "C001_A2",
+            "tool": "fiori.create_purchase_order",
+            "synthetic_actor_id": "buyer_mi00",
+            "technical_sap_user_id": "TU_02",
+            "object_type": "purchase_order",
+            "keys": {"po_number": "4500000138"},
+        },
+        {
+            "case_id": "C001",
+            "planned_step_id": "C001_A4",
+            "tool": "fiori.create_supplier_invoice",
+            "synthetic_actor_id": "ap_mi00",
+            "technical_sap_user_id": "TU_04",
+            "object_type": "supplier_invoice",
+            "keys": {"invoice_number": "5105600133", "fiscal_year": "2026"},
+        },
+        {
+            "case_id": "C001",
+            "planned_step_id": "C001_A5",
+            "tool": "fiori.send_payment",
+            "synthetic_actor_id": "ap_mi00",
+            "technical_sap_user_id": "TU_04",
+            "object_type": "payment_document",
+            "keys": {"payment_document_number": "1500000028"},
+        },
+    ]
+    trace_steps = {
+        "C001_A5": {"inputs": {"company_code": "US00"}},
+    }
+
+    index = build_linkage_index(registry_entries, trace_steps)
+
+    assert index.find("EKKO", {"EBELN": "4500000138"}).case_id == "C001"
+    assert index.find("EKPO", {"EBELN": "4500000138"}).planned_step_id == "C001_A2"
+    assert index.find("RBKP", {"BELNR": "5105600133", "GJAHR": "2026"}).tool == "fiori.create_supplier_invoice"
+    assert index.find("BSEG", {"BELNR": "1500000028", "BUKRS": "US00"}).tool == "fiori.send_payment"
+    assert index.find("EKKO", {"EBELN": "9999999999"}) is None

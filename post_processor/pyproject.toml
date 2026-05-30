@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "erp-sap-export"
+version = "0.1.0"
+description = "SAP WebGUI table export helper for post-processing synthetic ERP runs."
+readme = "README.md"
+requires-python = ">=3.13,<4"
+dependencies = [
+  "playwright>=1.55,<2",
+  "pyyaml>=6.0,<7",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4,<9",
+]
+
+[project.scripts]
+erp-sap-export = "erp_sap_export.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/erp_sap_export"]
+
+[tool.uv]
+package = true
+
+[tool.pytest.ini_options]
+addopts = "-m 'not live_sap'"
+markers = [
+  "live_sap: requires SAP credentials, reachable SAP WebGUI, and table display authorization",
+]
