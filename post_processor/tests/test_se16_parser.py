@@ -102,9 +102,12 @@ def test_p2p_requests_are_built_from_object_registry_keys() -> None:
     registry_entries = [
         {"object_type": "purchase_requisition", "keys": {"pr_number": "10000091"}},
         {"object_type": "purchase_order", "keys": {"po_number": "4500000057"}},
-        {"object_type": "material_document", "keys": {"material_document_number": "5000000054"}},
+        {
+            "object_type": "material_document",
+            "keys": {"material_document_number": "5000000054", "material_document_year": "2026"},
+        },
         {"object_type": "supplier_invoice", "keys": {"invoice_number": "5105600133", "fiscal_year": "2026"}},
-        {"object_type": "payment_document", "keys": {"payment_document_number": "1500000028"}},
+        {"object_type": "payment_document", "keys": {"payment_document_number": "1500000028", "fiscal_year": "2026"}},
     ]
     trace_steps = {
         "unused": {"inputs": {"company_code": "US00"}},
@@ -116,12 +119,12 @@ def test_p2p_requests_are_built_from_object_registry_keys() -> None:
         ("EBAN", [SelectionRange("BANFN", "10000091")]),
         ("EKKO", [SelectionRange("EBELN", "4500000057")]),
         ("EKPO", [SelectionRange("EBELN", "4500000057")]),
-        ("MKPF", [SelectionRange("MBLNR", "5000000054")]),
-        ("MSEG", [SelectionRange("MBLNR", "5000000054")]),
+        ("MKPF", [SelectionRange("MBLNR", "5000000054"), SelectionRange("MJAHR", "2026")]),
+        ("MSEG", [SelectionRange("MBLNR", "5000000054"), SelectionRange("MJAHR", "2026")]),
         ("RBKP", [SelectionRange("BELNR", "5105600133"), SelectionRange("GJAHR", "2026")]),
         ("RSEG", [SelectionRange("BELNR", "5105600133"), SelectionRange("GJAHR", "2026")]),
-        ("BKPF", [SelectionRange("BELNR", "1500000028"), SelectionRange("BUKRS", "US00")]),
-        ("BSEG", [SelectionRange("BELNR", "1500000028"), SelectionRange("BUKRS", "US00")]),
+        ("BKPF", [SelectionRange("BELNR", "1500000028"), SelectionRange("BUKRS", "US00"), SelectionRange("GJAHR", "2026")]),
+        ("BSEG", [SelectionRange("BELNR", "1500000028"), SelectionRange("BUKRS", "US00"), SelectionRange("GJAHR", "2026")]),
     ]
 
 
@@ -180,4 +183,17 @@ def test_p2p_batched_requests_chunk_large_ranges() -> None:
     assert [(item.table, item.selection) for item in requests] == [
         ("EBAN", [SelectionRange("BANFN", "10000172", "10000191")]),
         ("EBAN", [SelectionRange("BANFN", "10000192", "10000196")]),
+    ]
+
+
+def test_p2p_batched_requests_sort_numeric_bounds_numerically() -> None:
+    registry_entries = [
+        {"object_type": "purchase_requisition", "keys": {"pr_number": "1000009"}},
+        {"object_type": "purchase_requisition", "keys": {"pr_number": "10000010"}},
+    ]
+
+    requests = p2p_batched_requests_from_registry(registry_entries, {}, default_company_code="US00")
+
+    assert [(item.table, item.selection) for item in requests] == [
+        ("EBAN", [SelectionRange("BANFN", "1000009", "10000010")]),
     ]

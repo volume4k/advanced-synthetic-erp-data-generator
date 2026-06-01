@@ -129,13 +129,29 @@ class Se16Client:
         return parse_abap_list(_extract_abap_items(page))
 
     def _probe_table(self, page: Page, table: str) -> dict[str, Any]:
-        self._open_table_selection(page, table)
+        try:
+            self._open_table_selection(page, table)
+        except RuntimeError as exc:
+            body_text = _body_text(page)
+            body_text_lower = body_text.lower()
+            return {
+                "selection_screen": False,
+                "field_selection_prompt": "Felder für Selektion auswählen" in body_text,
+                "not_authorized": "nicht berechtigt" in body_text_lower or "keine berechtigung" in body_text_lower,
+                "open_failed": True,
+                "error": str(exc),
+                "title": _page_title(page),
+                "usable": False,
+            }
         body_text = _body_text(page)
+        not_authorized = "nicht berechtigt" in body_text.lower() or "keine berechtigung" in body_text.lower()
+        selection_screen = "Maximale Trefferzahl" in body_text
         return {
-            "selection_screen": "Maximale Trefferzahl" in body_text,
+            "selection_screen": selection_screen,
             "field_selection_prompt": "Felder für Selektion auswählen" in body_text,
-            "not_authorized": "nicht berechtigt" in body_text.lower() or "keine berechtigung" in body_text.lower(),
-            "title": page.title(),
+            "not_authorized": not_authorized,
+            "title": _page_title(page),
+            "usable": selection_screen and not not_authorized,
         }
 
     def _open_table_selection(self, page: Page, table: str) -> None:
@@ -319,5 +335,12 @@ def _has_table_name_input(page: Page) -> bool:
 def _body_text(page: Page) -> str:
     try:
         return page.locator("body").inner_text(timeout=3_000)
+    except Exception:
+        return ""
+
+
+def _page_title(page: Page) -> str:
+    try:
+        return page.title()
     except Exception:
         return ""

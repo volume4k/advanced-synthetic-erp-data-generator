@@ -188,9 +188,12 @@ def _table_keys_for_object(
     if object_type in {"material_document", "scrap_material_document", "stock_release_material_document"} and keys.get(
         "material_document_number"
     ):
+        base = {"MBLNR": keys["material_document_number"]}
+        if keys.get("material_document_year"):
+            base["MJAHR"] = keys["material_document_year"]
         return [
-            ("MKPF", _key(MBLNR=keys["material_document_number"])),
-            ("MSEG", _key(MBLNR=keys["material_document_number"])),
+            ("MKPF", _key(**base)),
+            ("MSEG", _key(**base)),
         ]
     if object_type == "supplier_invoice" and keys.get("invoice_number") and keys.get("fiscal_year"):
         return [
@@ -201,6 +204,8 @@ def _table_keys_for_object(
         base = {"BELNR": keys["payment_document_number"]}
         if company_code:
             base["BUKRS"] = company_code
+        if keys.get("fiscal_year"):
+            base["GJAHR"] = keys["fiscal_year"]
         return [
             ("BKPF", _key(**base)),
             ("BSEG", _key(**base)),
@@ -215,7 +220,10 @@ def _candidate_row_keys(table: str, row: dict[str, Any]) -> list[tuple[tuple[str
     if table in {"EKKO", "EKPO"}:
         return [_key(EBELN=row.get("EBELN"))]
     if table in {"MKPF", "MSEG"}:
-        return [_key(MBLNR=row.get("MBLNR"))]
+        return [
+            _key(MBLNR=row.get("MBLNR"), MJAHR=row.get("MJAHR")),
+            _key(MBLNR=row.get("MBLNR")),
+        ]
     if table in {"RBKP", "RSEG"}:
         return [_key(BELNR=row.get("BELNR"), GJAHR=row.get("GJAHR"))]
     if table in {"BKPF", "BSEG"}:

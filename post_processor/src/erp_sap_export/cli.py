@@ -8,6 +8,7 @@ import json
 import time
 from collections import defaultdict
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -54,7 +55,7 @@ def _probe(args: argparse.Namespace) -> int:
     client = Se16Client(credentials, headed=args.headed)
     result = client.probe(args.tables)
     print(json.dumps(result, indent=2, sort_keys=True))
-    return 0 if result.get("webgui") and result.get("se16") else 1
+    return 0 if _probe_result_ok(result) else 1
 
 
 def _download(args: argparse.Namespace) -> int:
@@ -106,6 +107,8 @@ def _download(args: argparse.Namespace) -> int:
         client.extract(cdhdr_request),
         user_from=args.user_from,
         user_to=args.user_to,
+        start=window.start,
+        end=window.end,
     )
     _log(f"CDHDR done rows={len(cdhdr_rows)} elapsed={_elapsed(started_at)}")
     rows_by_table["CDHDR"].extend(cdhdr_rows)
@@ -316,8 +319,25 @@ def _dedupe_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     return output
 
 
-def _post_filter_cdhdr(rows: list[dict[str, str]], *, user_from: str, user_to: str) -> list[dict[str, str]]:
-    return [row for row in rows if user_from <= str(row.get("USERNAME") or "") <= user_to]
+def _post_filter_cdhdr(
+    rows: list[dict[str, str]],
+    *,
+    user_from: str,
+    user_to: str,
+    start: datetime,
+    end: datetime,
+) -> list[dict[str, str]]:
+    start_utc = _as_utc(start)
+    end_utc = _as_utc(end)
+    output: list[dict[str, str]] = []
+    for row in rows:
+        username = str(row.get("USERNAME") or "")
+        changed_at = _sap_change_datetime(row)
+        if changed_at is None:
+            continue
+        if user_from <= username <= user_to and start_utc <= changed_at <= end_utc:
+            output.append(row)
+    return output
 
 
 def _post_filter_cdpos(rows: list[dict[str, str]], cdhdr_rows: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -334,6 +354,41 @@ def _post_filter_cdpos(rows: list[dict[str, str]], cdhdr_rows: list[dict[str, st
 
 def _request_report(request: TableRequest, row_count: int) -> dict[str, Any]:
     return {"selection": [asdict(item) for item in request.selection], "rows": row_count}
+
+
+def _probe_result_ok(result: dict[str, Any]) -> bool:
+    table_results = result.get("tables")
+    if not result.get("webgui") or not result.get("se16") or not isinstance(table_results, dict):
+        return False
+    return all(_probe_table_ok(table_result) for table_result in table_results.values())
+
+
+def _probe_table_ok(table_result: Any) -> bool:
+    if not isinstance(table_result, dict):
+        return False
+    return bool(table_result.get("usable") or table_result.get("status") == "ok") or (
+        bool(table_result.get("selection_screen"))
+        and not table_result.get("not_authorized")
+        and not table_result.get("open_failed")
+        and not table_result.get("error")
+    )
+
+
+def _sap_change_datetime(row: dict[str, str]) -> datetime | None:
+    date_text = str(row.get("UDATE") or "").strip()
+    time_text = str(row.get("UTIME") or "").strip()
+    if not date_text or not time_text:
+        return None
+    try:
+        return datetime.strptime(f"{date_text} {time_text}", "%m/%d/%Y %H:%M:%S").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _deadline(started_at: float, max_runtime_min: float) -> float | None:

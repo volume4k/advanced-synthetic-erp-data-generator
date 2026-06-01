@@ -84,6 +84,7 @@ class SapSendPaymentFlow:
             "requested_posting_document_date": params.posting_document_date,
             "posting_date": posting_date or "",
             "requested_posting_date": params.posting_date or "",
+            "fiscal_year": _fiscal_year(posting_date or posting_document_date),
             "supplier": params.supplier,
             "accounting_document": params.accounting_document,
             "general_ledger_account": params.general_ledger_account,
@@ -217,6 +218,7 @@ def run_send_payment(
                 returned_object(
                     "payment_document",
                     payment_document_number=payment_data["payment_document"],
+                    fiscal_year=payment_data["fiscal_year"],
                 )
             ],
             **payment_data,
@@ -237,6 +239,13 @@ def _extract_payment_document(message: str) -> str:
         raise ValueError(
             f"Could not extract payment document number from success message: {message}"
         )
+    return match.group(1)
+
+
+def _fiscal_year(date_text: str) -> str:
+    match = re.search(r"\b(\d{4})\b", date_text)
+    if match is None:
+        return ""
     return match.group(1)
 
 

@@ -15,7 +15,7 @@ from erp_trace_executor.runtime_delay import RuntimeDelay, noop_delay, runtime_d
 from erp_trace_executor.tooling import ToolSpec
 from erp_trace_executor.tools.fiori.helpers import format_number
 
-MATERIAL_DOCUMENT_LINK_PATTERN = re.compile(r"Materialbeleg\s*(\d+)(?:/\d+)?")
+MATERIAL_DOCUMENT_LINK_PATTERN = re.compile(r"Materialbeleg\s*(\d+)(?:/(\d{4}))?/?")
 NO_SELECTABLE_POSITION_PATTERN = re.compile(
     r"Beleg\s+\d+\s+enthält keine wählbare Position"
 )
@@ -111,11 +111,14 @@ class SapSplitGoodsReceiptFlow:
 
         success_dialog = page.locator('[role="dialog"]', has_text="Materialbeleg").first
         success_dialog.wait_for(state="visible")
-        material_document = _extract_material_document(success_dialog.inner_text())
+        success_text = success_dialog.inner_text()
+        material_document = _extract_material_document(success_text)
+        material_document_year = _extract_material_document_year(success_text)
 
         page.get_by_role("button", name="OK").click()
         return {
             "material_document": material_document,
+            "material_document_year": material_document_year or "",
             "purchase_order": params.purchase_order,
             "storage_location": params.storage_location,
             "unrestricted_quantity": params.unrestricted_quantity,
@@ -140,6 +143,9 @@ def run_create_split_goods_receipt(
 ) -> ToolResult:
     page = context.get_fiori_page()
     goods_receipt_data = SapSplitGoodsReceiptFlow(page, delay=runtime_delay_callback(context)).create(params)
+    object_keys = {"material_document_number": goods_receipt_data["material_document"]}
+    if goods_receipt_data["material_document_year"]:
+        object_keys["material_document_year"] = goods_receipt_data["material_document_year"]
 
     return ToolResult(
         planned_step_id=context.record.planned_step_id,
@@ -149,7 +155,7 @@ def run_create_split_goods_receipt(
             "status": "created",
             "current_url": page.url,
             "returned_objects": [
-                returned_object("material_document", material_document_number=goods_receipt_data["material_document"])
+                returned_object("material_document", **object_keys)
             ],
             **goods_receipt_data,
         },
@@ -176,3 +182,12 @@ def _extract_material_document(message: str) -> str:
             f"Could not extract material document number from success link: {message}"
         )
     return match.group(1)
+
+
+def _extract_material_document_year(message: str) -> str | None:
+    match = MATERIAL_DOCUMENT_LINK_PATTERN.search(message)
+    if match is None:
+        raise ValueError(
+            f"Could not extract material document number from success link: {message}"
+        )
+    return match.group(2)

@@ -9,7 +9,13 @@ from erp_sap_export.artifacts import (
     derive_execution_window,
     load_jsonl,
 )
-from erp_sap_export.cli import _batched_cdpos_requests_from_cdhdr, _resolve_download_dir, _write_table_csvs
+from erp_sap_export.cli import (
+    _batched_cdpos_requests_from_cdhdr,
+    _post_filter_cdhdr,
+    _probe_result_ok,
+    _resolve_download_dir,
+    _write_table_csvs,
+)
 from erp_sap_export.specs import SelectionRange
 
 
@@ -79,6 +85,50 @@ def test_batched_cdpos_requests_group_change_number_ranges_by_object_class() -> 
     ]
 
 
+def test_post_filter_cdhdr_enforces_user_and_exact_time_window() -> None:
+    rows = [
+        {"USERNAME": "LEARN-801", "UDATE": "05/28/2026", "UTIME": "19:59:59"},
+        {"USERNAME": "LEARN-801", "UDATE": "05/28/2026", "UTIME": "20:00:00"},
+        {"USERNAME": "LEARN-899", "UDATE": "05/28/2026", "UTIME": "21:00:00"},
+        {"USERNAME": "LEARN-801", "UDATE": "05/28/2026", "UTIME": "21:00:01"},
+        {"USERNAME": "LEARN-900", "UDATE": "05/28/2026", "UTIME": "20:30:00"},
+        {"USERNAME": "LEARN-801", "UDATE": "05/28/2026"},
+    ]
+
+    filtered = _post_filter_cdhdr(
+        rows,
+        user_from="LEARN-800",
+        user_to="LEARN-899",
+        start=datetime(2026, 5, 28, 20, 0, tzinfo=UTC),
+        end=datetime(2026, 5, 28, 21, 0, tzinfo=UTC),
+    )
+
+    assert filtered == [rows[1], rows[2]]
+
+
+def test_probe_result_requires_all_requested_tables_usable() -> None:
+    assert _probe_result_ok(
+        {
+            "webgui": True,
+            "se16": True,
+            "tables": {
+                "CDHDR": {"selection_screen": True, "not_authorized": False},
+                "CDPOS": {"usable": True},
+            },
+        }
+    )
+    assert not _probe_result_ok(
+        {
+            "webgui": True,
+            "se16": True,
+            "tables": {
+                "CDHDR": {"selection_screen": True, "not_authorized": False},
+                "CDPOS": {"selection_screen": False, "open_failed": True, "error": "failed"},
+            },
+        }
+    )
+
+
 def test_build_linkage_index_maps_registry_objects_to_sap_tables() -> None:
     registry_entries = [
         {
@@ -89,6 +139,15 @@ def test_build_linkage_index_maps_registry_objects_to_sap_tables() -> None:
             "technical_sap_user_id": "TU_02",
             "object_type": "purchase_order",
             "keys": {"po_number": "4500000138"},
+        },
+        {
+            "case_id": "C001",
+            "planned_step_id": "C001_A3",
+            "tool": "fiori.create_goods_receipt",
+            "synthetic_actor_id": "goods_receipt_clerk_mi00",
+            "technical_sap_user_id": "TU_03",
+            "object_type": "material_document",
+            "keys": {"material_document_number": "5000000133", "material_document_year": "2026"},
         },
         {
             "case_id": "C001",
@@ -106,7 +165,7 @@ def test_build_linkage_index_maps_registry_objects_to_sap_tables() -> None:
             "synthetic_actor_id": "ap_mi00",
             "technical_sap_user_id": "TU_04",
             "object_type": "payment_document",
-            "keys": {"payment_document_number": "1500000028"},
+            "keys": {"payment_document_number": "1500000028", "fiscal_year": "2026"},
         },
     ]
     trace_steps = {
@@ -117,8 +176,9 @@ def test_build_linkage_index_maps_registry_objects_to_sap_tables() -> None:
 
     assert index.find("EKKO", {"EBELN": "4500000138"}).case_id == "C001"
     assert index.find("EKPO", {"EBELN": "4500000138"}).planned_step_id == "C001_A2"
+    assert index.find("MKPF", {"MBLNR": "5000000133", "MJAHR": "2026"}).tool == "fiori.create_goods_receipt"
     assert index.find("RBKP", {"BELNR": "5105600133", "GJAHR": "2026"}).tool == "fiori.create_supplier_invoice"
-    assert index.find("BSEG", {"BELNR": "1500000028", "BUKRS": "US00"}).tool == "fiori.send_payment"
+    assert index.find("BSEG", {"BELNR": "1500000028", "BUKRS": "US00", "GJAHR": "2026"}).tool == "fiori.send_payment"
     assert index.find("EKKO", {"EBELN": "9999999999"}) is None
 
 

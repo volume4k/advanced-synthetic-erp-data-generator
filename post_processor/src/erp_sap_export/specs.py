@@ -139,7 +139,8 @@ def _range_request(table: str, requests: list[TableRequest]) -> TableRequest:
                 for request in requests
                 for item in request.selection
                 if item.field == field and item.low
-            }
+            },
+            key=lambda value: _request_sort_key(TableRequest(table, [SelectionRange(field, value)])),
         )
         if not values:
             continue
@@ -181,9 +182,12 @@ def _requests_for_registry_entry(
         "material_document_number"
     ):
         number = str(keys["material_document_number"])
+        selection = [SelectionRange("MBLNR", number)]
+        if keys.get("material_document_year"):
+            selection.append(SelectionRange("MJAHR", str(keys["material_document_year"])))
         return [
-            TableRequest("MKPF", [SelectionRange("MBLNR", number)]),
-            TableRequest("MSEG", [SelectionRange("MBLNR", number)]),
+            TableRequest("MKPF", selection),
+            TableRequest("MSEG", selection),
         ]
     if object_type == "supplier_invoice" and keys.get("invoice_number") and keys.get("fiscal_year"):
         selection = [
@@ -195,6 +199,8 @@ def _requests_for_registry_entry(
         selection = [SelectionRange("BELNR", str(keys["payment_document_number"]))]
         if company_code:
             selection.append(SelectionRange("BUKRS", company_code))
+        if keys.get("fiscal_year"):
+            selection.append(SelectionRange("GJAHR", str(keys["fiscal_year"])))
         return [TableRequest("BKPF", selection), TableRequest("BSEG", selection)]
     return []
 
