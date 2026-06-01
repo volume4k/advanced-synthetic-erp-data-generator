@@ -25,16 +25,10 @@ technicalUsers: Listing<objects.TechnicalUser> = new Listing {
     passwordEnvVar = "SAP_USER_4_PW"
     loginUrlEnvVar = "SAP_URL"
   }
-  //   new objects.TechnicalUser {
-  //     id = "GBGEN_P03"
-  //     usernameEnvVar = "SAP_USER_3_UN"
-  //     passwordEnvVar = "SAP_USER_3_PW"
-  //     loginUrlEnvVar = "SAP_URL"
-  //   }
-  //   new objects.TechnicalUser {
-  //     id = "GBGEN_P04"
-  //     usernameEnvVar = "SAP_USER_4_UN"
-  //     passwordEnvVar = "SAP_USER_4_PW"
-  //     loginUrlEnvVar = "SAP_URL"
-  //   }
+  new objects.TechnicalUser {
+    id = "TU_05"
+    usernameEnvVar = "SAP_USER_5_UN"
+    passwordEnvVar = "SAP_USER_5_PW"
+    loginUrlEnvVar = "SAP_URL"
+  }
 }

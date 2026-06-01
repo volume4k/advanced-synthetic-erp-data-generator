@@ -11,20 +11,21 @@ actors: Listing<objects.SyntheticActor> = new Listing {
     role = "inventory_manager"
     timezone = "America/New_York"
     workLocation = "MI00"
-    personaDescription = ""
-    delayMultiplier = 1.15
+    personaDescription =
+      "Floor-connected inventory manager who starts early, coordinates practical stock needs with warehouse realities, and keeps requisition work moving around operational interruptions."
+    delayMultiplier = 1.18
     realismProfile {
       workerType = "inventory manager"
-      workingHoursDeviation = -0.5
-      pauseCharacteristicsIndex = 10
+      workingHoursDeviation = -0.75
+      pauseCharacteristicsIndex = 11
     }
     realismGuardrails {
-      delayMultiplierMin = 0.9
-      delayMultiplierMax = 1.7
-      workdayDeviationHoursMin = -1.5
-      workdayDeviationHoursMax = 1.0
+      delayMultiplierMin = 0.95
+      delayMultiplierMax = 1.8
+      workdayDeviationHoursMin = -1.75
+      workdayDeviationHoursMax = 0.75
       pauseDurationMinutesMin = 25
-      pauseDurationMinutesMax = 75
+      pauseDurationMinutesMax = 85
     }
     exposeInFinalDatasetAs = "inventory_manager_mi00"
     capabilities {
@@ -42,20 +43,21 @@ actors: Listing<objects.SyntheticActor> = new Listing {
     role = "buyer"
     timezone = "America/New_York"
     workLocation = "MI00"
-    personaDescription = ""
-    delayMultiplier = 1.0
+    personaDescription =
+      "Relationship-driven buyer who balances vendor communication with operational purchasing needs, coordinates closely with inventory and receiving teams, and shows moderate timing variation from day-to-day coordination demands."
+    delayMultiplier = 1.08
     realismProfile {
       workerType = "purchasing employee"
       workingHoursDeviation = 0.0
-      pauseCharacteristicsIndex = 9
+      pauseCharacteristicsIndex = 10
     }
     realismGuardrails {
-      delayMultiplierMin = 0.8
-      delayMultiplierMax = 1.6
+      delayMultiplierMin = 0.85
+      delayMultiplierMax = 1.8
       workdayDeviationHoursMin = -1.0
-      workdayDeviationHoursMax = 1.5
+      workdayDeviationHoursMax = 1.75
       pauseDurationMinutesMin = 20
-      pauseDurationMinutesMax = 70
+      pauseDurationMinutesMax = 80
     }
     exposeInFinalDatasetAs = "buyer_mi00"
     capabilities {
@@ -75,20 +77,21 @@ actors: Listing<objects.SyntheticActor> = new Listing {
     role = "goods_receipt_clerk"
     timezone = "America/New_York"
     workLocation = "MI00"
-    personaDescription = ""
-    delayMultiplier = 1.3
+    personaDescription =
+      "Busy warehouse receiver who starts early, coordinates goods movement around inbound deliveries and floor interruptions, and works at a practical pace shaped by physical handling constraints."
+    delayMultiplier = 1.38
     realismProfile {
       workerType = "goods receipt clerk"
-      workingHoursDeviation = -0.75
-      pauseCharacteristicsIndex = 11
+      workingHoursDeviation = -1.0
+      pauseCharacteristicsIndex = 12
     }
     realismGuardrails {
-      delayMultiplierMin = 1.0
-      delayMultiplierMax = 2.1
-      workdayDeviationHoursMin = -1.5
+      delayMultiplierMin = 1.05
+      delayMultiplierMax = 2.3
+      workdayDeviationHoursMin = -2.0
       workdayDeviationHoursMax = 0.5
-      pauseDurationMinutesMin = 25
-      pauseDurationMinutesMax = 80
+      pauseDurationMinutesMin = 30
+      pauseDurationMinutesMax = 90
     }
     exposeInFinalDatasetAs = "goods_receipt_clerk_mi00"
     capabilities {
@@ -109,22 +112,58 @@ actors: Listing<objects.SyntheticActor> = new Listing {
     role = "accounts_payable_clerk"
     timezone = "America/New_York"
     workLocation = "MI00"
-    personaDescription = ""
-    delayMultiplier = 1.05
+    personaDescription =
+      "High-volume accounts payable clerk who processes routine invoice and payment work efficiently, keeps a repeatable daily rhythm, and maintains clean documentation habits."
+    delayMultiplier = 0.92
     realismProfile {
       workerType = "accounts payable clerk"
-      workingHoursDeviation = 0.25
-      pauseCharacteristicsIndex = 9
+      workingHoursDeviation = 0.0
+      pauseCharacteristicsIndex = 7
     }
     realismGuardrails {
-      delayMultiplierMin = 0.8
-      delayMultiplierMax = 1.7
-      workdayDeviationHoursMin = -0.75
-      workdayDeviationHoursMax = 1.75
-      pauseDurationMinutesMin = 20
-      pauseDurationMinutesMax = 75
+      delayMultiplierMin = 0.75
+      delayMultiplierMax = 1.35
+      workdayDeviationHoursMin = -0.5
+      workdayDeviationHoursMax = 1.0
+      pauseDurationMinutesMin = 15
+      pauseDurationMinutesMax = 55
     }
     exposeInFinalDatasetAs = "accounts_payable_clerk_mi00"
+    capabilities {
+      new objects.ActorCapability {
+        processType = "procure_to_pay"
+        stepTypes {
+          "enter_incoming_invoice"
+          "change_vendor_bank_data"
+          "post_outgoing_payment"
+          "revert_vendor_bank_data"
+        }
+      }
+    }
+  }
+  new objects.SyntheticActor {
+    id = "chief_accountant_US"
+    displayName = "Shuyuan Chen"
+    role = "chief_accountant"
+    timezone = "America/New_York"
+    workLocation = "MI00"
+    personaDescription =
+      "Senior accounting lead who handles escalations decisively, balances control responsibilities with a meeting-heavy schedule, and is trusted for judgment on sensitive finance tasks."
+    delayMultiplier = 0.94
+    realismProfile {
+      workerType = "chief accountant"
+      workingHoursDeviation = 0.75
+      pauseCharacteristicsIndex = 5
+    }
+    realismGuardrails {
+      delayMultiplierMin = 0.75
+      delayMultiplierMax = 1.25
+      workdayDeviationHoursMin = -0.5
+      workdayDeviationHoursMax = 2.25
+      pauseDurationMinutesMin = 10
+      pauseDurationMinutesMax = 55
+    }
+    exposeInFinalDatasetAs = "chief_accountant_US"
     capabilities {
       new objects.ActorCapability {
         processType = "procure_to_pay"

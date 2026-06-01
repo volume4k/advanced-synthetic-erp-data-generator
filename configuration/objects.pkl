@@ -160,6 +160,7 @@ class IdentityMapping {
 class ProcessStep {
   stepId: String(this.length > 0)
   stepType: String(this.length > 0)
+  sameActorAsStepId: String(this.length > 0)? = null
   tool: ToolRequirement?
   inputBindings: Listing<ToolInputBinding> = new Listing {}
   plannedDateInputBindings: Listing<ToolInputBinding> = new Listing {}

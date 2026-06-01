@@ -11,6 +11,12 @@ from erp_trace_generator.errors import TraceGenerationError
 from erp_trace_generator.models import MinuteRange, RunSettings
 
 
+@dataclass(frozen=True)
+class StepWindow:
+    start: datetime
+    end: datetime
+
+
 class TimelinePlanner:
     """Plans target synthetic timestamps without sleeping during execution."""
 
@@ -24,9 +30,12 @@ class TimelinePlanner:
         self._day_boundaries: dict[tuple[str, date], _DayBoundaries] = {}
 
     def first_start(self) -> datetime:
-        return datetime.combine(self._settings.run_start_date, self._work_start, self._tz)
+        return datetime.combine(_next_business_day(self._settings.run_start_date), self._work_start, self._tz)
 
     def add_step_duration(self, start: datetime, step_type: str, delay_multiplier: float, actor_criteria=None) -> datetime:
+        return self.plan_step_window(start, step_type, delay_multiplier, actor_criteria).end
+
+    def plan_step_window(self, start: datetime, step_type: str, delay_multiplier: float, actor_criteria=None) -> StepWindow:
         if delay_multiplier <= 0:
             raise TraceGenerationError(f"delay_multiplier must be greater than 0 for step '{step_type}'")
         duration_range = self._settings.step_duration_minutes[step_type]
@@ -48,6 +57,9 @@ class TimelinePlanner:
         if current.tzinfo is None:
             current = current.replace(tzinfo=self._tz)
         while True:
+            if not _is_business_day(current.date()):
+                current = datetime.combine(_next_business_day(current.date()), self._work_start, self._tz)
+                continue
             boundaries = self._boundaries_for(current.date(), actor_criteria)
             if current < boundaries.work_start:
                 return boundaries.work_start
@@ -59,25 +71,49 @@ class TimelinePlanner:
                 continue
             return current
 
-    def _fit_into_workday(self, start: datetime, duration_minutes: int, actor_criteria=None) -> datetime:
+    def _fit_into_workday(self, start: datetime, duration_minutes: int, actor_criteria=None) -> StepWindow:
         current_start = self.align_start(start, actor_criteria)
-        remaining_minutes = duration_minutes
         while True:
-            boundaries = self._boundaries_for(current_start.date(), actor_criteria)
-            segment_end = boundaries.work_end
-            if current_start < boundaries.pause_start:
-                segment_end = min(segment_end, boundaries.pause_start)
+            end = self._end_on_same_day(current_start, duration_minutes, actor_criteria)
+            if end is not None:
+                return StepWindow(start=current_start, end=end)
+            full_day_start = self.align_start(
+                datetime.combine(current_start.date(), self._work_start, self._tz),
+                actor_criteria,
+            )
+            if current_start == full_day_start:
+                raise TraceGenerationError(
+                    f"step duration {duration_minutes} minutes cannot fit into a single business day"
+                )
+            current_start = self.align_start(
+                datetime.combine(current_start.date() + timedelta(days=1), self._work_start, self._tz),
+                actor_criteria,
+            )
+            continue
 
-            available_minutes = max(0, int((segment_end - current_start).total_seconds() // 60))
+    def _end_on_same_day(self, start: datetime, duration_minutes: int, actor_criteria=None) -> datetime | None:
+        current = start
+        remaining_minutes = duration_minutes
+        boundaries = self._boundaries_for(start.date(), actor_criteria)
+        while True:
+            if current >= boundaries.work_end:
+                return None
+            segment_end = boundaries.work_end
+            if current < boundaries.pause_start:
+                segment_end = min(segment_end, boundaries.pause_start)
+            elif boundaries.pause_start <= current < boundaries.pause_end:
+                current = boundaries.pause_end
+                continue
+
+            available_minutes = max(0, int((segment_end - current).total_seconds() // 60))
             if remaining_minutes <= available_minutes:
-                return current_start + timedelta(minutes=remaining_minutes)
+                return current + timedelta(minutes=remaining_minutes)
 
             remaining_minutes -= available_minutes
             if segment_end == boundaries.pause_start:
-                current_start = boundaries.pause_end
+                current = boundaries.pause_end
                 continue
-            current_start = datetime.combine(current_start.date() + timedelta(days=1), self._work_start, self._tz)
-            continue
+            return None
 
     def _boundaries_for(self, day: date, actor_criteria=None) -> _DayBoundaries:
         key = (_actor_key(actor_criteria), day)
@@ -129,6 +165,17 @@ class _DayBoundaries:
 
 def _parse_time(value: str) -> time:
     return time.fromisoformat(value)
+
+
+def _is_business_day(day: date) -> bool:
+    return day.weekday() < 5
+
+
+def _next_business_day(day: date) -> date:
+    current = day
+    while not _is_business_day(current):
+        current += timedelta(days=1)
+    return current
 
 
 def _sample_int(rng: Random, value: MinuteRange) -> int:

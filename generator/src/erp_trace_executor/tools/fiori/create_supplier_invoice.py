@@ -20,6 +20,7 @@ from erp_trace_executor.tools.fiori.helpers import format_number
 INVOICE_LINK_PATTERN = re.compile(r"(\d+)/(\d{4})")
 SUPPLIER_INVOICE_READY_TIMEOUT_MS = 90_000
 SUPPLIER_INVOICE_READY_POLL_MS = 1_000
+COMPANY_CODE_CHANGE_DIALOG_TIMEOUT_MS = 5_000
 
 
 class CreateSupplierInvoiceInput(BaseModel):
@@ -30,6 +31,7 @@ class CreateSupplierInvoiceInput(BaseModel):
     gross_amount: float = Field(gt=0)
     purchase_order: str
     tax_code: str = Field(min_length=1)
+    company_code: str = "US00"
 
 
 class SapSupplierInvoiceFlow:
@@ -48,6 +50,9 @@ class SapSupplierInvoiceFlow:
         page.get_by_role("searchbox", name="Suchen").fill("Lieferantenrechnung anlegen")
         page.get_by_role("gridcell", name="Lieferantenrechnung anlegen", exact=True).locator("b").click()
         self._discard_existing_draft_if_present(page)
+
+        self._delay("company_code_review", 1.0)
+        self._set_company_code(page, params.company_code)
 
         self._delay("invoice_header_review", 1.0)
         self._fill_textbox(page, "Rechnungsdatum", invoice_date)
@@ -133,6 +138,27 @@ class SapSupplierInvoiceFlow:
         textbox.click()
         textbox.press("ControlOrMeta+a")
         textbox.fill(value)
+
+    def _set_company_code(self, page, value: str) -> None:
+        company_code = page.get_by_role("textbox", name="Buchungskreis")
+        company_code.wait_for(state="visible", timeout=SUPPLIER_INVOICE_READY_TIMEOUT_MS)
+        company_code.click()
+        company_code.press("ControlOrMeta+a")
+        company_code.fill(value)
+        company_code.press("Enter")
+        self._click_ok_for_company_code_change_if_present(page)
+
+    def _click_ok_for_company_code_change_if_present(self, page) -> None:
+        dialog = page.locator('[role="dialog"]', has_text="Daten gehen verloren").first
+        try:
+            dialog.wait_for(state="visible", timeout=COMPANY_CODE_CHANGE_DIALOG_TIMEOUT_MS)
+        except PlaywrightTimeoutError:
+            return
+        dialog.get_by_role("button", name="OK", exact=True).click()
+        page.get_by_role("textbox", name="Rechnungsdatum").wait_for(
+            state="visible",
+            timeout=SUPPLIER_INVOICE_READY_TIMEOUT_MS,
+        )
 
     def _click_close_if_present(self, page) -> None:
         close_button = page.get_by_role("button", name="Schließen")

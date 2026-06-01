@@ -1,15 +1,15 @@
 import "objects.pkl"
 
 runSettings: objects.RunSettings = new objects.RunSettings {
-  caseCount = 50
+  caseCount = 210
   maxParallelActorSessions = 4
   targetTimezone = "America/New_York"
   activeProcessTypes {
     "procure_to_pay"
   }
   schedulerSeed = 42
-  runStartDate = "2026-05-27"
-  runHorizonDays = 30
+  runStartDate = "2026-06-01"
+  runHorizonDays = 45
   queuePolicy = "fifo"
   realism {
     enabled = true

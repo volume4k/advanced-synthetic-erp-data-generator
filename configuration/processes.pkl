@@ -651,6 +651,7 @@ postOutgoingPaymentStep: objects.ProcessStep = new objects.ProcessStep {
 }
 
 fraudSupportingPostOutgoingPaymentStep: objects.ProcessStep = (postOutgoingPaymentStep) {
+  sameActorAsStepId = "A4"
   labels {
     ["step_label"] = "fraud_supporting_step"
     ["scenario_family"] = "vendor_master_manipulation"
@@ -660,6 +661,7 @@ fraudSupportingPostOutgoingPaymentStep: objects.ProcessStep = (postOutgoingPayme
 changeVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
   stepId = "F1"
   stepType = "change_vendor_bank_data"
+  sameActorAsStepId = "A4"
   tool = toolRequirements["fiori.change_vendor_bank_details"]
   objectOutputRequired = false
   inputBindings {
@@ -693,6 +695,7 @@ changeVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
 revertVendorBankDataStep: objects.ProcessStep = new objects.ProcessStep {
   stepId = "F2"
   stepType = "revert_vendor_bank_data"
+  sameActorAsStepId = "A4"
   tool = toolRequirements["fiori.change_vendor_bank_details"]
   objectOutputRequired = false
   inputBindings {

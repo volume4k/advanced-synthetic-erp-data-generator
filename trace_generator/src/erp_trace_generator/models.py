@@ -130,6 +130,7 @@ class ProcessStep:
     step_id: str
     step_type: str
     tool_name: str
+    same_actor_as_step_id: str | None = None
     input_bindings: tuple[InputBinding, ...] = ()
     planned_date_input_bindings: tuple[InputBinding, ...] = ()
     required_sap_object_keys: tuple[str, ...] = ()

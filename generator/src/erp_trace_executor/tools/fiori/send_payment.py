@@ -15,7 +15,7 @@ from erp_trace_executor.runtime_delay import RuntimeDelay, noop_delay, runtime_d
 from erp_trace_executor.tooling import ToolSpec
 
 
-PAYMENT_APP_NAME = "Ausgangszahlungen buchen"
+PAYMENT_APP_HASH = "#Supplier-postPayment"
 SUPPLIER_ACCOUNT_INPUT_SELECTOR = (
     '[id="application-Supplier-postPayment-component---S1--'
     'fin.ap.payment.post.supplierAccountInput-input-inner"],'
@@ -93,9 +93,7 @@ class SapSendPaymentFlow:
         }
 
     def _open_payment_app(self, page) -> None:
-        page.get_by_role("button", name="Suche öffnen").click()
-        page.get_by_role("searchbox", name="Suchen").fill(PAYMENT_APP_NAME)
-        page.get_by_text(PAYMENT_APP_NAME).click(retry_on_next_wait=True)
+        page.goto(f"{page.url.split('#', 1)[0]}{PAYMENT_APP_HASH}")
         page.get_by_role("textbox", name="Buchungsbelegdatum").wait_for(state="visible")
 
     def _fill_supplier(self, page, supplier: str) -> None:

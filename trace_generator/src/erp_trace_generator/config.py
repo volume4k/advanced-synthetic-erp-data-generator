@@ -188,6 +188,9 @@ def _process(item: dict[str, Any], tool_requirements: dict[str, Any]) -> Process
                 step_id=str(step["stepId"]),
                 step_type=step_type,
                 tool_name=tool_name,
+                same_actor_as_step_id=(
+                    str(step["sameActorAsStepId"]) if step.get("sameActorAsStepId") is not None else None
+                ),
                 input_bindings=tuple(_input_binding(binding, step_type) for binding in step.get("inputBindings", [])),
                 planned_date_input_bindings=tuple(
                     _input_binding(binding, step_type) for binding in step.get("plannedDateInputBindings", [])
@@ -552,6 +555,7 @@ def _validate(config: GenerationConfig) -> None:
     _validate_actor_capabilities(config)
     for scenario_type in sorted(scenario_types_for_run):
         active_process = config.process_for_scenario(scenario_type)
+        _validate_same_actor_affinity(config, active_process)
         for step in active_process.steps:
             capable_actors = config.actors_capable_of(active_process.process_type, step.step_type)
             if not capable_actors:
@@ -656,6 +660,34 @@ def _uses_vendor_bank_account_bindings(config: GenerationConfig) -> bool:
 
 def _bound_root_fields(bindings: tuple[InputBinding, ...]) -> set[str]:
     return {binding.field.split(".", maxsplit=1)[0] for binding in bindings}
+
+
+def _validate_same_actor_affinity(config: GenerationConfig, process: ProcessDefinition) -> None:
+    prior_steps_by_id: dict[str, ProcessStep] = {}
+    for step in process.steps:
+        if step.same_actor_as_step_id is not None:
+            prior_step = prior_steps_by_id.get(step.same_actor_as_step_id)
+            if prior_step is None:
+                raise TraceGenerationError(
+                    f"Process '{process.process_type}' scenario '{process.scenario_type}' step "
+                    f"'{step.step_id}' sameActorAsStepId must reference an earlier step"
+                )
+            prior_actor_ids = {
+                actor.id
+                for actor in config.actors_capable_of(process.process_type, prior_step.step_type)
+            }
+            current_actor_ids = {
+                actor.id
+                for actor in config.actors_capable_of(process.process_type, step.step_type)
+            }
+            missing_actor_ids = sorted(prior_actor_ids - current_actor_ids)
+            if missing_actor_ids:
+                raise TraceGenerationError(
+                    f"Process '{process.process_type}' scenario '{process.scenario_type}' step "
+                    f"'{step.step_id}' sameActorAsStepId references step '{prior_step.step_id}', "
+                    f"but actor(s) {missing_actor_ids} cannot execute both steps"
+                )
+        prior_steps_by_id[step.step_id] = step
 
 
 def _validate_actor_capabilities(config: GenerationConfig) -> None:

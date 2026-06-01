@@ -17,4 +17,8 @@ identityMappings: Listing<objects.IdentityMapping> = new Listing {
     syntheticActorId = "accounts_payable_clerk_mi00"
     technicalSapUserId = "TU_04"
   }
+  new objects.IdentityMapping {
+    syntheticActorId = "chief_accountant_US"
+    technicalSapUserId = "TU_05"
+  }
 }
