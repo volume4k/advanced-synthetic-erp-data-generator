@@ -24,6 +24,10 @@ REALISM_COMPILER_SCHEMA_VERSION = "4"
 WORKLOAD_FACTORS = {"low": -0.5, "normal": 0.0, "high": 1.0}
 
 
+def _is_business_day(day: date) -> bool:
+    return day.weekday() < 5
+
+
 class RealismLLMClient(Protocol):
     def complete_json(self, prompt: str) -> str:
         """Return a JSON object as text."""
@@ -533,6 +537,8 @@ class RealismCompiler:
             pattern_date = date.fromisoformat(pattern.date)
             if not self._config.run_settings.run_start_date <= pattern_date < run_end_exclusive:
                 raise TraceGenerationError(f"demand pattern date '{pattern.date}' is outside run horizon")
+            if not _is_business_day(pattern_date):
+                raise TraceGenerationError(f"demand pattern date '{pattern.date}' is outside configured business days")
             if not self._config.run_settings.realism.daily_case_count_min <= pattern.case_count <= self._config.run_settings.realism.daily_case_count_max:
                 raise TraceGenerationError(f"demand pattern case_count {pattern.case_count} outside guardrails")
             _validate_share_sum([item.share for item in pattern.release_windows], "release_windows")
@@ -617,6 +623,8 @@ class RealismCompiler:
             raise TraceGenerationError("workload_workday_deviation_hours_boost outside guardrails")
 
     def _validate_release_inside_workday(self, release_at: datetime) -> None:
+        if not _is_business_day(release_at.date()):
+            raise TraceGenerationError(f"demand release '{release_at.isoformat()}' is outside configured business days")
         work_start = time.fromisoformat(self._config.run_settings.working_hours.core_start)
         work_end = time.fromisoformat(self._config.run_settings.working_hours.core_end)
         if not work_start <= release_at.timetz().replace(tzinfo=None) < work_end:
@@ -664,6 +672,8 @@ class RealismCompiler:
         result: dict[str, list[int]] = {}
         for offset in range(self._config.run_settings.run_horizon_days):
             pattern_date = self._config.run_settings.run_start_date + timedelta(days=offset)
+            if not _is_business_day(pattern_date):
+                continue
             allowed_days = self._allowed_lead_time_days_for_pattern_date(pattern_date)
             if allowed_days:
                 result[pattern_date.isoformat()] = allowed_days
@@ -930,6 +940,7 @@ class RealismCompiler:
                 f"Sum of all pattern case_count values must equal exactly {self._config.run_settings.case_count}.",
                 "Never invent a larger business volume than caseCount.",
                 "Return compact daily patterns only; omit days with zero cases.",
+                "Demand Pattern dates must be Monday-Friday business days; do not use Saturday or Sunday.",
                 "Every returned pattern must have case_count >= 1.",
                 "release_windows and lead_time_mix shares must each sum to 1.0.",
                 "Every release window must be inside working_hours.",
@@ -1160,6 +1171,9 @@ def _next_default_release_slot(
     work_end = time.fromisoformat(config.run_settings.working_hours.core_end)
     current = candidate if candidate.tzinfo is not None else candidate.replace(tzinfo=tz)
     while current.date() < run_end_exclusive:
+        if not _is_business_day(current.date()):
+            current = datetime.combine(current.date() + timedelta(days=1), work_start, tz)
+            continue
         day_start = datetime.combine(current.date(), work_start, tz)
         day_end = datetime.combine(current.date(), work_end, tz)
         if current < day_start:

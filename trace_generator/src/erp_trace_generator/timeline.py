@@ -24,7 +24,7 @@ class TimelinePlanner:
         self._day_boundaries: dict[tuple[str, date], _DayBoundaries] = {}
 
     def first_start(self) -> datetime:
-        return datetime.combine(self._settings.run_start_date, self._work_start, self._tz)
+        return datetime.combine(_next_business_day(self._settings.run_start_date), self._work_start, self._tz)
 
     def add_step_duration(self, start: datetime, step_type: str, delay_multiplier: float, actor_criteria=None) -> datetime:
         if delay_multiplier <= 0:
@@ -48,6 +48,9 @@ class TimelinePlanner:
         if current.tzinfo is None:
             current = current.replace(tzinfo=self._tz)
         while True:
+            if not _is_business_day(current.date()):
+                current = datetime.combine(_next_business_day(current.date()), self._work_start, self._tz)
+                continue
             boundaries = self._boundaries_for(current.date(), actor_criteria)
             if current < boundaries.work_start:
                 return boundaries.work_start
@@ -76,7 +79,10 @@ class TimelinePlanner:
             if segment_end == boundaries.pause_start:
                 current_start = boundaries.pause_end
                 continue
-            current_start = datetime.combine(current_start.date() + timedelta(days=1), self._work_start, self._tz)
+            current_start = self.align_start(
+                datetime.combine(current_start.date() + timedelta(days=1), self._work_start, self._tz),
+                actor_criteria,
+            )
             continue
 
     def _boundaries_for(self, day: date, actor_criteria=None) -> _DayBoundaries:
@@ -129,6 +135,17 @@ class _DayBoundaries:
 
 def _parse_time(value: str) -> time:
     return time.fromisoformat(value)
+
+
+def _is_business_day(day: date) -> bool:
+    return day.weekday() < 5
+
+
+def _next_business_day(day: date) -> date:
+    current = day
+    while not _is_business_day(current):
+        current += timedelta(days=1)
+    return current
 
 
 def _sample_int(rng: Random, value: MinuteRange) -> int:

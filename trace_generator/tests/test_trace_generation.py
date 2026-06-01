@@ -1914,10 +1914,44 @@ def test_default_demand_releases_roll_across_working_hours(tmp_path: Path) -> No
     ]
 
 
+def test_default_demand_releases_skip_weekends(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["caseCount"] = 4
+    payload["runSettings"]["runStartDate"] = "2026-05-22"
+    payload["runSettings"]["runHorizonDays"] = 4
+    payload["runSettings"]["workingHours"]["coreEnd"] = "09:00"
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+
+    releases = default_demand_releases(config)
+
+    assert [release.release_time.isoformat() for release in releases] == [
+        "2026-05-22T08:00:00+02:00",
+        "2026-05-22T08:30:00+02:00",
+        "2026-05-25T08:00:00+02:00",
+        "2026-05-25T08:30:00+02:00",
+    ]
+
+
 def test_default_demand_releases_fail_when_horizon_has_too_few_slots(tmp_path: Path) -> None:
     payload = _base_config()
     payload["runSettings"]["caseCount"] = 3
     payload["runSettings"]["runHorizonDays"] = 1
+    payload["runSettings"]["workingHours"]["coreEnd"] = "09:00"
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+
+    with pytest.raises(TraceGenerationError, match="default demand releases cannot fit caseCount"):
+        default_demand_releases(config)
+
+
+def test_default_demand_releases_fail_when_only_weekend_slots_remain(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["caseCount"] = 3
+    payload["runSettings"]["runStartDate"] = "2026-05-22"
+    payload["runSettings"]["runHorizonDays"] = 3
     payload["runSettings"]["workingHours"]["coreEnd"] = "09:00"
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, payload)
@@ -2463,6 +2497,21 @@ def test_timeline_carries_remaining_duration_across_pause_and_workday(tmp_path: 
 
     assert pause_crossing_end == pause_crossing_start.replace(hour=12, minute=40)
     assert day_crossing_end == (day_crossing_start + timedelta(days=1)).replace(hour=8, minute=10)
+
+
+def test_timeline_aligns_weekend_candidates_to_next_business_day(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["runStartDate"] = "2026-05-23"
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    planner = TimelinePlanner(config.run_settings, Random(17))
+
+    assert planner.first_start().isoformat() == "2026-05-25T08:00:00+02:00"
+    saturday_candidate = datetime(2026, 5, 23, 10, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+    friday_after_hours = datetime(2026, 5, 22, 18, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+    assert planner.align_start(saturday_candidate).isoformat() == "2026-05-25T08:00:00+02:00"
+    assert planner.align_start(friday_after_hours).isoformat() == "2026-05-25T08:00:00+02:00"
 
 
 def test_generated_inputs_validate_against_current_tool_schemas(tmp_path: Path) -> None:

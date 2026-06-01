@@ -609,6 +609,34 @@ def test_realism_compiler_rejects_duplicate_demand_pattern_dates(tmp_path: Path)
         ).compile_horizon_demand_patterns()
 
 
+def test_realism_compiler_rejects_weekend_demand_pattern_dates(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["runStartDate"] = "2026-05-22"
+    payload["runSettings"]["runHorizonDays"] = 10
+    config = _load_config(tmp_path, payload)
+    response = json.dumps(
+        {
+            "patterns": [
+                {
+                    "date": "2026-05-23",
+                    "case_count": 2,
+                    "workload_intensity": "normal",
+                    "release_windows": [{"start": "08:00", "end": "10:00", "share": 1.0}],
+                    "lead_time_mix": [{"days": 5, "share": 1.0}],
+                }
+            ],
+        }
+    )
+
+    with pytest.raises(TraceGenerationError, match="outside configured business days"):
+        RealismCompiler(
+            config=config,
+            client=FakeRealismClient([response]),
+            cache_dir=tmp_path,
+            max_retries=1,
+        ).compile_horizon_demand_patterns()
+
+
 def test_realism_compiler_rejects_horizon_pattern_that_cannot_finish(tmp_path: Path) -> None:
     config = _load_config(tmp_path, _base_config())
     response = json.dumps(
