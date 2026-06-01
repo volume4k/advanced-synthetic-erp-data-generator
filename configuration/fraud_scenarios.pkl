@@ -109,7 +109,7 @@ fraudScenarios: Listing<objects.FraudScenario> = new Listing {
   new objects.FraudScenario {
     id = "VENDOR_FLIPFLOP"
     enabled = true
-    targetShare = 0.02
+    targetShare = 0.03333333333333333
     caseOutcome = "fraud"
     caseSelection {
       fixedVendorId = vendorFlipflopConfig.vendorId
@@ -118,13 +118,13 @@ fraudScenarios: Listing<objects.FraudScenario> = new Listing {
   new objects.FraudScenario {
     id = "LARCENY3"
     enabled = true
-    targetShare = 0.04
+    targetShare = 0.03333333333333333
     caseOutcome = "fraud"
   }
   new objects.FraudScenario {
     id = "LARCENY5"
     enabled = true
-    targetShare = 0.04
+    targetShare = 0.03333333333333333
     caseOutcome = "fraud"
   }
 }
