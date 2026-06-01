@@ -69,6 +69,7 @@ def plan_steps(
     actor_available: dict[str, datetime] = defaultdict(timeline.first_start)
     technical_user_available: dict[str, datetime] = defaultdict(timeline.first_start)
     material_lock_available: dict[str, datetime] = defaultdict(timeline.first_start)
+    actors_by_case_step: dict[str, dict[str, Actor]] = defaultdict(dict)
     planned_steps: list[PlannedStep] = []
     criteria = actor_criteria or _default_actor_criteria(config)
     next_step_index = {case.case_id: 0 for case in cases}
@@ -90,6 +91,11 @@ def plan_steps(
             material_lock_key = _material_valuation_lock_key(config, case, step)
             if material_lock_key is not None:
                 earliest = max(earliest, material_lock_available[material_lock_key])
+            required_actor = None
+            if step.same_actor_as_step_id is not None:
+                required_actor = actors_by_case_step[case.case_id].get(step.same_actor_as_step_id)
+                if required_actor is None:
+                    raise AssertionError("sameActorAsStepId validation missed unassigned prior step")
             actor, technical_user, start = _allocate_actor(
                 config=config,
                 process_type=process.process_type,
@@ -100,6 +106,7 @@ def plan_steps(
                 timeline=timeline,
                 actor_criteria=criteria,
                 actor_day_profiles=actor_day_profiles,
+                required_actor_id=required_actor.id if required_actor is not None else None,
             )
             candidates.append((start, step_index, case.case_id, step, actor, technical_user))
 
@@ -142,6 +149,7 @@ def plan_steps(
             runtime_date_overrides=step.runtime_date_overrides,
         )
         planned_steps.append(planned_step)
+        actors_by_case_step[case_id][step.step_id] = actor
         next_step_index[case.case_id] += 1
         next_process = config.process_for_scenario(case.case_scenario_type)
         if next_step_index[case.case_id] < len(next_process.steps):
@@ -165,17 +173,27 @@ def _allocate_actor(
     timeline: TimelinePlanner,
     actor_criteria: dict[str, ActorRealismCriteria],
     actor_day_profiles: dict[tuple[str, str], ActorRealismCriteria] | None = None,
+    required_actor_id: str | None = None,
 ) -> tuple[Actor, TechnicalUser, datetime]:
     candidates: list[tuple[datetime, int, Actor, TechnicalUser]] = []
     capable_actors = set(config.actors_capable_of(process_type, step_type))
     for actor_index, actor in enumerate(config.actors):
         if actor not in capable_actors:
             continue
+        if required_actor_id is not None and actor.id != required_actor_id:
+            continue
         technical_user = config.technical_user_for_actor(actor.id)
         candidate = max(earliest, actor_available[actor.id], technical_user_available[technical_user.id])
         profile = _profile_for_actor_day(actor.id, candidate.date(), actor_criteria, actor_day_profiles)
         start = timeline.align_start(candidate, profile)
         candidates.append((start, actor_index, actor, technical_user))
+
+    if not candidates:
+        if required_actor_id is None:
+            raise TraceGenerationError(f"Step '{step_type}' has no capable actor")
+        raise TraceGenerationError(
+            f"Actor '{required_actor_id}' required by sameActorAsStepId cannot execute step '{step_type}'"
+        )
 
     start, _actor_index, actor, technical_user = min(candidates, key=lambda item: (item[0], item[1]))
     return actor, technical_user, start

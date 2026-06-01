@@ -1009,6 +1009,17 @@ def test_config_loader_rejects_capable_actor_without_identity_mapping(tmp_path: 
         load_generation_config(config_path)
 
 
+def test_config_loader_rejects_same_actor_affinity_to_non_prior_step(tmp_path: Path) -> None:
+    payload = _vendor_flipflop_config_payload()
+    vendor_flipflop_steps = payload["processes"][1]["steps"]
+    next(step for step in vendor_flipflop_steps if step["stepId"] == "F1")["sameActorAsStepId"] = "F2"
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+
+    with pytest.raises(TraceGenerationError, match="sameActorAsStepId.*earlier step"):
+        load_generation_config(config_path)
+
+
 def test_enabled_unimplemented_fraud_scenario_fails(tmp_path: Path) -> None:
     payload = _base_config()
     payload["fraudScenarios"][1]["enabled"] = True
@@ -1095,6 +1106,51 @@ def test_vendor_flipflop_config_selects_scenario_process_and_nested_bank_inputs(
     assert cleanup_step.labels["step_label"] == "cleanup_step"
     assert fraud_step.labels["scenario_family"] == "vendor_master_manipulation"
     validate_planned_step_tool_inputs(first_case_steps)
+
+
+def test_vendor_flipflop_same_actor_affinity_keeps_bank_change_payment_and_revert_together(tmp_path: Path) -> None:
+    payload = _vendor_flipflop_config_payload()
+    payload["runSettings"]["caseCount"] = 12
+    payload["runSettings"]["maxParallelActorSessions"] = 4
+    payload["actors"].append(
+        {
+            **_actor("chief_accountant_01", "accounts_payable", "SAP_USER_4"),
+            "delayMultiplier": 0.94,
+        }
+    )
+    payload["actors"][-1]["capabilities"][0]["stepTypes"].extend(
+        ["change_vendor_bank_data", "revert_vendor_bank_data"]
+    )
+    payload["technicalUsers"].append(_technical_user("GBGEN_P04", "SAP_USER_4"))
+    payload["identityMappings"].append(
+        {"syntheticActorId": "chief_accountant_01", "technicalSapUserId": "GBGEN_P04"}
+    )
+    for step in payload["processes"][1]["steps"]:
+        if step["stepId"] in {"F1", "A5", "F2"}:
+            step["sameActorAsStepId"] = "A4"
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    tz = ZoneInfo(config.run_settings.target_timezone)
+
+    cases = plan_cases(
+        config,
+        Random(17),
+        demand_releases=[
+            DemandRelease(f"C{index:03d}", datetime(2026, 5, 18, 8, 0, tzinfo=tz), "MA025")
+            for index in range(1, 13)
+        ],
+    )
+    planned_steps = plan_steps(config, cases, Random(17))
+
+    for case in cases:
+        case_steps = {
+            step.step_id: step.synthetic_actor_id
+            for step in planned_steps
+            if step.case_id == case.case_id and step.step_id in {"A4", "F1", "A5", "F2"}
+        }
+        assert set(case_steps) == {"A4", "F1", "A5", "F2"}
+        assert len(set(case_steps.values())) == 1
 
 
 def test_vendor_flipflop_partial_share_mixes_normal_and_fraud_cases(tmp_path: Path) -> None:
