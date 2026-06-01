@@ -1,0 +1,181 @@
+{
+  "download_dir": "post_processor/downloads/RUN_BA-210",
+  "execution_window": {
+    "end": "2026-06-01T21:57:33.148828+00:00",
+    "start": "2026-06-01T16:08:08.708111+00:00"
+  },
+  "run_id": "RUN_BA-210",
+  "tables": {
+    "BKPF": {
+      "requests": 11,
+      "rows": 209,
+      "selection": [
+        {
+          "field": "BELNR",
+          "high": "1500000377",
+          "low": "1500000369"
+        },
+        {
+          "field": "BUKRS",
+          "high": null,
+          "low": "US00"
+        },
+        {
+          "field": "GJAHR",
+          "high": null,
+          "low": "2026"
+        }
+      ]
+    },
+    "BSEG": {
+      "requests": 11,
+      "rows": 418,
+      "selection": [
+        {
+          "field": "BELNR",
+          "high": "1500000377",
+          "low": "1500000369"
+        },
+        {
+          "field": "BUKRS",
+          "high": null,
+          "low": "US00"
+        },
+        {
+          "field": "GJAHR",
+          "high": null,
+          "low": "2026"
+        }
+      ]
+    },
+    "CDHDR": {
+      "rows": 182,
+      "selection": [
+        {
+          "field": "USERNAME",
+          "high": "LEARN-899",
+          "low": "LEARN-800"
+        },
+        {
+          "field": "UDATE",
+          "high": "06/01/2026",
+          "low": "06/01/2026"
+        },
+        {
+          "field": "UTIME",
+          "high": "21:57:33",
+          "low": "16:08:08"
+        }
+      ]
+    },
+    "CDPOS": {
+      "exact_keys": 182,
+      "planned_requests": 1,
+      "requests": 1,
+      "rows": 88,
+      "source": "CDHDR composite keys"
+    },
+    "EBAN": {
+      "requests": 11,
+      "rows": 210,
+      "selection": [
+        {
+          "field": "BANFN",
+          "high": "10000522",
+          "low": "10000513"
+        }
+      ]
+    },
+    "EKKO": {
+      "requests": 11,
+      "rows": 210,
+      "selection": [
+        {
+          "field": "EBELN",
+          "high": "4500000484",
+          "low": "4500000475"
+        }
+      ]
+    },
+    "EKPO": {
+      "requests": 11,
+      "rows": 210,
+      "selection": [
+        {
+          "field": "EBELN",
+          "high": "4500000484",
+          "low": "4500000475"
+        }
+      ]
+    },
+    "MKPF": {
+      "requests": 12,
+      "rows": 230,
+      "selection": [
+        {
+          "field": "MBLNR",
+          "high": "4900038051",
+          "low": "4900038032"
+        },
+        {
+          "field": "MJAHR",
+          "high": null,
+          "low": "2026"
+        }
+      ]
+    },
+    "MSEG": {
+      "requests": 12,
+      "rows": 250,
+      "selection": [
+        {
+          "field": "MBLNR",
+          "high": "4900038051",
+          "low": "4900038032"
+        },
+        {
+          "field": "MJAHR",
+          "high": null,
+          "low": "2026"
+        }
+      ]
+    },
+    "RBKP": {
+      "requests": 11,
+      "rows": 210,
+      "selection": [
+        {
+          "field": "BELNR",
+          "high": "5105600511",
+          "low": "5105600502"
+        },
+        {
+          "field": "GJAHR",
+          "high": null,
+          "low": "2026"
+        }
+      ]
+    },
+    "RSEG": {
+      "requests": 11,
+      "rows": 210,
+      "selection": [
+        {
+          "field": "BELNR",
+          "high": "5105600511",
+          "low": "5105600502"
+        },
+        {
+          "field": "GJAHR",
+          "high": null,
+          "low": "2026"
+        }
+      ]
+    }
+  },
+  "user_range": {
+    "from": "LEARN-800",
+    "to": "LEARN-899"
+  },
+  "warnings": []
+}
