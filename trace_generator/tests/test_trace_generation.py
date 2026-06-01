@@ -2482,21 +2482,62 @@ def test_timeline_rejects_non_positive_delay_multiplier(tmp_path: Path) -> None:
         planner.add_step_duration(planner.first_start(), "create_purchase_requisition", 0)
 
 
-def test_timeline_carries_remaining_duration_across_pause_and_workday(tmp_path: Path) -> None:
+def test_timeline_keeps_steps_within_one_business_day(tmp_path: Path) -> None:
     payload = _base_config()
     payload["runSettings"]["stepDurationMinutes"]["create_purchase_requisition"] = {"min": 20, "max": 20}
+    payload["runSettings"]["workingHours"]["dailyDeviationHoursMin"] = 0.0
+    payload["runSettings"]["workingHours"]["dailyDeviationHoursMax"] = 0.0
+    payload["runSettings"]["workingHours"]["pauseDurationMinutesMin"] = 30
+    payload["runSettings"]["workingHours"]["pauseDurationMinutesMax"] = 30
     config_path = tmp_path / "main.yaml"
     _write_yaml(config_path, payload)
     config = load_generation_config(config_path)
     planner = TimelinePlanner(config.run_settings, Random(17))
 
     pause_crossing_start = planner.first_start().replace(hour=11, minute=50)
-    pause_crossing_end = planner.add_step_duration(pause_crossing_start, "create_purchase_requisition", 1.0)
+    pause_crossing_window = planner.plan_step_window(pause_crossing_start, "create_purchase_requisition", 1.0)
     day_crossing_start = planner.first_start().replace(hour=16, minute=50)
-    day_crossing_end = planner.add_step_duration(day_crossing_start, "create_purchase_requisition", 1.0)
+    day_crossing_window = planner.plan_step_window(day_crossing_start, "create_purchase_requisition", 1.0)
 
-    assert pause_crossing_end == pause_crossing_start.replace(hour=12, minute=40)
-    assert day_crossing_end == (day_crossing_start + timedelta(days=1)).replace(hour=8, minute=10)
+    assert pause_crossing_window.start == pause_crossing_start
+    assert pause_crossing_window.end == pause_crossing_start.replace(hour=12, minute=40)
+    assert day_crossing_window.start == (day_crossing_start + timedelta(days=1)).replace(hour=8, minute=0)
+    assert day_crossing_window.end == (day_crossing_start + timedelta(days=1)).replace(hour=8, minute=20)
+
+
+def test_timeline_defers_friday_overflow_to_monday(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["runStartDate"] = "2026-05-22"
+    payload["runSettings"]["stepDurationMinutes"]["create_purchase_requisition"] = {"min": 20, "max": 20}
+    payload["runSettings"]["workingHours"]["dailyDeviationHoursMin"] = 0.0
+    payload["runSettings"]["workingHours"]["dailyDeviationHoursMax"] = 0.0
+    payload["runSettings"]["workingHours"]["pauseDurationMinutesMin"] = 30
+    payload["runSettings"]["workingHours"]["pauseDurationMinutesMax"] = 30
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    planner = TimelinePlanner(config.run_settings, Random(17))
+
+    friday_late_start = planner.first_start().replace(hour=16, minute=50)
+    window = planner.plan_step_window(friday_late_start, "create_purchase_requisition", 1.0)
+
+    assert window.start.isoformat() == "2026-05-25T08:00:00+02:00"
+    assert window.end.isoformat() == "2026-05-25T08:20:00+02:00"
+
+
+def test_timeline_rejects_step_that_cannot_fit_single_business_day(tmp_path: Path) -> None:
+    payload = _base_config()
+    payload["runSettings"]["workingHours"]["coreEnd"] = "09:00"
+    payload["runSettings"]["workingHours"]["dailyDeviationHoursMin"] = 0.0
+    payload["runSettings"]["workingHours"]["dailyDeviationHoursMax"] = 0.0
+    payload["runSettings"]["stepDurationMinutes"]["create_purchase_requisition"] = {"min": 70, "max": 70}
+    config_path = tmp_path / "main.yaml"
+    _write_yaml(config_path, payload)
+    config = load_generation_config(config_path)
+    planner = TimelinePlanner(config.run_settings, Random(17))
+
+    with pytest.raises(TraceGenerationError, match="cannot fit into a single business day"):
+        planner.plan_step_window(planner.first_start(), "create_purchase_requisition", 1.0)
 
 
 def test_timeline_aligns_weekend_candidates_to_next_business_day(tmp_path: Path) -> None:

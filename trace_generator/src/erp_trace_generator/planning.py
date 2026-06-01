@@ -119,7 +119,9 @@ def plan_steps(
         )
         case = case_by_id[case_id]
         actor_realism = _profile_for_actor_day(actor.id, start.date(), criteria, actor_day_profiles)
-        end = timeline.add_step_duration(start, step.step_type, actor_realism.delay_multiplier, actor_realism)
+        window = timeline.plan_step_window(start, step.step_type, actor_realism.delay_multiplier, actor_realism)
+        start = window.start
+        end = window.end
         actor_available[actor.id] = end
         technical_user_available[technical_user.id] = end
         material_lock_key = _material_valuation_lock_key(config, case, step)
