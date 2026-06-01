@@ -13,10 +13,16 @@ from erp_trace_executor.tooling import ToolSpec
 from erp_trace_executor.tools.fiori.create_split_goods_receipt import (
     _extract_material_document as extract_split_goods_receipt_material_document,
 )
+from erp_trace_executor.tools.fiori.create_split_goods_receipt import (
+    _extract_material_document_year as extract_split_goods_receipt_material_document_year,
+)
 from erp_trace_executor.tools.fiori.manage_quality_inspection_stock import (
     DOCUMENT_ITEM_TEXT_INPUT_SELECTOR,
     SapQualityInspectionStockFlow,
     _extract_material_document as extract_quality_inspection_material_document,
+)
+from erp_trace_executor.tools.fiori.manage_quality_inspection_stock import (
+    _extract_material_document_year as extract_quality_inspection_material_document_year,
 )
 from erp_trace_executor.tools.fiori.manage_quality_inspection_stock import (
     _read_material_document_success_text,
@@ -176,10 +182,12 @@ def test_larceny3_material_document_extractors_accept_recorded_message_shapes():
         extract_quality_inspection_material_document("Materialbeleg 4900038011/2026")
         == "4900038011"
     )
+    assert extract_quality_inspection_material_document_year("Materialbeleg 4900038011/2026") == "2026"
     assert (
         extract_split_goods_receipt_material_document("Materialbeleg5000000127/")
         == "5000000127"
     )
+    assert extract_split_goods_receipt_material_document_year("Materialbeleg5000000127/") is None
 
 
 def test_quality_stock_success_reader_uses_dialog_text_not_role_regex():

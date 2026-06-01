@@ -1,0 +1,232 @@
+"""SE16 table request specs and filter builders."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
+
+
+SUPPORTED_TABLES = ["CDHDR", "CDPOS", "EBAN", "EKKO", "EKPO", "MKPF", "MSEG", "RBKP", "RSEG", "BKPF", "BSEG"]
+
+
+@dataclass(frozen=True)
+class SelectionRange:
+    field: str
+    low: str
+    high: str | None = None
+
+
+@dataclass(frozen=True)
+class TableRequest:
+    table: str
+    selection: list[SelectionRange]
+    max_rows: int | None = None
+
+
+FIELD_TITLES = {
+    "BANFN": ["Bestellanforderung"],
+    "BELNR": ["Belegnummer", "Rechnungsbelegnummer"],
+    "BUKRS": ["Buchungskreis"],
+    "CHANGENR": ["Änderungsnummer des Belegs"],
+    "EBELN": ["Einkaufsbeleg"],
+    "GJAHR": ["Geschäftsjahr"],
+    "MJAHR": ["Materialbelegjahr"],
+    "MBLNR": ["Materialbeleg"],
+    "OBJECTCLAS": ["Objektklasse"],
+    "OBJECTID": ["Objektwert"],
+    "UDATE": ["Erstellungsdatum des Änderungsbelegs"],
+    "USERNAME": ["Benutzername des Änderers im Änderungsbeleg"],
+    "UTIME": ["Uhrzeit der Änderung"],
+}
+
+
+def cdhdr_selection(
+    *,
+    start: datetime,
+    end: datetime,
+    user_from: str,
+    user_to: str,
+) -> list[SelectionRange]:
+    start_utc = _as_utc(start)
+    end_utc = _as_utc(end)
+    ranges = [
+        SelectionRange("USERNAME", user_from, user_to),
+        SelectionRange("UDATE", _sap_date(start_utc), _sap_date(end_utc)),
+    ]
+    if start_utc.date() == end_utc.date():
+        ranges.append(SelectionRange("UTIME", _sap_time(start_utc), _sap_time(end_utc)))
+    return ranges
+
+
+def cdpos_requests_from_cdhdr(rows: list[dict[str, Any]]) -> list[TableRequest]:
+    seen: set[tuple[str, str, str]] = set()
+    requests: list[TableRequest] = []
+    for row in rows:
+        key = (str(row.get("OBJECTCLAS") or ""), str(row.get("OBJECTID") or ""), str(row.get("CHANGENR") or ""))
+        if not all(key) or key in seen:
+            continue
+        seen.add(key)
+        requests.append(
+            TableRequest(
+                "CDPOS",
+                [
+                    SelectionRange("OBJECTCLAS", key[0]),
+                    SelectionRange("OBJECTID", key[1]),
+                    SelectionRange("CHANGENR", key[2]),
+                ],
+            )
+        )
+    return requests
+
+
+def p2p_requests_from_registry(
+    registry_entries: list[dict[str, Any]],
+    trace_steps: dict[str, dict[str, Any]],
+    *,
+    default_company_code: str | None = None,
+) -> list[TableRequest]:
+    requests: list[TableRequest] = []
+    seen: set[tuple[str, tuple[SelectionRange, ...]]] = set()
+    for entry in registry_entries:
+        for request in _requests_for_registry_entry(entry, trace_steps, default_company_code):
+            key = (request.table, tuple(request.selection))
+            if key in seen:
+                continue
+            seen.add(key)
+            requests.append(request)
+    return requests
+
+
+def p2p_batched_requests_from_registry(
+    registry_entries: list[dict[str, Any]],
+    trace_steps: dict[str, dict[str, Any]],
+    *,
+    default_company_code: str | None = None,
+    max_keys_per_batch: int = 20,
+) -> list[TableRequest]:
+    exact_requests = p2p_requests_from_registry(
+        registry_entries,
+        trace_steps,
+        default_company_code=default_company_code,
+    )
+    by_bucket: dict[tuple[str, tuple[str, ...], str], list[TableRequest]] = {}
+    for request in exact_requests:
+        key = _batch_key(request)
+        by_bucket.setdefault(key, []).append(request)
+    batched: list[TableRequest] = []
+    for table, _fields, _bucket in by_bucket:
+        requests = sorted(by_bucket[(table, _fields, _bucket)], key=_request_sort_key)
+        for chunk in _chunks(requests, max_keys_per_batch):
+            batched.append(_range_request(table, chunk))
+    return batched
+
+
+def _batch_key(request: TableRequest) -> tuple[str, tuple[str, ...], str]:
+    fields = tuple(item.field for item in request.selection)
+    primary_value = request.selection[0].low if request.selection else ""
+    bucket = primary_value[:2] if primary_value.isdigit() and len(primary_value) > 2 else primary_value
+    return (request.table, fields, bucket)
+
+
+def _range_request(table: str, requests: list[TableRequest]) -> TableRequest:
+    fields = [item.field for item in requests[0].selection]
+    selection: list[SelectionRange] = []
+    for field in fields:
+        values = sorted(
+            {
+                item.low
+                for request in requests
+                for item in request.selection
+                if item.field == field and item.low
+            },
+            key=lambda value: _request_sort_key(TableRequest(table, [SelectionRange(field, value)])),
+        )
+        if not values:
+            continue
+        high = values[-1] if values[0] != values[-1] else None
+        selection.append(SelectionRange(field, values[0], high))
+    return TableRequest(table, selection)
+
+
+def _chunks(requests: list[TableRequest], size: int) -> list[list[TableRequest]]:
+    if size <= 0:
+        return [requests]
+    return [requests[index : index + size] for index in range(0, len(requests), size)]
+
+
+def _request_sort_key(request: TableRequest) -> tuple[int, str]:
+    value = request.selection[0].low if request.selection else ""
+    if value.isdigit():
+        return (0, value.zfill(40))
+    return (1, value)
+
+
+def _requests_for_registry_entry(
+    entry: dict[str, Any],
+    trace_steps: dict[str, dict[str, Any]],
+    default_company_code: str | None,
+) -> list[TableRequest]:
+    object_type = str(entry.get("object_type") or "")
+    keys = entry.get("keys") if isinstance(entry.get("keys"), dict) else {}
+    company_code = _company_code(entry, trace_steps, default_company_code)
+    if object_type == "purchase_requisition" and keys.get("pr_number"):
+        return [TableRequest("EBAN", [SelectionRange("BANFN", str(keys["pr_number"]))])]
+    if object_type == "purchase_order" and keys.get("po_number"):
+        po = str(keys["po_number"])
+        return [
+            TableRequest("EKKO", [SelectionRange("EBELN", po)]),
+            TableRequest("EKPO", [SelectionRange("EBELN", po)]),
+        ]
+    if object_type in {"material_document", "scrap_material_document", "stock_release_material_document"} and keys.get(
+        "material_document_number"
+    ):
+        number = str(keys["material_document_number"])
+        selection = [SelectionRange("MBLNR", number)]
+        if keys.get("material_document_year"):
+            selection.append(SelectionRange("MJAHR", str(keys["material_document_year"])))
+        return [
+            TableRequest("MKPF", selection),
+            TableRequest("MSEG", selection),
+        ]
+    if object_type == "supplier_invoice" and keys.get("invoice_number") and keys.get("fiscal_year"):
+        selection = [
+            SelectionRange("BELNR", str(keys["invoice_number"])),
+            SelectionRange("GJAHR", str(keys["fiscal_year"])),
+        ]
+        return [TableRequest("RBKP", selection), TableRequest("RSEG", selection)]
+    if object_type == "payment_document" and keys.get("payment_document_number"):
+        selection = [SelectionRange("BELNR", str(keys["payment_document_number"]))]
+        if company_code:
+            selection.append(SelectionRange("BUKRS", company_code))
+        if keys.get("fiscal_year"):
+            selection.append(SelectionRange("GJAHR", str(keys["fiscal_year"])))
+        return [TableRequest("BKPF", selection), TableRequest("BSEG", selection)]
+    return []
+
+
+def _company_code(
+    entry: dict[str, Any],
+    trace_steps: dict[str, dict[str, Any]],
+    default_company_code: str | None,
+) -> str | None:
+    planned_step_id = str(entry.get("planned_step_id") or "")
+    step = trace_steps.get(planned_step_id) or {}
+    inputs = step.get("inputs") if isinstance(step, dict) else None
+    if isinstance(inputs, dict) and inputs.get("company_code"):
+        return str(inputs["company_code"])
+    return default_company_code
+
+
+def _sap_date(value: datetime) -> str:
+    return value.strftime("%m/%d/%Y")
+
+
+def _sap_time(value: datetime) -> str:
+    return value.strftime("%H:%M:%S")
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)

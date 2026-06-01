@@ -15,7 +15,7 @@ from erp_trace_executor.tooling import ToolSpec
 from erp_trace_executor.tools.fiori.helpers import format_number
 
 MANAGE_STOCK_APP_HASH = "#Material-manageStock?sap_mmim_apptype=manage&/"
-MATERIAL_DOCUMENT_LINK_PATTERN = re.compile(r"Materialbeleg\s*(\d+)(?:/\d+)?")
+MATERIAL_DOCUMENT_LINK_PATTERN = re.compile(r"Materialbeleg\s*(\d+)(?:/(\d{4}))?/?")
 COST_CENTER_INPUT_SELECTOR = "#idCostCenterInput-inner"
 DOCUMENT_ITEM_TEXT_INPUT_SELECTOR = "#idInputDocumentItemText-inner"
 POST_BUTTON_SELECTOR = "#idPostButton"
@@ -89,11 +89,14 @@ class SapQualityInspectionStockFlow:
         self._delay("review_save_post", 2.0)
         page.locator(POST_BUTTON_SELECTOR).click()
 
-        material_document = _extract_material_document(_read_material_document_success_text(page))
+        success_text = _read_material_document_success_text(page)
+        material_document = _extract_material_document(success_text)
+        material_document_year = _extract_material_document_year(success_text)
 
         page.get_by_role("button", name="OK").click()
         return {
             "material_document": material_document,
+            "material_document_year": material_document_year or "",
             "material": params.material,
             "stock_location_label": params.stock_location_label,
             "movement": params.movement,
@@ -164,6 +167,9 @@ def run_manage_quality_inspection_stock(
 ) -> ToolResult:
     page = context.get_fiori_page()
     movement_data = SapQualityInspectionStockFlow(page, delay=runtime_delay_callback(context)).post(params)
+    object_keys = {"material_document_number": movement_data["material_document"]}
+    if movement_data["material_document_year"]:
+        object_keys["material_document_year"] = movement_data["material_document_year"]
 
     return ToolResult(
         planned_step_id=context.record.planned_step_id,
@@ -175,7 +181,7 @@ def run_manage_quality_inspection_stock(
             "returned_objects": [
                 returned_object(
                     MOVEMENT_OBJECT_TYPES[params.movement],
-                    material_document_number=movement_data["material_document"],
+                    **object_keys,
                 )
             ],
             **movement_data,
@@ -197,6 +203,15 @@ def _extract_material_document(message: str) -> str:
             f"Could not extract material document number from success link: {message}"
         )
     return match.group(1)
+
+
+def _extract_material_document_year(message: str) -> str | None:
+    match = MATERIAL_DOCUMENT_LINK_PATTERN.search(message)
+    if match is None:
+        raise ValueError(
+            f"Could not extract material document number from success link: {message}"
+        )
+    return match.group(2)
 
 
 def _read_material_document_success_text(page) -> str:
