@@ -1,0 +1,3902 @@
+version: 0.1.0
+sap:
+  loginUrlEnvVar: SAP_URL
+actors:
+- id: inventory_manager_mi00
+  displayName: Wilton Saban
+  role: inventory_manager
+  timezone: America/New_York
+  workLocation: MI00
+  personaDescription: Floor-connected inventory manager who starts early, coordinates practical stock needs with warehouse realities, and keeps requisition work moving around operational interruptions.
+  delayMultiplier: 1.18
+  realismProfile:
+    workerType: inventory manager
+    workingHoursDeviation: -0.75
+    pauseCharacteristicsIndex: 11
+  realismGuardrails:
+    delayMultiplierMin: 0.95
+    delayMultiplierMax: 1.8
+    workdayDeviationHoursMin: -1.75
+    workdayDeviationHoursMax: 0.75
+    pauseDurationMinutesMin: 25
+    pauseDurationMinutesMax: 85
+  exposeInFinalDatasetAs: inventory_manager_mi00
+  capabilities:
+  - processType: procure_to_pay
+    stepTypes:
+    - create_purchase_requisition
+- id: buyer_mi00
+  displayName: Alberto Conti
+  role: buyer
+  timezone: America/New_York
+  workLocation: MI00
+  personaDescription: Relationship-driven buyer who balances vendor communication with operational purchasing needs, coordinates closely with inventory and receiving teams, and shows moderate timing variation from day-to-day coordination demands.
+  delayMultiplier: 1.08
+  realismProfile:
+    workerType: purchasing employee
+    workingHoursDeviation: 0.0
+    pauseCharacteristicsIndex: 10
+  realismGuardrails:
+    delayMultiplierMin: 0.85
+    delayMultiplierMax: 1.8
+    workdayDeviationHoursMin: -1.0
+    workdayDeviationHoursMax: 1.75
+    pauseDurationMinutesMin: 20
+    pauseDurationMinutesMax: 80
+  exposeInFinalDatasetAs: buyer_mi00
+  capabilities:
+  - processType: procure_to_pay
+    stepTypes:
+    - create_purchase_order
+    - create_purchase_order_with_delivery_address
+    - post_larceny5_goods_receipt
+- id: goods_receipt_clerk_mi00
+  displayName: Tatiana Karsova
+  role: goods_receipt_clerk
+  timezone: America/New_York
+  workLocation: MI00
+  personaDescription: Busy warehouse receiver who starts early, coordinates goods movement around inbound deliveries and floor interruptions, and works at a practical pace shaped by physical handling constraints.
+  delayMultiplier: 1.38
+  realismProfile:
+    workerType: goods receipt clerk
+    workingHoursDeviation: -1.0
+    pauseCharacteristicsIndex: 12
+  realismGuardrails:
+    delayMultiplierMin: 1.05
+    delayMultiplierMax: 2.3
+    workdayDeviationHoursMin: -2.0
+    workdayDeviationHoursMax: 0.5
+    pauseDurationMinutesMin: 30
+    pauseDurationMinutesMax: 90
+  exposeInFinalDatasetAs: goods_receipt_clerk_mi00
+  capabilities:
+  - processType: procure_to_pay
+    stepTypes:
+    - post_goods_receipt
+    - post_split_goods_receipt
+    - scrap_quality_inspection_stock
+    - release_quality_inspection_stock
+- id: accounts_payable_clerk_mi00
+  displayName: Silvia Cassano
+  role: accounts_payable_clerk
+  timezone: America/New_York
+  workLocation: MI00
+  personaDescription: High-volume accounts payable clerk who processes routine invoice and payment work efficiently, keeps a repeatable daily rhythm, and maintains clean documentation habits.
+  delayMultiplier: 0.92
+  realismProfile:
+    workerType: accounts payable clerk
+    workingHoursDeviation: 0.0
+    pauseCharacteristicsIndex: 7
+  realismGuardrails:
+    delayMultiplierMin: 0.75
+    delayMultiplierMax: 1.35
+    workdayDeviationHoursMin: -0.5
+    workdayDeviationHoursMax: 1.0
+    pauseDurationMinutesMin: 15
+    pauseDurationMinutesMax: 55
+  exposeInFinalDatasetAs: accounts_payable_clerk_mi00
+  capabilities:
+  - processType: procure_to_pay
+    stepTypes:
+    - enter_incoming_invoice
+    - change_vendor_bank_data
+    - post_outgoing_payment
+    - revert_vendor_bank_data
+- id: chief_accountant_US
+  displayName: Shuyuan Chen
+  role: chief_accountant
+  timezone: America/New_York
+  workLocation: MI00
+  personaDescription: Senior accounting lead who handles escalations decisively, balances control responsibilities with a meeting-heavy schedule, and is trusted for judgment on sensitive finance tasks.
+  delayMultiplier: 0.94
+  realismProfile:
+    workerType: chief accountant
+    workingHoursDeviation: 0.75
+    pauseCharacteristicsIndex: 5
+  realismGuardrails:
+    delayMultiplierMin: 0.75
+    delayMultiplierMax: 1.25
+    workdayDeviationHoursMin: -0.5
+    workdayDeviationHoursMax: 2.25
+    pauseDurationMinutesMin: 10
+    pauseDurationMinutesMax: 55
+  exposeInFinalDatasetAs: chief_accountant_US
+  capabilities:
+  - processType: procure_to_pay
+    stepTypes:
+    - enter_incoming_invoice
+    - change_vendor_bank_data
+    - post_outgoing_payment
+    - revert_vendor_bank_data
+technicalUsers:
+- id: TU_01
+  usernameEnvVar: SAP_USER_1_UN
+  passwordEnvVar: SAP_USER_1_PW
+  loginUrlEnvVar: SAP_URL
+  maxConcurrentActorSessions: 1
+- id: TU_02
+  usernameEnvVar: SAP_USER_2_UN
+  passwordEnvVar: SAP_USER_2_PW
+  loginUrlEnvVar: SAP_URL
+  maxConcurrentActorSessions: 1
+- id: TU_03
+  usernameEnvVar: SAP_USER_3_UN
+  passwordEnvVar: SAP_USER_3_PW
+  loginUrlEnvVar: SAP_URL
+  maxConcurrentActorSessions: 1
+- id: TU_04
+  usernameEnvVar: SAP_USER_4_UN
+  passwordEnvVar: SAP_USER_4_PW
+  loginUrlEnvVar: SAP_URL
+  maxConcurrentActorSessions: 1
+- id: TU_05
+  usernameEnvVar: SAP_USER_5_UN
+  passwordEnvVar: SAP_USER_5_PW
+  loginUrlEnvVar: SAP_URL
+  maxConcurrentActorSessions: 1
+identityMappings:
+- syntheticActorId: inventory_manager_mi00
+  technicalSapUserId: TU_01
+- syntheticActorId: buyer_mi00
+  technicalSapUserId: TU_02
+- syntheticActorId: goods_receipt_clerk_mi00
+  technicalSapUserId: TU_03
+- syntheticActorId: accounts_payable_clerk_mi00
+  technicalSapUserId: TU_04
+- syntheticActorId: chief_accountant_US
+  technicalSapUserId: TU_05
+masterData:
+- materialId: EPAD1800
+  validVendors:
+  - '103800'
+  - '101800'
+  validPlants:
+  - MI00
+  validPurchasingOrgs:
+  - US00
+  validStorageLocations:
+  - TG00
+  quantityMin: 10
+  quantityMax: 150
+  orderMultiple: 1
+  priceMin: 38.0
+  priceMax: 42.0
+  currency: USD
+  deliveryLeadTimeMinDays: 8
+  deliveryLeadTimeMaxDays: 21
+- materialId: RKIT1800
+  validVendors:
+  - '112800'
+  - '108800'
+  validPlants:
+  - MI00
+  validPurchasingOrgs:
+  - US00
+  validStorageLocations:
+  - TG00
+  quantityMin: 10
+  quantityMax: 200
+  orderMultiple: 1
+  priceMin: 8.0
+  priceMax: 22.0
+  currency: USD
+  deliveryLeadTimeMinDays: 7
+  deliveryLeadTimeMaxDays: 21
+- materialId: OHMT1800
+  validVendors:
+  - '101800'
+  - '107800'
+  validPlants:
+  - MI00
+  validPurchasingOrgs:
+  - US00
+  validStorageLocations:
+  - TG00
+  quantityMin: 10
+  quantityMax: 150
+  orderMultiple: 1
+  priceMin: 24.0
+  priceMax: 28.0
+  currency: USD
+  deliveryLeadTimeMinDays: 7
+  deliveryLeadTimeMaxDays: 21
+- materialId: KPAD1800
+  validVendors:
+  - '103800'
+  - '101800'
+  validPlants:
+  - MI00
+  validPurchasingOrgs:
+  - US00
+  validStorageLocations:
+  - TG00
+  quantityMin: 10
+  quantityMax: 150
+  orderMultiple: 1
+  priceMin: 38.0
+  priceMax: 42.0
+  currency: USD
+  deliveryLeadTimeMinDays: 8
+  deliveryLeadTimeMaxDays: 21
+- materialId: PUMP1800
+  validVendors:
+  - '107800'
+  - '108800'
+  validPlants:
+  - MI00
+  validPurchasingOrgs:
+  - US00
+  validStorageLocations:
+  - TG00
+  quantityMin: 5
+  quantityMax: 150
+  orderMultiple: 1
+  priceMin: 10.0
+  priceMax: 35.0
+  currency: USD
+  deliveryLeadTimeMinDays: 7
+  deliveryLeadTimeMaxDays: 21
+- materialId: RHMT1800
+  validVendors:
+  - '101800'
+  - '107800'
+  validPlants:
+  - MI00
+  validPurchasingOrgs:
+  - US00
+  validStorageLocations:
+  - TG00
+  quantityMin: 10
+  quantityMax: 150
+  orderMultiple: 1
+  priceMin: 24.0
+  priceMax: 28.0
+  currency: USD
+  deliveryLeadTimeMinDays: 7
+  deliveryLeadTimeMaxDays: 21
+- materialId: SHRT1800
+  validVendors:
+  - '110800'
+  - '109800'
+  validPlants:
+  - MI00
+  validPurchasingOrgs:
+  - US00
+  validStorageLocations:
+  - TG00
+  quantityMin: 20
+  quantityMax: 250
+  orderMultiple: 5
+  priceMin: 8.0
+  priceMax: 20.0
+  currency: USD
+  deliveryLeadTimeMinDays: 7
+  deliveryLeadTimeMaxDays: 21
+- materialId: FAID1800
+  validVendors:
+  - '101800'
+  - '112800'
+  validPlants:
+  - MI00
+  validPurchasingOrgs:
+  - US00
+  validStorageLocations:
+  - TG00
+  quantityMin: 10
+  quantityMax: 150
+  orderMultiple: 1
+  priceMin: 15.0
+  priceMax: 35.0
+  currency: USD
+  deliveryLeadTimeMinDays: 7
+  deliveryLeadTimeMaxDays: 21
+- materialId: BOTL1800
+  validVendors:
+  - '107800'
+  - '110800'
+  validPlants:
+  - MI00
+  validPurchasingOrgs:
+  - US00
+  validStorageLocations:
+  - TG00
+  quantityMin: 20
+  quantityMax: 250
+  orderMultiple: 5
+  priceMin: 10.0
+  priceMax: 12.0
+  currency: USD
+  deliveryLeadTimeMinDays: 8
+  deliveryLeadTimeMaxDays: 21
+- materialId: CAGE1800
+  validVendors:
+  - '106800'
+  - '108800'
+  validPlants:
+  - MI00
+  validPurchasingOrgs:
+  - US00
+  validStorageLocations:
+  - TG00
+  quantityMin: 20
+  quantityMax: 250
+  orderMultiple: 5
+  priceMin: 5.0
+  priceMax: 15.0
+  currency: USD
+  deliveryLeadTimeMinDays: 7
+  deliveryLeadTimeMaxDays: 21
+- materialId: CHLK1800
+  validVendors:
+  - '103800'
+  - '107800'
+  - '1003070'
+  validPlants:
+  - MI00
+  validPurchasingOrgs:
+  - US00
+  validStorageLocations:
+  - TG00
+  quantityMin: 50
+  quantityMax: 200
+  orderMultiple: 1
+  priceMin: 32.0
+  priceMax: 36.5
+  currency: USD
+  deliveryLeadTimeMinDays: 14
+  deliveryLeadTimeMaxDays: 30
+- materialId: CHSP1800
+  validVendors:
+  - '102800'
+  - '105800'
+  - '1003070'
+  validPlants:
+  - MI00
+  validPurchasingOrgs:
+  - US00
+  validStorageLocations:
+  - TG00
+  quantityMin: 50
+  quantityMax: 300
+  orderMultiple: 1
+  priceMin: 25.5
+  priceMax: 30.0
+  currency: USD
+  deliveryLeadTimeMinDays: 14
+  deliveryLeadTimeMaxDays: 30
+processes:
+- processType: procure_to_pay
+  scenarioType: NORMAL
+  steps:
+  - stepId: A1
+    stepType: create_purchase_requisition
+    tool:
+      toolName: fiori.create_purchase_requisition
+      title: Create Purchase Requisition
+      inputModel: CreatePurchaseRequisitionInput
+      requiredInputFields:
+      - material
+      - quantity
+      - valuation_price
+      - currency
+      - price_unit
+      - delivery_date
+      - plant
+      - purchasing_group
+      - purchasing_organization
+      - company_code
+      inputProperties:
+      - name: material
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: valuation_price
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: true
+      - name: price_unit
+        schemaType: integer
+        required: true
+      - name: delivery_date
+        schemaType: string
+        required: true
+      - name: plant
+        schemaType: string
+        required: true
+      - name: purchasing_group
+        schemaType: string
+        required: true
+      - name: purchasing_organization
+        schemaType: string
+        required: true
+      - name: company_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: material
+      source: master_data
+      value: materialId
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: valuation_price
+      source: case
+      value: target_price
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    - field: price_unit
+      source: literal
+      value: '1'
+      valueType: int
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: plant
+      source: master_data
+      value: plant
+      valueType: string
+    - field: purchasing_group
+      source: literal
+      value: N00
+      valueType: string
+    - field: purchasing_organization
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    plannedDateInputBindings:
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - purchase_requisition.pr_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: A2
+    stepType: create_purchase_order
+    tool:
+      toolName: fiori.create_purchase_order
+      title: Create Purchase Order
+      inputModel: CreatePurchaseOrderInput
+      requiredInputFields:
+      - purchase_requisition
+      - storage_location
+      - supplier
+      - quantity
+      - net_price
+      inputProperties:
+      - name: purchase_requisition
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: net_price
+        schemaType: number
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: false
+        defaultValue: XI
+    inputBindings:
+    - field: purchase_requisition
+      source: prior_output
+      value: purchase_requisition.pr_number
+      valueType: string
+    - field: storage_location
+      source: case
+      value: storage_location
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: net_price
+      source: case
+      value: target_price
+      valueType: string
+    plannedDateInputBindings: []
+    requiredSapObjectKeys:
+    - purchase_order.po_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: A3
+    stepType: post_goods_receipt
+    tool:
+      toolName: fiori.create_goods_receipt
+      title: Create Goods Receipt
+      inputModel: CreateGoodsReceiptInput
+      requiredInputFields:
+      - purchase_order
+      - storage_location
+      inputProperties:
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: storage_location
+      source: derived
+      value: storage_location_label
+      valueType: string
+    plannedDateInputBindings:
+    - field: document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - material_document.material_document_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: material_document
+      fields:
+      - document_date
+      - posting_date
+      runtimeValuePolicy: sap_current_date
+      source: planned_date_inputs
+      reason: sap_runtime_forces_current_date
+  - stepId: A4
+    stepType: enter_incoming_invoice
+    tool:
+      toolName: fiori.create_supplier_invoice
+      title: Create Supplier Invoice
+      inputModel: CreateSupplierInvoiceInput
+      requiredInputFields:
+      - gross_amount
+      - purchase_order
+      - tax_code
+      inputProperties:
+      - name: gross_amount
+        schemaType: number
+        required: true
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: gross_amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: tax_code
+      source: literal
+      value: XI
+      valueType: string
+    plannedDateInputBindings:
+    - field: invoice_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - supplier_invoice.invoice_number
+    - supplier_invoice.fiscal_year
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: supplier_invoice
+      fields:
+      - invoice_date
+      runtimeValuePolicy: executor_current_date
+      source: planned_date_inputs
+      reason: executor_uses_current_date_for_sap_runtime
+  - stepId: A5
+    stepType: post_outgoing_payment
+    tool:
+      toolName: fiori.send_payment
+      title: Send Payment
+      inputModel: SendPaymentInput
+      requiredInputFields:
+      - company_code
+      - posting_document_date
+      - supplier
+      - accounting_document
+      - general_ledger_account
+      - amount
+      inputProperties:
+      - name: company_code
+        schemaType: string
+        required: true
+      - name: posting_document_date
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: accounting_document
+        schemaType: string
+        required: true
+      - name: general_ledger_account
+        schemaType: string
+        required: true
+      - name: amount
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: false
+        defaultValue: USD
+      - name: posting_date
+        schemaType: string | null
+        required: false
+    inputBindings:
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: accounting_document
+      source: prior_output
+      value: supplier_invoice.invoice_number
+      valueType: string
+    - field: general_ledger_account
+      source: literal
+      value: '1800000'
+      valueType: string
+    - field: amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    plannedDateInputBindings:
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    requiredSapObjectKeys:
+    - payment_document.payment_document_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: payment_posting_date
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  dependencies:
+  - fromStepType: create_purchase_requisition
+    toStepType: create_purchase_order
+    description: Create purchase order after purchase requisition because A2 needs the purchase requisition number produced by A1.
+  - fromStepType: create_purchase_order
+    toStepType: post_goods_receipt
+    description: Post goods receipt after purchase order creation because A3 requires the purchase order created by A2.
+  - fromStepType: post_goods_receipt
+    toStepType: enter_incoming_invoice
+    description: Enter incoming invoice after goods receipt in the version-one procure-to-pay flow.
+  - fromStepType: enter_incoming_invoice
+    toStepType: post_outgoing_payment
+    description: Post outgoing payment after incoming invoice entry because payment requires an invoice.
+- processType: procure_to_pay
+  scenarioType: VENDOR_FLIPFLOP
+  steps:
+  - stepId: A1
+    stepType: create_purchase_requisition
+    tool:
+      toolName: fiori.create_purchase_requisition
+      title: Create Purchase Requisition
+      inputModel: CreatePurchaseRequisitionInput
+      requiredInputFields:
+      - material
+      - quantity
+      - valuation_price
+      - currency
+      - price_unit
+      - delivery_date
+      - plant
+      - purchasing_group
+      - purchasing_organization
+      - company_code
+      inputProperties:
+      - name: material
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: valuation_price
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: true
+      - name: price_unit
+        schemaType: integer
+        required: true
+      - name: delivery_date
+        schemaType: string
+        required: true
+      - name: plant
+        schemaType: string
+        required: true
+      - name: purchasing_group
+        schemaType: string
+        required: true
+      - name: purchasing_organization
+        schemaType: string
+        required: true
+      - name: company_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: material
+      source: master_data
+      value: materialId
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: valuation_price
+      source: case
+      value: target_price
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    - field: price_unit
+      source: literal
+      value: '1'
+      valueType: int
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: plant
+      source: master_data
+      value: plant
+      valueType: string
+    - field: purchasing_group
+      source: literal
+      value: N00
+      valueType: string
+    - field: purchasing_organization
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    plannedDateInputBindings:
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - purchase_requisition.pr_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: A2
+    stepType: create_purchase_order
+    tool:
+      toolName: fiori.create_purchase_order
+      title: Create Purchase Order
+      inputModel: CreatePurchaseOrderInput
+      requiredInputFields:
+      - purchase_requisition
+      - storage_location
+      - supplier
+      - quantity
+      - net_price
+      inputProperties:
+      - name: purchase_requisition
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: net_price
+        schemaType: number
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: false
+        defaultValue: XI
+    inputBindings:
+    - field: purchase_requisition
+      source: prior_output
+      value: purchase_requisition.pr_number
+      valueType: string
+    - field: storage_location
+      source: case
+      value: storage_location
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: net_price
+      source: case
+      value: target_price
+      valueType: string
+    plannedDateInputBindings: []
+    requiredSapObjectKeys:
+    - purchase_order.po_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: A3
+    stepType: post_goods_receipt
+    tool:
+      toolName: fiori.create_goods_receipt
+      title: Create Goods Receipt
+      inputModel: CreateGoodsReceiptInput
+      requiredInputFields:
+      - purchase_order
+      - storage_location
+      inputProperties:
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: storage_location
+      source: derived
+      value: storage_location_label
+      valueType: string
+    plannedDateInputBindings:
+    - field: document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - material_document.material_document_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: material_document
+      fields:
+      - document_date
+      - posting_date
+      runtimeValuePolicy: sap_current_date
+      source: planned_date_inputs
+      reason: sap_runtime_forces_current_date
+  - stepId: A4
+    stepType: enter_incoming_invoice
+    tool:
+      toolName: fiori.create_supplier_invoice
+      title: Create Supplier Invoice
+      inputModel: CreateSupplierInvoiceInput
+      requiredInputFields:
+      - gross_amount
+      - purchase_order
+      - tax_code
+      inputProperties:
+      - name: gross_amount
+        schemaType: number
+        required: true
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: gross_amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: tax_code
+      source: literal
+      value: XI
+      valueType: string
+    plannedDateInputBindings:
+    - field: invoice_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - supplier_invoice.invoice_number
+    - supplier_invoice.fiscal_year
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: supplier_invoice
+      fields:
+      - invoice_date
+      runtimeValuePolicy: executor_current_date
+      source: planned_date_inputs
+      reason: executor_uses_current_date_for_sap_runtime
+  - stepId: F1
+    stepType: change_vendor_bank_data
+    sameActorAsStepId: A4
+    tool:
+      toolName: fiori.change_vendor_bank_details
+      title: Change Vendor Bank Details
+      inputModel: ChangeVendorBankDetailsInput
+      requiredInputFields:
+      - vendor_id
+      - bank_account_credentials
+      inputProperties:
+      - name: vendor_id
+        schemaType: string
+        required: true
+      - name: bank_account_credentials
+        schemaType: object
+        required: true
+    inputBindings:
+    - field: vendor_id
+      source: literal
+      value: '1003070'
+      valueType: string
+    - field: bank_account_credentials.bank_key
+      source: literal
+      value: ABNAUS33XXX
+      valueType: string
+    - field: bank_account_credentials.account_number
+      source: literal
+      value: '87654321'
+      valueType: string
+    - field: bank_account_credentials.account_owner
+      source: literal
+      value: Silvia Cassano
+      valueType: string
+    plannedDateInputBindings: []
+    requiredSapObjectKeys: []
+    objectOutputRequired: false
+    labels:
+      step_label: fraud_step
+      scenario_family: vendor_master_manipulation
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: A5
+    stepType: post_outgoing_payment
+    sameActorAsStepId: A4
+    tool:
+      toolName: fiori.send_payment
+      title: Send Payment
+      inputModel: SendPaymentInput
+      requiredInputFields:
+      - company_code
+      - posting_document_date
+      - supplier
+      - accounting_document
+      - general_ledger_account
+      - amount
+      inputProperties:
+      - name: company_code
+        schemaType: string
+        required: true
+      - name: posting_document_date
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: accounting_document
+        schemaType: string
+        required: true
+      - name: general_ledger_account
+        schemaType: string
+        required: true
+      - name: amount
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: false
+        defaultValue: USD
+      - name: posting_date
+        schemaType: string | null
+        required: false
+    inputBindings:
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: accounting_document
+      source: prior_output
+      value: supplier_invoice.invoice_number
+      valueType: string
+    - field: general_ledger_account
+      source: literal
+      value: '1800000'
+      valueType: string
+    - field: amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    plannedDateInputBindings:
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    requiredSapObjectKeys:
+    - payment_document.payment_document_number
+    objectOutputRequired: true
+    labels:
+      step_label: fraud_supporting_step
+      scenario_family: vendor_master_manipulation
+    businessDateGate: payment_posting_date
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: F2
+    stepType: revert_vendor_bank_data
+    sameActorAsStepId: A4
+    tool:
+      toolName: fiori.change_vendor_bank_details
+      title: Change Vendor Bank Details
+      inputModel: ChangeVendorBankDetailsInput
+      requiredInputFields:
+      - vendor_id
+      - bank_account_credentials
+      inputProperties:
+      - name: vendor_id
+        schemaType: string
+        required: true
+      - name: bank_account_credentials
+        schemaType: object
+        required: true
+    inputBindings:
+    - field: vendor_id
+      source: literal
+      value: '1003070'
+      valueType: string
+    - field: bank_account_credentials.bank_key
+      source: literal
+      value: ABNAUS33XXX
+      valueType: string
+    - field: bank_account_credentials.account_number
+      source: literal
+      value: '12345678'
+      valueType: string
+    - field: bank_account_credentials.account_owner
+      source: literal
+      value: Mid West Supply, Inc.
+      valueType: string
+    plannedDateInputBindings: []
+    requiredSapObjectKeys: []
+    objectOutputRequired: false
+    labels:
+      step_label: cleanup_step
+      scenario_family: vendor_master_manipulation
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  dependencies:
+  - fromStepType: create_purchase_requisition
+    toStepType: create_purchase_order
+    description: Create purchase order after purchase requisition because A2 needs the purchase requisition number produced by A1.
+  - fromStepType: create_purchase_order
+    toStepType: post_goods_receipt
+    description: Post goods receipt after purchase order creation because A3 requires the purchase order created by A2.
+  - fromStepType: post_goods_receipt
+    toStepType: enter_incoming_invoice
+    description: Enter incoming invoice after goods receipt in the version-one procure-to-pay flow.
+  - fromStepType: enter_incoming_invoice
+    toStepType: change_vendor_bank_data
+    description: Change vendor bank details after incoming invoice entry.
+  - fromStepType: change_vendor_bank_data
+    toStepType: post_outgoing_payment
+    description: Post outgoing payment while manipulated vendor bank details are active.
+  - fromStepType: post_outgoing_payment
+    toStepType: revert_vendor_bank_data
+    description: Revert vendor bank details after outgoing payment.
+- processType: procure_to_pay
+  scenarioType: LARCENY3
+  steps:
+  - stepId: A1
+    stepType: create_purchase_requisition
+    tool:
+      toolName: fiori.create_purchase_requisition
+      title: Create Purchase Requisition
+      inputModel: CreatePurchaseRequisitionInput
+      requiredInputFields:
+      - material
+      - quantity
+      - valuation_price
+      - currency
+      - price_unit
+      - delivery_date
+      - plant
+      - purchasing_group
+      - purchasing_organization
+      - company_code
+      inputProperties:
+      - name: material
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: valuation_price
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: true
+      - name: price_unit
+        schemaType: integer
+        required: true
+      - name: delivery_date
+        schemaType: string
+        required: true
+      - name: plant
+        schemaType: string
+        required: true
+      - name: purchasing_group
+        schemaType: string
+        required: true
+      - name: purchasing_organization
+        schemaType: string
+        required: true
+      - name: company_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: material
+      source: master_data
+      value: materialId
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: valuation_price
+      source: case
+      value: target_price
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    - field: price_unit
+      source: literal
+      value: '1'
+      valueType: int
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: plant
+      source: master_data
+      value: plant
+      valueType: string
+    - field: purchasing_group
+      source: literal
+      value: N00
+      valueType: string
+    - field: purchasing_organization
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    plannedDateInputBindings:
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - purchase_requisition.pr_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: A2
+    stepType: create_purchase_order
+    tool:
+      toolName: fiori.create_purchase_order
+      title: Create Purchase Order
+      inputModel: CreatePurchaseOrderInput
+      requiredInputFields:
+      - purchase_requisition
+      - storage_location
+      - supplier
+      - quantity
+      - net_price
+      inputProperties:
+      - name: purchase_requisition
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: net_price
+        schemaType: number
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: false
+        defaultValue: XI
+    inputBindings:
+    - field: purchase_requisition
+      source: prior_output
+      value: purchase_requisition.pr_number
+      valueType: string
+    - field: storage_location
+      source: case
+      value: storage_location
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: net_price
+      source: case
+      value: target_price
+      valueType: string
+    plannedDateInputBindings: []
+    requiredSapObjectKeys:
+    - purchase_order.po_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: Q1
+    stepType: post_split_goods_receipt
+    tool:
+      toolName: fiori.create_split_goods_receipt
+      title: Create Split Goods Receipt
+      inputModel: CreateSplitGoodsReceiptInput
+      requiredInputFields:
+      - purchase_order
+      - storage_location
+      - unrestricted_quantity
+      - quality_inspection_quantity
+      inputProperties:
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+      - name: unrestricted_quantity
+        schemaType: number
+        required: true
+      - name: quality_inspection_quantity
+        schemaType: number
+        required: true
+    inputBindings:
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: storage_location
+      source: derived
+      value: storage_location_label
+      valueType: string
+    - field: unrestricted_quantity
+      source: derived
+      value: unrestrictedQuantity
+      valueType: string
+    - field: quality_inspection_quantity
+      source: derived
+      value: qualityInspectionQuantity
+      valueType: string
+    plannedDateInputBindings:
+    - field: document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - material_document.material_document_number
+    objectOutputRequired: true
+    labels:
+      step_label: fraud_supporting_step
+      scenario_family: inventory_misappropriation
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: material_document
+      fields:
+      - document_date
+      - posting_date
+      runtimeValuePolicy: sap_current_date
+      source: planned_date_inputs
+      reason: sap_runtime_forces_current_date
+  - stepId: Q2
+    stepType: scrap_quality_inspection_stock
+    tool:
+      toolName: fiori.manage_quality_inspection_stock
+      title: Manage Quality Inspection Stock
+      inputModel: ManageQualityInspectionStockInput
+      requiredInputFields:
+      - material
+      - stock_location_label
+      - movement
+      - quantity
+      - document_item_text
+      inputProperties:
+      - name: material
+        schemaType: string
+        required: true
+      - name: stock_location_label
+        schemaType: string
+        required: true
+      - name: movement
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: number
+        required: true
+      - name: document_item_text
+        schemaType: string
+        required: true
+      - name: cost_center
+        schemaType: string | null
+        required: false
+    inputBindings:
+    - field: material
+      source: case
+      value: material_id
+      valueType: string
+    - field: stock_location_label
+      source: literal
+      value: DC Miami
+      valueType: string
+    - field: movement
+      source: literal
+      value: scrap
+      valueType: string
+    - field: quantity
+      source: derived
+      value: qualityInspectionQuantity
+      valueType: string
+    - field: document_item_text
+      source: literal
+      value: Muss leider verschrottet werden.
+      valueType: string
+    - field: cost_center
+      source: literal
+      value: NAPC1000
+      valueType: string
+    plannedDateInputBindings:
+    - field: posting_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - scrap_material_document.material_document_number
+    objectOutputRequired: true
+    labels:
+      step_label: fraud_step
+      scenario_family: inventory_misappropriation
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: scrap_material_document
+      fields:
+      - posting_date
+      runtimeValuePolicy: sap_current_date
+      source: planned_date_inputs
+      reason: sap_runtime_forces_current_date
+  - stepId: A4
+    stepType: enter_incoming_invoice
+    tool:
+      toolName: fiori.create_supplier_invoice
+      title: Create Supplier Invoice
+      inputModel: CreateSupplierInvoiceInput
+      requiredInputFields:
+      - gross_amount
+      - purchase_order
+      - tax_code
+      inputProperties:
+      - name: gross_amount
+        schemaType: number
+        required: true
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: gross_amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: tax_code
+      source: literal
+      value: XI
+      valueType: string
+    plannedDateInputBindings:
+    - field: invoice_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - supplier_invoice.invoice_number
+    - supplier_invoice.fiscal_year
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: supplier_invoice
+      fields:
+      - invoice_date
+      runtimeValuePolicy: executor_current_date
+      source: planned_date_inputs
+      reason: executor_uses_current_date_for_sap_runtime
+  - stepId: A5
+    stepType: post_outgoing_payment
+    tool:
+      toolName: fiori.send_payment
+      title: Send Payment
+      inputModel: SendPaymentInput
+      requiredInputFields:
+      - company_code
+      - posting_document_date
+      - supplier
+      - accounting_document
+      - general_ledger_account
+      - amount
+      inputProperties:
+      - name: company_code
+        schemaType: string
+        required: true
+      - name: posting_document_date
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: accounting_document
+        schemaType: string
+        required: true
+      - name: general_ledger_account
+        schemaType: string
+        required: true
+      - name: amount
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: false
+        defaultValue: USD
+      - name: posting_date
+        schemaType: string | null
+        required: false
+    inputBindings:
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: accounting_document
+      source: prior_output
+      value: supplier_invoice.invoice_number
+      valueType: string
+    - field: general_ledger_account
+      source: literal
+      value: '1800000'
+      valueType: string
+    - field: amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    plannedDateInputBindings:
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    requiredSapObjectKeys:
+    - payment_document.payment_document_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: payment_posting_date
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  dependencies:
+  - fromStepType: create_purchase_requisition
+    toStepType: create_purchase_order
+    description: Create purchase order after purchase requisition because A2 needs the purchase requisition number produced by A1.
+  - fromStepType: create_purchase_order
+    toStepType: post_split_goods_receipt
+    description: Post split goods receipt after purchase order creation.
+  - fromStepType: post_split_goods_receipt
+    toStepType: scrap_quality_inspection_stock
+    description: Scrap quality-inspection stock after split goods receipt creates it.
+  - fromStepType: scrap_quality_inspection_stock
+    toStepType: enter_incoming_invoice
+    description: Enter incoming invoice after the LARCENY3 quality-inspection stock movement.
+  - fromStepType: enter_incoming_invoice
+    toStepType: post_outgoing_payment
+    description: Post outgoing payment after incoming invoice entry because payment requires an invoice.
+- processType: procure_to_pay
+  scenarioType: LARCENY5
+  steps:
+  - stepId: A1
+    stepType: create_purchase_requisition
+    tool:
+      toolName: fiori.create_purchase_requisition
+      title: Create Purchase Requisition
+      inputModel: CreatePurchaseRequisitionInput
+      requiredInputFields:
+      - material
+      - quantity
+      - valuation_price
+      - currency
+      - price_unit
+      - delivery_date
+      - plant
+      - purchasing_group
+      - purchasing_organization
+      - company_code
+      inputProperties:
+      - name: material
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: valuation_price
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: true
+      - name: price_unit
+        schemaType: integer
+        required: true
+      - name: delivery_date
+        schemaType: string
+        required: true
+      - name: plant
+        schemaType: string
+        required: true
+      - name: purchasing_group
+        schemaType: string
+        required: true
+      - name: purchasing_organization
+        schemaType: string
+        required: true
+      - name: company_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: material
+      source: master_data
+      value: materialId
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: valuation_price
+      source: case
+      value: target_price
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    - field: price_unit
+      source: literal
+      value: '1'
+      valueType: int
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: plant
+      source: master_data
+      value: plant
+      valueType: string
+    - field: purchasing_group
+      source: literal
+      value: N00
+      valueType: string
+    - field: purchasing_organization
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    plannedDateInputBindings:
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - purchase_requisition.pr_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: B2
+    stepType: create_purchase_order_with_delivery_address
+    tool:
+      toolName: fiori.create_purchase_order_with_delivery_address
+      title: Create Purchase Order With Delivery Address
+      inputModel: CreatePurchaseOrderWithDeliveryAddressInput
+      requiredInputFields:
+      - purchase_requisition
+      - storage_location
+      - supplier
+      - quantity
+      - net_price
+      - delivery_address
+      inputProperties:
+      - name: purchase_requisition
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: net_price
+        schemaType: number
+        required: true
+      - name: delivery_address
+        schemaType: object
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: false
+        defaultValue: XI
+    inputBindings:
+    - field: purchase_requisition
+      source: prior_output
+      value: purchase_requisition.pr_number
+      valueType: string
+    - field: storage_location
+      source: case
+      value: storage_location
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: net_price
+      source: case
+      value: target_price
+      valueType: string
+    - field: delivery_address.name
+      source: literal
+      value: Alberto Conti
+      valueType: string
+    - field: delivery_address.street_and_house_number
+      source: literal
+      value: 1840 Brickell Ave
+      valueType: string
+    - field: delivery_address.house_number
+      source: literal
+      value: '1840'
+      valueType: string
+    - field: delivery_address.postal_code
+      source: literal
+      value: '33129'
+      valueType: string
+    - field: delivery_address.city
+      source: literal
+      value: Miami
+      valueType: string
+    - field: delivery_address.country
+      source: literal
+      value: US
+      valueType: string
+    - field: delivery_address.region
+      source: literal
+      value: FL
+      valueType: string
+    plannedDateInputBindings: []
+    requiredSapObjectKeys:
+    - purchase_order.po_number
+    objectOutputRequired: true
+    labels:
+      step_label: fraud_step
+      scenario_family: delivery_address_manipulation
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: B3
+    stepType: post_larceny5_goods_receipt
+    tool:
+      toolName: fiori.create_goods_receipt
+      title: Create Goods Receipt
+      inputModel: CreateGoodsReceiptInput
+      requiredInputFields:
+      - purchase_order
+      - storage_location
+      inputProperties:
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: storage_location
+      source: derived
+      value: storage_location_label
+      valueType: string
+    plannedDateInputBindings:
+    - field: document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - material_document.material_document_number
+    objectOutputRequired: true
+    labels:
+      step_label: fraud_supporting_step
+      scenario_family: delivery_address_manipulation
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: material_document
+      fields:
+      - document_date
+      - posting_date
+      runtimeValuePolicy: sap_current_date
+      source: planned_date_inputs
+      reason: sap_runtime_forces_current_date
+  - stepId: A4
+    stepType: enter_incoming_invoice
+    tool:
+      toolName: fiori.create_supplier_invoice
+      title: Create Supplier Invoice
+      inputModel: CreateSupplierInvoiceInput
+      requiredInputFields:
+      - gross_amount
+      - purchase_order
+      - tax_code
+      inputProperties:
+      - name: gross_amount
+        schemaType: number
+        required: true
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: gross_amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: tax_code
+      source: literal
+      value: XI
+      valueType: string
+    plannedDateInputBindings:
+    - field: invoice_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - supplier_invoice.invoice_number
+    - supplier_invoice.fiscal_year
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: supplier_invoice
+      fields:
+      - invoice_date
+      runtimeValuePolicy: executor_current_date
+      source: planned_date_inputs
+      reason: executor_uses_current_date_for_sap_runtime
+  - stepId: A5
+    stepType: post_outgoing_payment
+    tool:
+      toolName: fiori.send_payment
+      title: Send Payment
+      inputModel: SendPaymentInput
+      requiredInputFields:
+      - company_code
+      - posting_document_date
+      - supplier
+      - accounting_document
+      - general_ledger_account
+      - amount
+      inputProperties:
+      - name: company_code
+        schemaType: string
+        required: true
+      - name: posting_document_date
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: accounting_document
+        schemaType: string
+        required: true
+      - name: general_ledger_account
+        schemaType: string
+        required: true
+      - name: amount
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: false
+        defaultValue: USD
+      - name: posting_date
+        schemaType: string | null
+        required: false
+    inputBindings:
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: accounting_document
+      source: prior_output
+      value: supplier_invoice.invoice_number
+      valueType: string
+    - field: general_ledger_account
+      source: literal
+      value: '1800000'
+      valueType: string
+    - field: amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    plannedDateInputBindings:
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    requiredSapObjectKeys:
+    - payment_document.payment_document_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: payment_posting_date
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  dependencies:
+  - fromStepType: create_purchase_requisition
+    toStepType: create_purchase_order_with_delivery_address
+    description: Create purchase order with delivery address after purchase requisition because the order needs the purchase requisition number.
+  - fromStepType: create_purchase_order_with_delivery_address
+    toStepType: post_larceny5_goods_receipt
+    description: Post LARCENY5 goods receipt after the manipulated delivery-address purchase order exists.
+  - fromStepType: post_larceny5_goods_receipt
+    toStepType: enter_incoming_invoice
+    description: Enter incoming invoice after the LARCENY5 goods receipt.
+  - fromStepType: enter_incoming_invoice
+    toStepType: post_outgoing_payment
+    description: Post outgoing payment after incoming invoice entry because payment requires an invoice.
+- processType: procure_to_pay
+  scenarioType: ROUTINE_ADDRESS_CHANGE
+  steps:
+  - stepId: A1
+    stepType: create_purchase_requisition
+    tool:
+      toolName: fiori.create_purchase_requisition
+      title: Create Purchase Requisition
+      inputModel: CreatePurchaseRequisitionInput
+      requiredInputFields:
+      - material
+      - quantity
+      - valuation_price
+      - currency
+      - price_unit
+      - delivery_date
+      - plant
+      - purchasing_group
+      - purchasing_organization
+      - company_code
+      inputProperties:
+      - name: material
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: valuation_price
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: true
+      - name: price_unit
+        schemaType: integer
+        required: true
+      - name: delivery_date
+        schemaType: string
+        required: true
+      - name: plant
+        schemaType: string
+        required: true
+      - name: purchasing_group
+        schemaType: string
+        required: true
+      - name: purchasing_organization
+        schemaType: string
+        required: true
+      - name: company_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: material
+      source: master_data
+      value: materialId
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: valuation_price
+      source: case
+      value: target_price
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    - field: price_unit
+      source: literal
+      value: '1'
+      valueType: int
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: plant
+      source: master_data
+      value: plant
+      valueType: string
+    - field: purchasing_group
+      source: literal
+      value: N00
+      valueType: string
+    - field: purchasing_organization
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    plannedDateInputBindings:
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - purchase_requisition.pr_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: B2
+    stepType: create_purchase_order_with_delivery_address
+    tool:
+      toolName: fiori.create_purchase_order_with_delivery_address
+      title: Create Purchase Order With Delivery Address
+      inputModel: CreatePurchaseOrderWithDeliveryAddressInput
+      requiredInputFields:
+      - purchase_requisition
+      - storage_location
+      - supplier
+      - quantity
+      - net_price
+      - delivery_address
+      inputProperties:
+      - name: purchase_requisition
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: net_price
+        schemaType: number
+        required: true
+      - name: delivery_address
+        schemaType: object
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: false
+        defaultValue: XI
+    inputBindings:
+    - field: purchase_requisition
+      source: prior_output
+      value: purchase_requisition.pr_number
+      valueType: string
+    - field: storage_location
+      source: case
+      value: storage_location
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: net_price
+      source: case
+      value: target_price
+      valueType: string
+    - field: delivery_address.name
+      source: literal
+      value: Global Bike Inc.
+      valueType: string
+    - field: delivery_address.street_and_house_number
+      source: literal
+      value: 3100 NW 72nd Ave
+      valueType: string
+    - field: delivery_address.house_number
+      source: literal
+      value: '3100'
+      valueType: string
+    - field: delivery_address.postal_code
+      source: literal
+      value: '33122'
+      valueType: string
+    - field: delivery_address.city
+      source: literal
+      value: Miami
+      valueType: string
+    - field: delivery_address.country
+      source: literal
+      value: US
+      valueType: string
+    - field: delivery_address.region
+      source: literal
+      value: FL
+      valueType: string
+    plannedDateInputBindings: []
+    requiredSapObjectKeys:
+    - purchase_order.po_number
+    objectOutputRequired: true
+    labels:
+      step_label: routine_step
+      scenario_family: routine_delivery_address_change
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: A3
+    stepType: post_goods_receipt
+    tool:
+      toolName: fiori.create_goods_receipt
+      title: Create Goods Receipt
+      inputModel: CreateGoodsReceiptInput
+      requiredInputFields:
+      - purchase_order
+      - storage_location
+      inputProperties:
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: storage_location
+      source: derived
+      value: storage_location_label
+      valueType: string
+    plannedDateInputBindings:
+    - field: document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - material_document.material_document_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: material_document
+      fields:
+      - document_date
+      - posting_date
+      runtimeValuePolicy: sap_current_date
+      source: planned_date_inputs
+      reason: sap_runtime_forces_current_date
+  - stepId: A4
+    stepType: enter_incoming_invoice
+    tool:
+      toolName: fiori.create_supplier_invoice
+      title: Create Supplier Invoice
+      inputModel: CreateSupplierInvoiceInput
+      requiredInputFields:
+      - gross_amount
+      - purchase_order
+      - tax_code
+      inputProperties:
+      - name: gross_amount
+        schemaType: number
+        required: true
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: gross_amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: tax_code
+      source: literal
+      value: XI
+      valueType: string
+    plannedDateInputBindings:
+    - field: invoice_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - supplier_invoice.invoice_number
+    - supplier_invoice.fiscal_year
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: supplier_invoice
+      fields:
+      - invoice_date
+      runtimeValuePolicy: executor_current_date
+      source: planned_date_inputs
+      reason: executor_uses_current_date_for_sap_runtime
+  - stepId: A5
+    stepType: post_outgoing_payment
+    tool:
+      toolName: fiori.send_payment
+      title: Send Payment
+      inputModel: SendPaymentInput
+      requiredInputFields:
+      - company_code
+      - posting_document_date
+      - supplier
+      - accounting_document
+      - general_ledger_account
+      - amount
+      inputProperties:
+      - name: company_code
+        schemaType: string
+        required: true
+      - name: posting_document_date
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: accounting_document
+        schemaType: string
+        required: true
+      - name: general_ledger_account
+        schemaType: string
+        required: true
+      - name: amount
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: false
+        defaultValue: USD
+      - name: posting_date
+        schemaType: string | null
+        required: false
+    inputBindings:
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: accounting_document
+      source: prior_output
+      value: supplier_invoice.invoice_number
+      valueType: string
+    - field: general_ledger_account
+      source: literal
+      value: '1800000'
+      valueType: string
+    - field: amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    plannedDateInputBindings:
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    requiredSapObjectKeys:
+    - payment_document.payment_document_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: payment_posting_date
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  dependencies:
+  - fromStepType: create_purchase_requisition
+    toStepType: create_purchase_order_with_delivery_address
+    description: Create purchase order with delivery address after purchase requisition because the order needs the purchase requisition number.
+  - fromStepType: create_purchase_order_with_delivery_address
+    toStepType: post_goods_receipt
+    description: Post goods receipt after address-change purchase order creation.
+  - fromStepType: post_goods_receipt
+    toStepType: enter_incoming_invoice
+    description: Enter incoming invoice after goods receipt in the version-one procure-to-pay flow.
+  - fromStepType: enter_incoming_invoice
+    toStepType: post_outgoing_payment
+    description: Post outgoing payment after incoming invoice entry because payment requires an invoice.
+- processType: procure_to_pay
+  scenarioType: ROUTINE_QUALITY_INSPECTION
+  steps:
+  - stepId: A1
+    stepType: create_purchase_requisition
+    tool:
+      toolName: fiori.create_purchase_requisition
+      title: Create Purchase Requisition
+      inputModel: CreatePurchaseRequisitionInput
+      requiredInputFields:
+      - material
+      - quantity
+      - valuation_price
+      - currency
+      - price_unit
+      - delivery_date
+      - plant
+      - purchasing_group
+      - purchasing_organization
+      - company_code
+      inputProperties:
+      - name: material
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: valuation_price
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: true
+      - name: price_unit
+        schemaType: integer
+        required: true
+      - name: delivery_date
+        schemaType: string
+        required: true
+      - name: plant
+        schemaType: string
+        required: true
+      - name: purchasing_group
+        schemaType: string
+        required: true
+      - name: purchasing_organization
+        schemaType: string
+        required: true
+      - name: company_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: material
+      source: master_data
+      value: materialId
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: valuation_price
+      source: case
+      value: target_price
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    - field: price_unit
+      source: literal
+      value: '1'
+      valueType: int
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: plant
+      source: master_data
+      value: plant
+      valueType: string
+    - field: purchasing_group
+      source: literal
+      value: N00
+      valueType: string
+    - field: purchasing_organization
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    plannedDateInputBindings:
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - purchase_requisition.pr_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: A2
+    stepType: create_purchase_order
+    tool:
+      toolName: fiori.create_purchase_order
+      title: Create Purchase Order
+      inputModel: CreatePurchaseOrderInput
+      requiredInputFields:
+      - purchase_requisition
+      - storage_location
+      - supplier
+      - quantity
+      - net_price
+      inputProperties:
+      - name: purchase_requisition
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: net_price
+        schemaType: number
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: false
+        defaultValue: XI
+    inputBindings:
+    - field: purchase_requisition
+      source: prior_output
+      value: purchase_requisition.pr_number
+      valueType: string
+    - field: storage_location
+      source: case
+      value: storage_location
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: net_price
+      source: case
+      value: target_price
+      valueType: string
+    plannedDateInputBindings: []
+    requiredSapObjectKeys:
+    - purchase_order.po_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: Q1
+    stepType: post_split_goods_receipt
+    tool:
+      toolName: fiori.create_split_goods_receipt
+      title: Create Split Goods Receipt
+      inputModel: CreateSplitGoodsReceiptInput
+      requiredInputFields:
+      - purchase_order
+      - storage_location
+      - unrestricted_quantity
+      - quality_inspection_quantity
+      inputProperties:
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+      - name: unrestricted_quantity
+        schemaType: number
+        required: true
+      - name: quality_inspection_quantity
+        schemaType: number
+        required: true
+    inputBindings:
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: storage_location
+      source: derived
+      value: storage_location_label
+      valueType: string
+    - field: unrestricted_quantity
+      source: derived
+      value: unrestrictedQuantity
+      valueType: string
+    - field: quality_inspection_quantity
+      source: derived
+      value: qualityInspectionQuantity
+      valueType: string
+    plannedDateInputBindings:
+    - field: document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - material_document.material_document_number
+    objectOutputRequired: true
+    labels:
+      step_label: routine_step
+      scenario_family: routine_quality_inspection
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: material_document
+      fields:
+      - document_date
+      - posting_date
+      runtimeValuePolicy: sap_current_date
+      source: planned_date_inputs
+      reason: sap_runtime_forces_current_date
+  - stepId: Q3
+    stepType: release_quality_inspection_stock
+    tool:
+      toolName: fiori.manage_quality_inspection_stock
+      title: Manage Quality Inspection Stock
+      inputModel: ManageQualityInspectionStockInput
+      requiredInputFields:
+      - material
+      - stock_location_label
+      - movement
+      - quantity
+      - document_item_text
+      inputProperties:
+      - name: material
+        schemaType: string
+        required: true
+      - name: stock_location_label
+        schemaType: string
+        required: true
+      - name: movement
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: number
+        required: true
+      - name: document_item_text
+        schemaType: string
+        required: true
+      - name: cost_center
+        schemaType: string | null
+        required: false
+    inputBindings:
+    - field: material
+      source: case
+      value: material_id
+      valueType: string
+    - field: stock_location_label
+      source: literal
+      value: DC Miami
+      valueType: string
+    - field: movement
+      source: literal
+      value: release_to_unrestricted
+      valueType: string
+    - field: quantity
+      source: derived
+      value: qualityInspectionQuantity
+      valueType: string
+    - field: document_item_text
+      source: literal
+      value: Qualitätsprüfung bestanden.
+      valueType: string
+    plannedDateInputBindings:
+    - field: posting_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - stock_release_material_document.material_document_number
+    objectOutputRequired: true
+    labels:
+      step_label: routine_step
+      scenario_family: routine_quality_inspection
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: stock_release_material_document
+      fields:
+      - posting_date
+      runtimeValuePolicy: sap_current_date
+      source: planned_date_inputs
+      reason: sap_runtime_forces_current_date
+  - stepId: A4
+    stepType: enter_incoming_invoice
+    tool:
+      toolName: fiori.create_supplier_invoice
+      title: Create Supplier Invoice
+      inputModel: CreateSupplierInvoiceInput
+      requiredInputFields:
+      - gross_amount
+      - purchase_order
+      - tax_code
+      inputProperties:
+      - name: gross_amount
+        schemaType: number
+        required: true
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: gross_amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: tax_code
+      source: literal
+      value: XI
+      valueType: string
+    plannedDateInputBindings:
+    - field: invoice_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - supplier_invoice.invoice_number
+    - supplier_invoice.fiscal_year
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: supplier_invoice
+      fields:
+      - invoice_date
+      runtimeValuePolicy: executor_current_date
+      source: planned_date_inputs
+      reason: executor_uses_current_date_for_sap_runtime
+  - stepId: A5
+    stepType: post_outgoing_payment
+    tool:
+      toolName: fiori.send_payment
+      title: Send Payment
+      inputModel: SendPaymentInput
+      requiredInputFields:
+      - company_code
+      - posting_document_date
+      - supplier
+      - accounting_document
+      - general_ledger_account
+      - amount
+      inputProperties:
+      - name: company_code
+        schemaType: string
+        required: true
+      - name: posting_document_date
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: accounting_document
+        schemaType: string
+        required: true
+      - name: general_ledger_account
+        schemaType: string
+        required: true
+      - name: amount
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: false
+        defaultValue: USD
+      - name: posting_date
+        schemaType: string | null
+        required: false
+    inputBindings:
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: accounting_document
+      source: prior_output
+      value: supplier_invoice.invoice_number
+      valueType: string
+    - field: general_ledger_account
+      source: literal
+      value: '1800000'
+      valueType: string
+    - field: amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    plannedDateInputBindings:
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    requiredSapObjectKeys:
+    - payment_document.payment_document_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: payment_posting_date
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  dependencies:
+  - fromStepType: create_purchase_requisition
+    toStepType: create_purchase_order
+    description: Create purchase order after purchase requisition because A2 needs the purchase requisition number produced by A1.
+  - fromStepType: create_purchase_order
+    toStepType: post_split_goods_receipt
+    description: Post split goods receipt after purchase order creation.
+  - fromStepType: post_split_goods_receipt
+    toStepType: release_quality_inspection_stock
+    description: Release quality-inspection stock after routine split goods receipt creates it.
+  - fromStepType: release_quality_inspection_stock
+    toStepType: enter_incoming_invoice
+    description: Enter incoming invoice after quality-inspection stock release.
+  - fromStepType: enter_incoming_invoice
+    toStepType: post_outgoing_payment
+    description: Post outgoing payment after incoming invoice entry because payment requires an invoice.
+- processType: procure_to_pay
+  scenarioType: ROUTINE_VENDOR_BANK_CHANGE
+  steps:
+  - stepId: A1
+    stepType: create_purchase_requisition
+    tool:
+      toolName: fiori.create_purchase_requisition
+      title: Create Purchase Requisition
+      inputModel: CreatePurchaseRequisitionInput
+      requiredInputFields:
+      - material
+      - quantity
+      - valuation_price
+      - currency
+      - price_unit
+      - delivery_date
+      - plant
+      - purchasing_group
+      - purchasing_organization
+      - company_code
+      inputProperties:
+      - name: material
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: valuation_price
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: true
+      - name: price_unit
+        schemaType: integer
+        required: true
+      - name: delivery_date
+        schemaType: string
+        required: true
+      - name: plant
+        schemaType: string
+        required: true
+      - name: purchasing_group
+        schemaType: string
+        required: true
+      - name: purchasing_organization
+        schemaType: string
+        required: true
+      - name: company_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: material
+      source: master_data
+      value: materialId
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: valuation_price
+      source: case
+      value: target_price
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    - field: price_unit
+      source: literal
+      value: '1'
+      valueType: int
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: plant
+      source: master_data
+      value: plant
+      valueType: string
+    - field: purchasing_group
+      source: literal
+      value: N00
+      valueType: string
+    - field: purchasing_organization
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    plannedDateInputBindings:
+    - field: delivery_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - purchase_requisition.pr_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: A2
+    stepType: create_purchase_order
+    tool:
+      toolName: fiori.create_purchase_order
+      title: Create Purchase Order
+      inputModel: CreatePurchaseOrderInput
+      requiredInputFields:
+      - purchase_requisition
+      - storage_location
+      - supplier
+      - quantity
+      - net_price
+      inputProperties:
+      - name: purchase_requisition
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: quantity
+        schemaType: integer
+        required: true
+      - name: net_price
+        schemaType: number
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: false
+        defaultValue: XI
+    inputBindings:
+    - field: purchase_requisition
+      source: prior_output
+      value: purchase_requisition.pr_number
+      valueType: string
+    - field: storage_location
+      source: case
+      value: storage_location
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: quantity
+      source: case
+      value: quantity
+      valueType: string
+    - field: net_price
+      source: case
+      value: target_price
+      valueType: string
+    plannedDateInputBindings: []
+    requiredSapObjectKeys:
+    - purchase_order.po_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: A3
+    stepType: post_goods_receipt
+    tool:
+      toolName: fiori.create_goods_receipt
+      title: Create Goods Receipt
+      inputModel: CreateGoodsReceiptInput
+      requiredInputFields:
+      - purchase_order
+      - storage_location
+      inputProperties:
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: storage_location
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: storage_location
+      source: derived
+      value: storage_location_label
+      valueType: string
+    plannedDateInputBindings:
+    - field: document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - material_document.material_document_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: material_document
+      fields:
+      - document_date
+      - posting_date
+      runtimeValuePolicy: sap_current_date
+      source: planned_date_inputs
+      reason: sap_runtime_forces_current_date
+  - stepId: A4
+    stepType: enter_incoming_invoice
+    tool:
+      toolName: fiori.create_supplier_invoice
+      title: Create Supplier Invoice
+      inputModel: CreateSupplierInvoiceInput
+      requiredInputFields:
+      - gross_amount
+      - purchase_order
+      - tax_code
+      inputProperties:
+      - name: gross_amount
+        schemaType: number
+        required: true
+      - name: purchase_order
+        schemaType: string
+        required: true
+      - name: tax_code
+        schemaType: string
+        required: true
+    inputBindings:
+    - field: gross_amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: purchase_order
+      source: prior_output
+      value: purchase_order.po_number
+      valueType: string
+    - field: tax_code
+      source: literal
+      value: XI
+      valueType: string
+    plannedDateInputBindings:
+    - field: invoice_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    requiredSapObjectKeys:
+    - supplier_invoice.invoice_number
+    - supplier_invoice.fiscal_year
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: delivery_date
+    materialValuationLock: true
+    runtimeDateOverrides:
+    - objectType: supplier_invoice
+      fields:
+      - invoice_date
+      runtimeValuePolicy: executor_current_date
+      source: planned_date_inputs
+      reason: executor_uses_current_date_for_sap_runtime
+  - stepId: R1
+    stepType: change_vendor_bank_data
+    tool:
+      toolName: fiori.change_vendor_bank_details
+      title: Change Vendor Bank Details
+      inputModel: ChangeVendorBankDetailsInput
+      requiredInputFields:
+      - vendor_id
+      - bank_account_credentials
+      inputProperties:
+      - name: vendor_id
+        schemaType: string
+        required: true
+      - name: bank_account_credentials
+        schemaType: object
+        required: true
+    inputBindings:
+    - field: vendor_id
+      source: case
+      value: vendor_id
+      valueType: string
+    - field: bank_account_credentials.bank_key
+      source: vendor_bank_account
+      value: bank_key
+      valueType: string
+    - field: bank_account_credentials.account_number
+      source: vendor_bank_account
+      value: account_number
+      valueType: string
+    - field: bank_account_credentials.account_owner
+      source: vendor_bank_account
+      value: account_owner
+      valueType: string
+    plannedDateInputBindings: []
+    requiredSapObjectKeys: []
+    objectOutputRequired: false
+    labels:
+      step_label: routine_step
+      scenario_family: routine_vendor_master_update
+    businessDateGate: none
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  - stepId: A5
+    stepType: post_outgoing_payment
+    tool:
+      toolName: fiori.send_payment
+      title: Send Payment
+      inputModel: SendPaymentInput
+      requiredInputFields:
+      - company_code
+      - posting_document_date
+      - supplier
+      - accounting_document
+      - general_ledger_account
+      - amount
+      inputProperties:
+      - name: company_code
+        schemaType: string
+        required: true
+      - name: posting_document_date
+        schemaType: string
+        required: true
+      - name: supplier
+        schemaType: string
+        required: true
+      - name: accounting_document
+        schemaType: string
+        required: true
+      - name: general_ledger_account
+        schemaType: string
+        required: true
+      - name: amount
+        schemaType: number
+        required: true
+      - name: currency
+        schemaType: string
+        required: false
+        defaultValue: USD
+      - name: posting_date
+        schemaType: string | null
+        required: false
+    inputBindings:
+    - field: company_code
+      source: master_data
+      value: purchasing_org
+      valueType: string
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    - field: supplier
+      source: master_data
+      value: vendor_id
+      valueType: string
+    - field: accounting_document
+      source: prior_output
+      value: supplier_invoice.invoice_number
+      valueType: string
+    - field: general_ledger_account
+      source: literal
+      value: '1800000'
+      valueType: string
+    - field: amount
+      source: derived
+      value: gross_amount
+      valueType: string
+    - field: currency
+      source: master_data
+      value: currency
+      valueType: string
+    plannedDateInputBindings:
+    - field: posting_document_date
+      source: derived
+      value: fiori_delivery_date
+      valueType: string
+    - field: posting_date
+      source: derived
+      value: fiori_payment_posting_date
+      valueType: string
+    requiredSapObjectKeys:
+    - payment_document.payment_document_number
+    objectOutputRequired: true
+    labels: {}
+    businessDateGate: payment_posting_date
+    materialValuationLock: false
+    runtimeDateOverrides: []
+  dependencies:
+  - fromStepType: create_purchase_requisition
+    toStepType: create_purchase_order
+    description: Create purchase order after purchase requisition because A2 needs the purchase requisition number produced by A1.
+  - fromStepType: create_purchase_order
+    toStepType: post_goods_receipt
+    description: Post goods receipt after purchase order creation because A3 requires the purchase order created by A2.
+  - fromStepType: post_goods_receipt
+    toStepType: enter_incoming_invoice
+    description: Enter incoming invoice after goods receipt in the version-one procure-to-pay flow.
+  - fromStepType: enter_incoming_invoice
+    toStepType: change_vendor_bank_data
+    description: Change vendor bank details after incoming invoice entry.
+  - fromStepType: change_vendor_bank_data
+    toStepType: post_outgoing_payment
+    description: Post outgoing payment while manipulated vendor bank details are active.
+fraudScenarios:
+- id: VENDOR_FLIPFLOP
+  enabled: true
+  targetShare: 0.03333333333333333
+  caseOutcome: fraud
+  labels: {}
+  caseSelection:
+    fixedVendorId: '1003070'
+- id: LARCENY3
+  enabled: true
+  targetShare: 0.03333333333333333
+  caseOutcome: fraud
+  labels: {}
+  caseSelection: {}
+- id: LARCENY5
+  enabled: true
+  targetShare: 0.03333333333333333
+  caseOutcome: fraud
+  labels: {}
+  caseSelection: {}
+routineScenarios:
+- id: ROUTINE_ADDRESS_CHANGE
+  enabled: true
+  targetShare: 0.06
+  caseOutcome: non_fraud
+  labels: {}
+  caseSelection: {}
+- id: ROUTINE_QUALITY_INSPECTION
+  enabled: true
+  targetShare: 0.06
+  caseOutcome: non_fraud
+  labels: {}
+  caseSelection: {}
+- id: ROUTINE_VENDOR_BANK_CHANGE
+  enabled: true
+  targetShare: 0.04
+  caseOutcome: non_fraud
+  labels: {}
+  caseSelection: {}
+vendorBankAccounts:
+  '1003070':
+    bankKey: ABNAUS33XXX
+    accountNumber: '12345678'
+    accountOwner: Mid West Supply, Inc.
+  '101800':
+    bankKey: '011000390'
+    accountNumber: '681245903'
+    accountOwner: Olympic Protective Gear, Inc.
+  '102800':
+    bankKey: '820800001'
+    accountNumber: '5108792641'
+    accountOwner: Boomtown Tire & Wheel LTD
+  '103800':
+    bankKey: ABNAUS33XXX
+    accountNumber: '36295174'
+    accountOwner: Dallas Bike Basics, Co.
+  '104800':
+    bankKey: '011000390'
+    accountNumber: '805173629'
+    accountOwner: Lightbulb Accessory Kits, Inc.
+  '105800':
+    bankKey: '820800001'
+    accountNumber: '6482309157'
+    accountOwner: Space Bike Composites, Inc.
+  '106800':
+    bankKey: ABNAUS33XXX
+    accountNumber: '83016429'
+    accountOwner: Night Rider Aluminum Products, Ltd.
+  '107800':
+    bankKey: '011000390'
+    accountNumber: '119704638'
+    accountOwner: Spy Gear, Inc.
+  '108800':
+    bankKey: '820800001'
+    accountNumber: '4729083150'
+    accountOwner: Rapids Nuts n Bolts LLC
+  '109800':
+    bankKey: ABNAUS33XXX
+    accountNumber: '77420186'
+    accountOwner: Green Blazers Seats Limited
+  '110800':
+    bankKey: '011000390'
+    accountNumber: '246891735'
+    accountOwner: Fun n the Sun Seats n Bars LLC
+  '112800':
+    bankKey: '820800001'
+    accountNumber: '9307186420'
+    accountOwner: Redwood Kits, Ltd.
+computedValues:
+  qualityInspectionQuantity:
+    source: case
+    field: quantity
+    operator: multiply
+    factor: 0.2
+    precision: 3
+  unrestrictedQuantity:
+    source: case
+    field: quantity
+    operator: multiply
+    factor: 0.8
+    precision: 3
+bankAccountRules:
+  allowedBankKeys:
+  - '011000390'
+  - '820800001'
+  - ABNAUS33XXX
+  accountNumberMinLength: 8
+  accountNumberMaxLength: 10
+  requireNumericAccountNumber: true
+runSettings:
+  caseCount: 210
+  maxParallelActorSessions: 4
+  targetTimezone: America/New_York
+  activeProcessTypes:
+  - procure_to_pay
+  schedulerSeed: 42
+  runStartDate: 2026-06-01
+  runHorizonDays: 45
+  queuePolicy: fifo
+  workingHours:
+    coreStart: 08:00
+    coreEnd: '17:00'
+    dailyDeviationHoursMin: -1.0
+    dailyDeviationHoursMax: 1.0
+    pauseWindowStart: '12:00'
+    pauseWindowEnd: '13:30'
+    pauseDurationMinutesMin: 30
+    pauseDurationMinutesMax: 75
+  stepDurationMinutes:
+    create_purchase_requisition:
+      min: 8
+      max: 14
+    create_purchase_order:
+      min: 7
+      max: 12
+    create_purchase_order_with_delivery_address:
+      min: 8
+      max: 14
+    post_goods_receipt:
+      min: 5
+      max: 10
+    post_larceny5_goods_receipt:
+      min: 5
+      max: 10
+    post_split_goods_receipt:
+      min: 7
+      max: 12
+    scrap_quality_inspection_stock:
+      min: 5
+      max: 10
+    release_quality_inspection_stock:
+      min: 5
+      max: 10
+    enter_incoming_invoice:
+      min: 8
+      max: 15
+    change_vendor_bank_data:
+      min: 5
+      max: 8
+    post_outgoing_payment:
+      min: 5
+      max: 10
+    revert_vendor_bank_data:
+      min: 5
+      max: 8
+  interStepDelayMinutes:
+  - fromStepType: create_purchase_requisition
+    toStepType: create_purchase_order
+    min: 30
+    max: 180
+  - fromStepType: create_purchase_requisition
+    toStepType: create_purchase_order_with_delivery_address
+    min: 30
+    max: 180
+  - fromStepType: create_purchase_order
+    toStepType: post_goods_receipt
+    min: 240
+    max: 2880
+  - fromStepType: create_purchase_order_with_delivery_address
+    toStepType: post_goods_receipt
+    min: 240
+    max: 2880
+  - fromStepType: create_purchase_order_with_delivery_address
+    toStepType: post_larceny5_goods_receipt
+    min: 240
+    max: 2880
+  - fromStepType: post_larceny5_goods_receipt
+    toStepType: enter_incoming_invoice
+    min: 120
+    max: 1440
+  - fromStepType: create_purchase_order
+    toStepType: post_split_goods_receipt
+    min: 240
+    max: 2880
+  - fromStepType: post_split_goods_receipt
+    toStepType: scrap_quality_inspection_stock
+    min: 30
+    max: 240
+  - fromStepType: scrap_quality_inspection_stock
+    toStepType: enter_incoming_invoice
+    min: 120
+    max: 1440
+  - fromStepType: post_split_goods_receipt
+    toStepType: release_quality_inspection_stock
+    min: 30
+    max: 240
+  - fromStepType: release_quality_inspection_stock
+    toStepType: enter_incoming_invoice
+    min: 120
+    max: 1440
+  - fromStepType: post_goods_receipt
+    toStepType: enter_incoming_invoice
+    min: 120
+    max: 1440
+  - fromStepType: enter_incoming_invoice
+    toStepType: post_outgoing_payment
+    min: 240
+    max: 2880
+  - fromStepType: enter_incoming_invoice
+    toStepType: change_vendor_bank_data
+    min: 15
+    max: 90
+  - fromStepType: change_vendor_bank_data
+    toStepType: post_outgoing_payment
+    min: 30
+    max: 240
+  - fromStepType: post_outgoing_payment
+    toStepType: revert_vendor_bank_data
+    min: 10
+    max: 60
+  storageLocationLabels:
+    '0001': Finished Goods
+    '0002': Trading Goods
+    FG00: Finished Goods
+    TG00: Trading Goods
+  postProcessingExportGroups:
+  - id: change_documents
+    description: SAP change document exports used for timestamp and object-change reconciliation.
+  - id: purchase_orders
+    description: Purchase order exports used to correlate purchase order headers and items.
+  - id: material_documents
+    description: Material document exports used to correlate goods receipts.
+  - id: supplier_invoices
+    description: Supplier invoice exports used to correlate incoming invoices.
+  - id: accounting_documents
+    description: Accounting document exports used to correlate outgoing payments.
+  realism:
+    enabled: true
+    maxRetries: 3
+    cacheDir: configuration/build
+    dailyCaseCountMin: 0
+    dailyCaseCountMax: 10000
+    maxPriceVariationPct: 0.05
+    maxDailyPriceTrendPct: 0.01
+    maxWorkloadDelayMultiplierBoost: 0.25
+    maxWorkloadWorkdayDeviationHoursBoost: 0.5
+    relativeDemandWeightMin: 1
+    relativeDemandWeightMax: 100
+    quantityVariationPctMin: 0.05
+    quantityVariationPctMax: 0.5
+    maxBulkOrderShare: 0.35
+    allowedOrderMultiples:
+    - 1
+    - 5
+    - 10
+    - 20
+    - 25
+    - 50
+    maxMaterialSharePerHorizon: 0.35
+    requireAllActiveMaterialsInDemandProfile: true
+    materialValuationLockEnabled: true
+    materialValuationLockBufferSeconds: 120
+    blockedMaterials: []
+toolRequirements:
+  fiori.change_vendor_bank_details:
+    toolName: fiori.change_vendor_bank_details
+    title: Change Vendor Bank Details
+    inputModel: ChangeVendorBankDetailsInput
+    requiredInputFields:
+    - vendor_id
+    - bank_account_credentials
+    inputProperties:
+    - name: vendor_id
+      schemaType: string
+      required: true
+    - name: bank_account_credentials
+      schemaType: object
+      required: true
+  fiori.create_goods_receipt:
+    toolName: fiori.create_goods_receipt
+    title: Create Goods Receipt
+    inputModel: CreateGoodsReceiptInput
+    requiredInputFields:
+    - purchase_order
+    - storage_location
+    inputProperties:
+    - name: purchase_order
+      schemaType: string
+      required: true
+    - name: storage_location
+      schemaType: string
+      required: true
+  fiori.create_purchase_order:
+    toolName: fiori.create_purchase_order
+    title: Create Purchase Order
+    inputModel: CreatePurchaseOrderInput
+    requiredInputFields:
+    - purchase_requisition
+    - storage_location
+    - supplier
+    - quantity
+    - net_price
+    inputProperties:
+    - name: purchase_requisition
+      schemaType: string
+      required: true
+    - name: storage_location
+      schemaType: string
+      required: true
+    - name: supplier
+      schemaType: string
+      required: true
+    - name: quantity
+      schemaType: integer
+      required: true
+    - name: net_price
+      schemaType: number
+      required: true
+    - name: tax_code
+      schemaType: string
+      required: false
+      defaultValue: XI
+  fiori.create_purchase_order_with_delivery_address:
+    toolName: fiori.create_purchase_order_with_delivery_address
+    title: Create Purchase Order With Delivery Address
+    inputModel: CreatePurchaseOrderWithDeliveryAddressInput
+    requiredInputFields:
+    - purchase_requisition
+    - storage_location
+    - supplier
+    - quantity
+    - net_price
+    - delivery_address
+    inputProperties:
+    - name: purchase_requisition
+      schemaType: string
+      required: true
+    - name: storage_location
+      schemaType: string
+      required: true
+    - name: supplier
+      schemaType: string
+      required: true
+    - name: quantity
+      schemaType: integer
+      required: true
+    - name: net_price
+      schemaType: number
+      required: true
+    - name: delivery_address
+      schemaType: object
+      required: true
+    - name: tax_code
+      schemaType: string
+      required: false
+      defaultValue: XI
+  fiori.create_purchase_requisition:
+    toolName: fiori.create_purchase_requisition
+    title: Create Purchase Requisition
+    inputModel: CreatePurchaseRequisitionInput
+    requiredInputFields:
+    - material
+    - quantity
+    - valuation_price
+    - currency
+    - price_unit
+    - delivery_date
+    - plant
+    - purchasing_group
+    - purchasing_organization
+    - company_code
+    inputProperties:
+    - name: material
+      schemaType: string
+      required: true
+    - name: quantity
+      schemaType: integer
+      required: true
+    - name: valuation_price
+      schemaType: number
+      required: true
+    - name: currency
+      schemaType: string
+      required: true
+    - name: price_unit
+      schemaType: integer
+      required: true
+    - name: delivery_date
+      schemaType: string
+      required: true
+    - name: plant
+      schemaType: string
+      required: true
+    - name: purchasing_group
+      schemaType: string
+      required: true
+    - name: purchasing_organization
+      schemaType: string
+      required: true
+    - name: company_code
+      schemaType: string
+      required: true
+  fiori.create_split_goods_receipt:
+    toolName: fiori.create_split_goods_receipt
+    title: Create Split Goods Receipt
+    inputModel: CreateSplitGoodsReceiptInput
+    requiredInputFields:
+    - purchase_order
+    - storage_location
+    - unrestricted_quantity
+    - quality_inspection_quantity
+    inputProperties:
+    - name: purchase_order
+      schemaType: string
+      required: true
+    - name: storage_location
+      schemaType: string
+      required: true
+    - name: unrestricted_quantity
+      schemaType: number
+      required: true
+    - name: quality_inspection_quantity
+      schemaType: number
+      required: true
+  fiori.create_supplier_invoice:
+    toolName: fiori.create_supplier_invoice
+    title: Create Supplier Invoice
+    inputModel: CreateSupplierInvoiceInput
+    requiredInputFields:
+    - gross_amount
+    - purchase_order
+    - tax_code
+    inputProperties:
+    - name: gross_amount
+      schemaType: number
+      required: true
+    - name: purchase_order
+      schemaType: string
+      required: true
+    - name: tax_code
+      schemaType: string
+      required: true
+  fiori.login:
+    toolName: fiori.login
+    title: Login
+    inputModel: LoginInput
+    requiredInputFields:
+    - username
+    - password
+    inputProperties:
+    - name: url
+      schemaType: string | null
+      required: false
+    - name: base_url
+      schemaType: string | null
+      required: false
+    - name: username
+      schemaType: string
+      required: true
+    - name: password
+      schemaType: string
+      required: true
+    - name: username_selector
+      schemaType: string
+      required: false
+      defaultValue: '#USERNAME_FIELD-inner'
+    - name: password_selector
+      schemaType: string
+      required: false
+      defaultValue: '#PASSWORD_FIELD-inner'
+    - name: submit_selector
+      schemaType: string
+      required: false
+      defaultValue: '#LOGIN_LINK'
+    - name: success_selector
+      schemaType: string | null
+      required: false
+  fiori.manage_quality_inspection_stock:
+    toolName: fiori.manage_quality_inspection_stock
+    title: Manage Quality Inspection Stock
+    inputModel: ManageQualityInspectionStockInput
+    requiredInputFields:
+    - material
+    - stock_location_label
+    - movement
+    - quantity
+    - document_item_text
+    inputProperties:
+    - name: material
+      schemaType: string
+      required: true
+    - name: stock_location_label
+      schemaType: string
+      required: true
+    - name: movement
+      schemaType: string
+      required: true
+    - name: quantity
+      schemaType: number
+      required: true
+    - name: document_item_text
+      schemaType: string
+      required: true
+    - name: cost_center
+      schemaType: string | null
+      required: false
+  fiori.send_payment:
+    toolName: fiori.send_payment
+    title: Send Payment
+    inputModel: SendPaymentInput
+    requiredInputFields:
+    - company_code
+    - posting_document_date
+    - supplier
+    - accounting_document
+    - general_ledger_account
+    - amount
+    inputProperties:
+    - name: company_code
+      schemaType: string
+      required: true
+    - name: posting_document_date
+      schemaType: string
+      required: true
+    - name: supplier
+      schemaType: string
+      required: true
+    - name: accounting_document
+      schemaType: string
+      required: true
+    - name: general_ledger_account
+      schemaType: string
+      required: true
+    - name: amount
+      schemaType: number
+      required: true
+    - name: currency
+      schemaType: string
+      required: false
+      defaultValue: USD
+    - name: posting_date
+      schemaType: string | null
+      required: false
