@@ -13,6 +13,7 @@ from erp_sap_export.artifacts import ExecutionWindow
 from erp_sap_export.cli import (
     _batched_cdpos_requests_from_cdhdr,
     _cdhdr_requests,
+    _merge_partial_report,
     _post_filter_cdhdr,
     _probe_result_ok,
     _resolve_download_dir,
@@ -127,6 +128,35 @@ def test_cdhdr_requests_split_execution_window_into_utc_chunks() -> None:
         ("06/01/2026", "16:53:09", "17:08:08"),
     ]
     assert all(item.max_rows == 5_000 for item in requests)
+
+
+def test_merge_partial_report_preserves_unrequested_table_counts() -> None:
+    existing = {
+        "run_id": "RUN_BA-210",
+        "tables": {
+            "EBAN": {"rows": 210},
+            "CDHDR": {"rows": 182},
+        },
+        "warnings": ["old warning"],
+    }
+    partial = {
+        "run_id": "RUN_BA-210",
+        "tables": {
+            "CDHDR": {"rows": 320},
+            "CDPOS": {"rows": 140},
+        },
+        "warnings": ["new warning"],
+    }
+
+    merged = _merge_partial_report(existing, partial, ["CDHDR", "CDPOS"])
+
+    assert merged["tables"] == {
+        "EBAN": {"rows": 210},
+        "CDHDR": {"rows": 320},
+        "CDPOS": {"rows": 140},
+    }
+    assert merged["partial_refresh"]["tables"] == ["CDHDR", "CDPOS"]
+    assert merged["warnings"] == ["old warning", "new warning"]
 
 
 def test_probe_result_requires_all_requested_tables_usable() -> None:

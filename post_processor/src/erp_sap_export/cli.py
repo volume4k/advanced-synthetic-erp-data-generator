@@ -224,15 +224,26 @@ def _download(args: argparse.Namespace) -> int:
         "CDHDR.UDATE_UTIME": "UTC",
         "business.CPUDT_CPUTM": "Europe/Berlin",
     }
+    full_refresh = set(requested_tables) == set(DEFAULT_TABLES)
     _write_table_csvs(out_dir, rows_by_table, tables=requested_tables)
     _log(f"wrote table CSVs count={len(requested_tables)} dir={out_dir}")
 
-    linkage_rows: list[dict[str, str]] = []
-    for table, rows in rows_by_table.items():
-        linkage_rows.extend(linkage_rows_for_table(table, rows, index))
-    _write_csv(out_dir / "row-linkage.csv", linkage_rows)
-    (out_dir / "export-report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    _log(f"wrote row-linkage.csv rows={len(linkage_rows)}")
+    if full_refresh:
+        linkage_rows: list[dict[str, str]] = []
+        for table, rows in rows_by_table.items():
+            linkage_rows.extend(linkage_rows_for_table(table, rows, index))
+        _write_csv(out_dir / "row-linkage.csv", linkage_rows)
+        report["row_linkage_written"] = True
+        _log(f"wrote row-linkage.csv rows={len(linkage_rows)}")
+    else:
+        report["row_linkage_written"] = False
+        report["partial_refresh"] = {"tables": requested_tables}
+        _log("preserved row-linkage.csv for partial table refresh")
+    report_to_write = _report_for_write(out_dir, report, requested_tables)
+    (out_dir / "export-report.json").write_text(
+        json.dumps(report_to_write, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     _log(f"wrote export-report.json elapsed={_elapsed(started_at)}")
     return 124 if timed_out else 0
 
@@ -424,6 +435,45 @@ def _post_filter_cdpos(rows: list[dict[str, str]], cdhdr_rows: list[dict[str, st
 
 def _request_report(request: TableRequest, row_count: int) -> dict[str, Any]:
     return {"selection": [asdict(item) for item in request.selection], "rows": row_count}
+
+
+def _report_for_write(out_dir: Path, report: dict[str, Any], requested_tables: Sequence[str]) -> dict[str, Any]:
+    if set(requested_tables) == set(DEFAULT_TABLES):
+        return report
+    existing_path = out_dir / "export-report.json"
+    if not existing_path.exists():
+        return report
+    try:
+        existing = json.loads(existing_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return report
+    if not isinstance(existing, dict):
+        return report
+    return _merge_partial_report(existing, report, requested_tables)
+
+
+def _merge_partial_report(
+    existing: dict[str, Any],
+    partial: dict[str, Any],
+    requested_tables: Sequence[str],
+) -> dict[str, Any]:
+    merged = dict(existing)
+    for key, value in partial.items():
+        if key not in {"tables", "warnings"}:
+            merged[key] = value
+    tables = dict(existing.get("tables") if isinstance(existing.get("tables"), dict) else {})
+    partial_tables = partial.get("tables") if isinstance(partial.get("tables"), dict) else {}
+    for table in requested_tables:
+        if table in partial_tables:
+            tables[table] = partial_tables[table]
+    merged["tables"] = tables
+    warnings: list[Any] = []
+    for source in (existing.get("warnings"), partial.get("warnings")):
+        if isinstance(source, list):
+            warnings.extend(source)
+    merged["warnings"] = warnings
+    merged["partial_refresh"] = {"tables": list(requested_tables)}
+    return merged
 
 
 def _requested_tables(values: Sequence[str]) -> list[str]:
