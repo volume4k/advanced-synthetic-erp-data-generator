@@ -49,6 +49,10 @@ def main(argv: list[str] | None = None) -> int:
         return _probe(args)
     if args.command == "download":
         return _download(args)
+    if args.command == "process":
+        return _process(args)
+    if args.command == "validate-processed":
+        return _validate_processed(args)
     parser.error("missing command")
     return 2
 
@@ -272,6 +276,36 @@ def _download(args: argparse.Namespace) -> int:
     )
     _log(f"wrote export-report.json elapsed={_elapsed(started_at)}")
     return 124 if timed_out else 0
+
+
+def _process(args: argparse.Namespace) -> int:
+    from erp_sap_export.processing import process_dataset
+
+    report = process_dataset(
+        raw_dir=args.raw_dir,
+        out_dir=args.out_dir,
+        execution_trace_path=args.execution_trace,
+        post_processing_manifest_path=args.post_processing_manifest,
+        execution_log_path=args.execution_log,
+        object_registry_path=args.object_registry,
+    )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if not report.get("validation", {}).get("errors") else 1
+
+
+def _validate_processed(args: argparse.Namespace) -> int:
+    from erp_sap_export.processing import validate_processed_dataset
+
+    report = validate_processed_dataset(
+        processed_dir=args.processed_dir,
+        raw_dir=args.raw_dir,
+        execution_trace_path=args.execution_trace,
+        post_processing_manifest_path=args.post_processing_manifest,
+        execution_log_path=args.execution_log,
+        object_registry_path=args.object_registry,
+    )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if not report.get("errors") else 1
 
 
 def _run_id_from_manifest(manifest: dict[str, Any]) -> str:
@@ -671,4 +705,21 @@ def _build_parser() -> argparse.ArgumentParser:
     download.add_argument("--default-company-code", default="US00")
     download.add_argument("--tables", nargs="+", default=DEFAULT_TABLES)
     download.add_argument("--headed", action="store_true")
+
+    process = subparsers.add_parser("process", help="Create processed SAP export CSVs from raw run downloads")
+    _add_evidence_arguments(process)
+    process.add_argument("--raw-dir", type=Path, required=True)
+    process.add_argument("--out-dir", type=Path, required=True)
+
+    validate = subparsers.add_parser("validate-processed", help="Validate processed SAP export CSVs")
+    _add_evidence_arguments(validate)
+    validate.add_argument("--raw-dir", type=Path, required=True)
+    validate.add_argument("--processed-dir", type=Path, required=True)
     return parser
+
+
+def _add_evidence_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--execution-trace", type=Path, required=True)
+    parser.add_argument("--post-processing-manifest", type=Path, required=True)
+    parser.add_argument("--execution-log", type=Path, required=True)
+    parser.add_argument("--object-registry", type=Path, required=True)

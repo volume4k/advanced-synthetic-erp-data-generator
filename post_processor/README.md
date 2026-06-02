@@ -99,9 +99,87 @@ uv run --project post_processor pytest post_processor/tests -m live_sap -q
 - Project synthetic actor identity according to actor projection rules.
 - Keep planned business dates distinct from technical timestamps.
 
-## Open Implementation Decisions
+## RUN_BA-210 Post-Processing Workflow
 
-- Define table-specific timestamp fields and key fields for each SAP export.
-- Define provenance table/file shape for raw SAP timestamps and technical SAP users.
-- Define how to handle SAP exports where one row combines data from multiple planned steps.
-- Define validation reports for missing object-registry joins, missing timestamp projections, and order violations.
+This workflow is scoped only to `RUN_BA-210`. Do not use `RUN_LARCENY_ROUTINE_BANKS_20260528_001` evidence for this run.
+
+Latest evidence paths:
+
+- Trace and manifest: `trace_generator/build/RUN_BA-210/`
+- Execution log and object registry: `generator/build/RUN_BA-210/`
+
+Raw downloads stay in place and are not mutated by processing:
+
+```bash
+uv run --project post_processor erp-sap-export download \
+  --execution-trace trace_generator/build/RUN_BA-210/RUN_BA-210.execution-trace.yaml \
+  --post-processing-manifest trace_generator/build/RUN_BA-210/RUN_BA-210.post-processing-manifest.yaml \
+  --execution-log generator/build/RUN_BA-210/RUN_BA-210.execution-log.jsonl \
+  --object-registry generator/build/RUN_BA-210/RUN_BA-210.object-registry.jsonl \
+  --env-file configuration/.env \
+  --out-dir post_processor/downloads/RUN_BA-210 \
+  --tables CDHDR CDPOS \
+  --window-padding-min 0 \
+  --cdhdr-window-min 15
+```
+
+Processed outputs are written separately:
+
+```bash
+uv run --project post_processor erp-sap-export process \
+  --raw-dir post_processor/downloads/RUN_BA-210 \
+  --out-dir post_processor/processed/RUN_BA-210 \
+  --execution-trace trace_generator/build/RUN_BA-210/RUN_BA-210.execution-trace.yaml \
+  --post-processing-manifest trace_generator/build/RUN_BA-210/RUN_BA-210.post-processing-manifest.yaml \
+  --execution-log generator/build/RUN_BA-210/RUN_BA-210.execution-log.jsonl \
+  --object-registry generator/build/RUN_BA-210/RUN_BA-210.object-registry.jsonl
+```
+
+Validate processed outputs:
+
+```bash
+uv run --project post_processor erp-sap-export validate-processed \
+  --processed-dir post_processor/processed/RUN_BA-210 \
+  --raw-dir post_processor/downloads/RUN_BA-210 \
+  --execution-trace trace_generator/build/RUN_BA-210/RUN_BA-210.execution-trace.yaml \
+  --post-processing-manifest trace_generator/build/RUN_BA-210/RUN_BA-210.post-processing-manifest.yaml \
+  --execution-log generator/build/RUN_BA-210/RUN_BA-210.execution-log.jsonl \
+  --object-registry generator/build/RUN_BA-210/RUN_BA-210.object-registry.jsonl
+```
+
+`RUN_BA-210` failed-case policy:
+
+- Remove only `C081`.
+- Keep `C005`; latest execution log and object registry show `C005_A1` and the rest of `C005` succeeded.
+
+CDHDR/CDPOS timezone note:
+
+- The latest RUN_BA-210 evidence shows `CDHDR.UDATE/UTIME` is mixed by object class in WebGUI export data.
+- `BANF`, `EINKBELEG`, `ADRESSE`, and `KRED` align to `Europe/Berlin`.
+- `BUPA_BUP` aligns to UTC.
+- Business document `CPUDT/CPUTM` fields are projected to planned synthetic business time in `Europe/Berlin`.
+- CDPOS is derived only from merged and deduped CDHDR composite keys.
+
+Field policy:
+
+| Table | Post-processing |
+|---|---|
+| `EBAN` | Rewrite `BADAT`, `BEDAT`, `ERDAT`; set `LFDAT` from `delivery_date`; rewrite `ERNAM` to projected actor. |
+| `EKKO` | Rewrite `AEDAT`, `BEDAT`, `LASTCHANGEDATETIME`; rewrite `ERNAM` to projected actor. |
+| `EKPO` | Rewrite `AEDAT`, `PRDAT`. |
+| `MKPF` | Rewrite `BLDAT`, `BUDAT`, `CPUDT`, `CPUTM`; rewrite `USNAM` to projected actor. |
+| `MSEG` | Filter/link only. |
+| `RBKP` | Rewrite `BLDAT`, `CPUDT`, `CPUTM`; rewrite `USNAM` to projected actor. |
+| `RSEG` | Filter/link only. |
+| `BKPF` | Rewrite `BLDAT`, `BUDAT`, `CPUDT`, `CPUTM`; rewrite `USNAM` to projected actor. |
+| `BSEG` | Rewrite non-zero `AUGDT`, `AUGCP`, `VALUT`. |
+| `CDHDR` | Rewrite `UDATE`, `UTIME`; rewrite `USERNAME` to projected actor. |
+| `CDPOS` | Filter/link only. |
+
+Validation checks:
+
+- Latest raw CDHDR has no stale `BANF` or `EINKBELEG` key ranges and covers all latest registry PR/PO keys.
+- Processed linkage contains no failed-case rows.
+- Raw CSV checksums are unchanged during processing.
+- Expected timestamp fields are projected and recorded in `provenance.csv`.
+- Processed row-linkage preserves trace step order.
