@@ -1874,7 +1874,7 @@ function scenarioSummaryVisible(row) {
   if (!state.query.trim()) {
     return true;
   }
-  return matchesText([row, row.caseRecord, row.lineItem, row.lineage]) || row.steps.some((step) => matchesEnrichedStep(step));
+  return matchesText([row, row.caseRecord, row.lineItem, row.lineage], state.query) || row.steps.some((step) => matchesEnrichedStep(step));
 }
 
 function matchesText(values, query) {
