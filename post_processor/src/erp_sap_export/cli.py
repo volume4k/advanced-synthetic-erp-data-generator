@@ -112,7 +112,14 @@ def _download(args: argparse.Namespace) -> int:
             chunk_minutes=args.cdhdr_window_min,
         )
         _log(f"CDHDR chunks={len(cdhdr_requests)} chunk_minutes={args.cdhdr_window_min:g}")
-        cdhdr_results = _extract_requests(client, cdhdr_requests, "CDHDR", started_at=started_at, deadline=deadline)
+        cdhdr_results = _extract_requests(
+            client,
+            cdhdr_requests,
+            "CDHDR",
+            started_at=started_at,
+            deadline=deadline,
+            fresh_page_per_request=True,
+        )
         if len(cdhdr_results) < len(cdhdr_requests):
             timed_out = True
             warning = f"Runtime guard stopped CDHDR after {len(cdhdr_results)}/{len(cdhdr_requests)} chunks"
@@ -150,7 +157,14 @@ def _download(args: argparse.Namespace) -> int:
             for request in _batched_cdpos_requests_from_cdhdr(cdhdr_rows)
         ]
         _log(f"CDPOS exact_keys={len(exact_cdpos_requests)} batched_requests={len(cdpos_requests)}")
-        cdpos_results = _extract_requests(client, cdpos_requests, "CDPOS", started_at=started_at, deadline=deadline)
+        cdpos_results = _extract_requests(
+            client,
+            cdpos_requests,
+            "CDPOS",
+            started_at=started_at,
+            deadline=deadline,
+            fresh_page_per_request=True,
+        )
         if len(cdpos_results) < len(cdpos_requests):
             timed_out = True
             warning = f"Runtime guard stopped CDPOS after {len(cdpos_results)}/{len(cdpos_requests)} requests"
@@ -317,6 +331,7 @@ def _extract_requests(
     *,
     started_at: float,
     deadline: float | None,
+    fresh_page_per_request: bool = False,
 ) -> list[list[dict[str, str]]]:
     request_started: dict[int, float] = {}
 
@@ -329,6 +344,17 @@ def _extract_requests(
             f"{phase} [{index}/{len(requests)}] {request.table} done "
             f"rows={len(rows)} request_elapsed={_elapsed(request_started[index])} total_elapsed={_elapsed(started_at)}"
         )
+
+    if fresh_page_per_request:
+        results: list[list[dict[str, str]]] = []
+        for index, request in enumerate(requests, start=1):
+            if _deadline_reached(deadline):
+                break
+            on_start(index, request)
+            rows = client.extract(request)
+            results.append(rows)
+            on_done(index, request, rows)
+        return results
 
     return client.extract_many(
         requests,

@@ -13,6 +13,7 @@ from erp_sap_export.artifacts import ExecutionWindow
 from erp_sap_export.cli import (
     _batched_cdpos_requests_from_cdhdr,
     _cdhdr_requests,
+    _extract_requests,
     _merge_partial_report,
     _post_filter_cdhdr,
     _probe_result_ok,
@@ -20,6 +21,7 @@ from erp_sap_export.cli import (
     _write_table_csvs,
 )
 from erp_sap_export.specs import SelectionRange
+from erp_sap_export.specs import TableRequest
 
 
 def test_derive_execution_window_uses_log_timestamps_with_padding(tmp_path: Path) -> None:
@@ -157,6 +159,37 @@ def test_merge_partial_report_preserves_unrequested_table_counts() -> None:
     }
     assert merged["partial_refresh"]["tables"] == ["CDHDR", "CDPOS"]
     assert merged["warnings"] == ["old warning", "new warning"]
+
+
+def test_extract_requests_can_use_fresh_page_per_request() -> None:
+    class FreshClient:
+        def __init__(self) -> None:
+            self.extract_calls = 0
+
+        def extract(self, request):
+            self.extract_calls += 1
+            return [{"TABLE": request.table, "CALL": str(self.extract_calls)}]
+
+        def extract_many(self, *args, **kwargs):
+            raise AssertionError("extract_many should not be used")
+
+    client = FreshClient()
+    requests = [
+        TableRequest("CDHDR", [SelectionRange("USERNAME", "LEARN-800")]),
+        TableRequest("CDHDR", [SelectionRange("USERNAME", "LEARN-801")]),
+    ]
+
+    results = _extract_requests(
+        client,
+        requests,
+        "CDHDR",
+        started_at=0,
+        deadline=None,
+        fresh_page_per_request=True,
+    )
+
+    assert results == [[{"TABLE": "CDHDR", "CALL": "1"}], [{"TABLE": "CDHDR", "CALL": "2"}]]
+    assert client.extract_calls == 2
 
 
 def test_probe_result_requires_all_requested_tables_usable() -> None:
