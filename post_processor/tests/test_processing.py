@@ -4,9 +4,10 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
-from erp_sap_export.processing import process_dataset
+from erp_sap_export.processing import _projection_stats, process_dataset
 
 
 def test_process_dataset_filters_failed_case_projects_eban_and_preserves_raw(tmp_path: Path) -> None:
@@ -199,6 +200,93 @@ def test_process_dataset_filters_failed_case_projects_eban_and_preserves_raw(tmp
     assert any(row["field"] == "LFDAT" and row["raw_value"] == "06/02/2026" for row in provenance_rows)
     validation = json.loads((processed_dir / "validation-report.json").read_text(encoding="utf-8"))
     assert validation["errors"] == []
+
+
+def test_projection_stats_flags_partial_field_coverage(tmp_path: Path) -> None:
+    processed_dir = tmp_path / "processed"
+    processed_dir.mkdir()
+    _write_csv(
+        processed_dir / "EBAN.csv",
+        [
+            {"BANFN": "10000317", "BADAT": "06/01/2026", "BEDAT": "06/01/2026"},
+            {"BANFN": "10000318", "BADAT": "06/02/2026", "BEDAT": "06/02/2026"},
+        ],
+    )
+
+    stats = _projection_stats(
+        processed_dir,
+        [
+            {"table": "EBAN", "field": "BADAT"},
+            {"table": "EBAN", "field": "BEDAT"},
+            {"table": "EBAN", "field": "BEDAT"},
+        ],
+    )
+
+    assert stats["missing_fields"] == {"EBAN": ["BADAT"]}
+
+
+def test_process_dataset_requires_planned_synthetic_end(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw"
+    processed_dir = tmp_path / "processed"
+    raw_dir.mkdir()
+    _write_csv(raw_dir / "EBAN.csv", [{"BANFN": "0010000317", "BADAT": "06/01/2026"}])
+    trace_path = tmp_path / "trace.yaml"
+    manifest_path = tmp_path / "manifest.yaml"
+    log_path = tmp_path / "log.jsonl"
+    registry_path = tmp_path / "registry.jsonl"
+    trace_path.write_text(
+        yaml.safe_dump(
+            {
+                "run_id": "RUN_BA-210",
+                "dependency_graph": {
+                    "planned_steps": [
+                        {
+                            "planned_step_id": "C005_A1",
+                            "case_id": "C005",
+                            "step_type": "create_purchase_requisition",
+                            "tool_name": "fiori.create_purchase_requisition",
+                            "synthetic_actor_id": "inventory_manager_mi00",
+                            "technical_sap_user_id": "TU_01",
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest_path.write_text(
+        yaml.safe_dump(
+            {
+                "run_id": "RUN_BA-210",
+                "actor_projection": [],
+                "planned_step_timestamps": [{"planned_step_id": "C005_A1", "case_id": "C005"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    log_path.write_text("", encoding="utf-8")
+    registry_path.write_text(
+        json.dumps(
+            {
+                "case_id": "C005",
+                "planned_step_id": "C005_A1",
+                "object_type": "purchase_requisition",
+                "keys": {"pr_number": "10000317"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="C005_A1.*planned_synthetic_end"):
+        process_dataset(
+            raw_dir=raw_dir,
+            out_dir=processed_dir,
+            execution_trace_path=trace_path,
+            post_processing_manifest_path=manifest_path,
+            execution_log_path=log_path,
+            object_registry_path=registry_path,
+        )
 
 
 def _write_csv(path: Path, rows: list[dict[str, str]]) -> None:

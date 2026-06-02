@@ -377,25 +377,8 @@ def _cdhdr_requests_for_timezone(
     chunk_minutes: float,
     sap_timezone: str,
 ) -> list[TableRequest]:
-    if chunk_minutes <= 0:
-        return [
-            TableRequest(
-                "CDHDR",
-                cdhdr_selection(
-                    start=window.start,
-                    end=window.end,
-                    user_from=user_from,
-                    user_to=user_to,
-                    sap_timezone=sap_timezone,
-                ),
-                max_rows=max_rows_per_request,
-            )
-        ]
     requests: list[TableRequest] = []
-    cursor = window.start
-    step = timedelta(minutes=chunk_minutes)
-    while cursor <= window.end:
-        chunk_end = min(cursor + step, window.end)
+    for cursor, chunk_end in _cdhdr_window_segments(window, chunk_minutes=chunk_minutes, sap_timezone=sap_timezone):
         requests.append(
             TableRequest(
                 "CDHDR",
@@ -409,10 +392,31 @@ def _cdhdr_requests_for_timezone(
                 max_rows=max_rows_per_request,
             )
         )
+    return requests
+
+
+def _cdhdr_window_segments(
+    window: ExecutionWindow,
+    *,
+    chunk_minutes: float,
+    sap_timezone: str,
+) -> list[tuple[datetime, datetime]]:
+    timezone = ZoneInfo(sap_timezone)
+    cursor = window.start
+    segments: list[tuple[datetime, datetime]] = []
+    step = timedelta(minutes=chunk_minutes) if chunk_minutes > 0 else None
+    while cursor <= window.end:
+        chunk_end = window.end if step is None else min(cursor + step, window.end)
+        local_cursor = cursor.astimezone(timezone)
+        local_end = chunk_end.astimezone(timezone)
+        if local_cursor.date() != local_end.date():
+            next_midnight = local_cursor.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+            chunk_end = min(next_midnight.astimezone(UTC) - timedelta(seconds=1), window.end)
+        segments.append((cursor, chunk_end))
         if chunk_end >= window.end:
             break
         cursor = chunk_end + timedelta(seconds=1)
-    return requests
+    return segments
 
 
 def _extract_requests(

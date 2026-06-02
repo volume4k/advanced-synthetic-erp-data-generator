@@ -134,6 +134,35 @@ def test_cdhdr_requests_split_execution_window_into_sap_local_chunks() -> None:
     assert all(item.max_rows == 5_000 for item in requests)
 
 
+def test_cdhdr_requests_split_at_local_midnight_to_keep_time_filters() -> None:
+    window = ExecutionWindow(
+        start=datetime(2026, 5, 28, 21, 50, tzinfo=UTC),
+        end=datetime(2026, 5, 28, 22, 10, tzinfo=UTC),
+    )
+
+    requests = _cdhdr_requests(
+        window,
+        user_from="LEARN-800",
+        user_to="LEARN-899",
+        max_rows_per_request=5_000,
+        chunk_minutes=0,
+        include_utc_window=False,
+    )
+
+    assert [item.selection for item in requests] == [
+        [
+            SelectionRange("USERNAME", "LEARN-800", "LEARN-899"),
+            SelectionRange("UDATE", "05/28/2026", "05/28/2026"),
+            SelectionRange("UTIME", "23:50:00", "23:59:59"),
+        ],
+        [
+            SelectionRange("USERNAME", "LEARN-800", "LEARN-899"),
+            SelectionRange("UDATE", "05/29/2026", "05/29/2026"),
+            SelectionRange("UTIME", "00:00:00", "00:10:00"),
+        ],
+    ]
+
+
 def test_post_filter_cdhdr_uses_utc_for_bupa_bup_and_local_time_for_banf() -> None:
     rows = [
         {"OBJECTCLAS": "BANF", "USERNAME": "LEARN-801", "UDATE": "06/01/2026", "UTIME": "16:43:23"},

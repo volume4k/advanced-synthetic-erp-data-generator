@@ -228,13 +228,16 @@ def _step_projections(
         if not isinstance(item, dict) or not item.get("planned_step_id"):
             continue
         planned_step_id = str(item["planned_step_id"])
+        planned_synthetic_end = item.get("planned_synthetic_end")
+        if not planned_synthetic_end:
+            raise ValueError(f"planned_step_timestamps entry {planned_step_id} is missing planned_synthetic_end")
         step = trace_steps.get(planned_step_id, {})
         synthetic_actor = str(step.get("synthetic_actor_id") or "")
         output[planned_step_id] = StepProjection(
             planned_step_id=planned_step_id,
             case_id=str(item.get("case_id") or step.get("case_id") or ""),
             step_type=str(item.get("step_type") or step.get("step_type") or ""),
-            planned_synthetic_end=_parse_datetime(str(item.get("planned_synthetic_end") or "")),
+            planned_synthetic_end=_parse_datetime(str(planned_synthetic_end)),
             planned_date_inputs=dict(item.get("planned_date_inputs") or step.get("planned_date_inputs") or {}),
             expose_as=actor_exposure.get(synthetic_actor, synthetic_actor),
             synthetic_actor_id=synthetic_actor,
@@ -283,8 +286,15 @@ def _apply_projection(
         for field in ("AEDAT", "PRDAT"):
             _rewrite(row, table, field, _sap_date(projection.planned_synthetic_end), projection, provenance_rows)
     elif table == "MKPF":
-        if "document_date" in projection.planned_date_inputs:
-            _rewrite(row, table, "BLDAT", _sap_date_from_iso(projection.planned_date_inputs["document_date"]), projection, provenance_rows)
+        document_date = projection.planned_date_inputs.get("document_date")
+        _rewrite(
+            row,
+            table,
+            "BLDAT",
+            _sap_date_from_iso(document_date) if document_date else _sap_date(projection.planned_synthetic_end),
+            projection,
+            provenance_rows,
+        )
         if "posting_date" in projection.planned_date_inputs:
             _rewrite(row, table, "BUDAT", _sap_date_from_iso(projection.planned_date_inputs["posting_date"]), projection, provenance_rows)
         _rewrite(row, table, "CPUDT", _sap_date(projection.planned_synthetic_end), projection, provenance_rows)
@@ -550,7 +560,6 @@ def _change_document_key_match(
 
 
 def _projection_stats(processed_dir: Path, provenance_rows: list[dict[str, str]]) -> dict[str, Any]:
-    projected = {(row.get("table"), row.get("field")) for row in provenance_rows}
     missing: dict[str, list[str]] = {}
     counts = {f"{table}.{field}": 0 for table, fields in REWRITE_FIELDS.items() for field in fields}
     for row in provenance_rows:
@@ -565,17 +574,18 @@ def _projection_stats(processed_dir: Path, provenance_rows: list[dict[str, str]]
         if not rows:
             continue
         for field in fields:
-            if field not in fieldnames or not _field_needs_projection(table, field, rows):
+            if field not in fieldnames:
                 continue
-            if (table, field) not in projected:
+            needed_count = _projection_needed_count(table, field, rows)
+            if needed_count and counts[f"{table}.{field}"] < needed_count:
                 missing.setdefault(table, []).append(field)
     return {"counts": counts, "missing_fields": missing}
 
 
-def _field_needs_projection(table: str, field: str, rows: list[dict[str, str]]) -> bool:
+def _projection_needed_count(table: str, field: str, rows: list[dict[str, str]]) -> int:
     if table == "BSEG":
-        return any(str(row.get(field) or "") not in {"", "0", "00/00/0000"} for row in rows)
-    return any(field in row for row in rows)
+        return sum(1 for row in rows if str(row.get(field) or "") not in {"", "0", "00/00/0000"})
+    return sum(1 for row in rows if field in row)
 
 
 def _process_order_stats(
