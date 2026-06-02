@@ -4,6 +4,13 @@
     "end": "2026-06-01T21:57:33.148828+00:00",
     "start": "2026-06-01T16:08:08.708111+00:00"
   },
+  "partial_refresh": {
+    "tables": [
+      "CDHDR",
+      "CDPOS"
+    ]
+  },
+  "row_linkage_written": false,
   "run_id": "RUN_BA-210",
   "tables": {
     "BKPF": {
@@ -49,30 +56,426 @@
       ]
     },
     "CDHDR": {
-      "rows": 182,
+      "chunks": 24,
+      "planned_chunks": 24,
+      "rows": 1244,
       "selection": [
-        {
-          "field": "USERNAME",
-          "high": "LEARN-899",
-          "low": "LEARN-800"
-        },
-        {
-          "field": "UDATE",
-          "high": "06/01/2026",
-          "low": "06/01/2026"
-        },
-        {
-          "field": "UTIME",
-          "high": "21:57:33",
-          "low": "16:08:08"
-        }
-      ]
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "16:23:08",
+            "low": "16:08:08"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "16:38:09",
+            "low": "16:23:09"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "16:53:10",
+            "low": "16:38:10"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "17:08:11",
+            "low": "16:53:11"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "17:23:12",
+            "low": "17:08:12"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "17:38:13",
+            "low": "17:23:13"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "17:53:14",
+            "low": "17:38:14"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "18:08:15",
+            "low": "17:53:15"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "18:23:16",
+            "low": "18:08:16"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "18:38:17",
+            "low": "18:23:17"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "18:53:18",
+            "low": "18:38:18"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "19:08:19",
+            "low": "18:53:19"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "19:23:20",
+            "low": "19:08:20"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "19:38:21",
+            "low": "19:23:21"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "19:53:22",
+            "low": "19:38:22"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "20:08:23",
+            "low": "19:53:23"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "20:23:24",
+            "low": "20:08:24"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "20:38:25",
+            "low": "20:23:25"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "20:53:26",
+            "low": "20:38:26"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "21:08:27",
+            "low": "20:53:27"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "21:23:28",
+            "low": "21:08:28"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "21:38:29",
+            "low": "21:23:29"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "21:53:30",
+            "low": "21:38:30"
+          }
+        ],
+        [
+          {
+            "field": "USERNAME",
+            "high": "LEARN-899",
+            "low": "LEARN-800"
+          },
+          {
+            "field": "UDATE",
+            "high": "06/01/2026",
+            "low": "06/01/2026"
+          },
+          {
+            "field": "UTIME",
+            "high": "21:57:33",
+            "low": "21:53:31"
+          }
+        ]
+      ],
+      "timestamp_timezone": "UTC"
     },
     "CDPOS": {
-      "exact_keys": 182,
-      "planned_requests": 1,
-      "requests": 1,
-      "rows": 88,
+      "exact_keys": 1244,
+      "planned_requests": 5,
+      "requests": 5,
+      "rows": 380,
       "source": "CDHDR composite keys"
     },
     "EBAN": {
@@ -172,6 +575,10 @@
         }
       ]
     }
+  },
+  "timezone_validation": {
+    "CDHDR.UDATE_UTIME": "UTC",
+    "business.CPUDT_CPUTM": "Europe/Berlin"
   },
   "user_range": {
     "from": "LEARN-800",
