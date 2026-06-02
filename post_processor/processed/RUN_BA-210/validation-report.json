@@ -1,0 +1,93 @@
+{
+  "change_document_key_match": {
+    "BANF": {
+      "missing_registry_keys": 0,
+      "raw_keys": 210,
+      "raw_matches": 210,
+      "registry_keys": 210,
+      "stale_raw_keys": 0
+    },
+    "EINKBELEG": {
+      "missing_registry_keys": 0,
+      "raw_keys": 210,
+      "raw_matches": 210,
+      "registry_keys": 210,
+      "stale_raw_keys": 0
+    }
+  },
+  "errors": [],
+  "failed_cases": [
+    "C081"
+  ],
+  "process_order": {
+    "rows": 3604,
+    "violations": 0
+  },
+  "projection_stats": {
+    "counts": {
+      "BKPF.BLDAT": 209,
+      "BKPF.BUDAT": 209,
+      "BKPF.CPUDT": 209,
+      "BKPF.CPUTM": 209,
+      "BKPF.USNAM": 209,
+      "BSEG.AUGCP": 209,
+      "BSEG.AUGDT": 209,
+      "BSEG.VALUT": 209,
+      "CDHDR.UDATE": 1075,
+      "CDHDR.USERNAME": 1075,
+      "CDHDR.UTIME": 1075,
+      "EBAN.BADAT": 209,
+      "EBAN.BEDAT": 209,
+      "EBAN.ERDAT": 209,
+      "EBAN.ERNAM": 209,
+      "EBAN.LFDAT": 209,
+      "EKKO.AEDAT": 209,
+      "EKKO.BEDAT": 209,
+      "EKKO.ERNAM": 209,
+      "EKKO.LASTCHANGEDATETIME": 209,
+      "EKPO.AEDAT": 209,
+      "EKPO.PRDAT": 209,
+      "MKPF.BLDAT": 209,
+      "MKPF.BUDAT": 229,
+      "MKPF.CPUDT": 229,
+      "MKPF.CPUTM": 229,
+      "MKPF.USNAM": 229,
+      "RBKP.BLDAT": 209,
+      "RBKP.CPUDT": 209,
+      "RBKP.CPUTM": 209,
+      "RBKP.USNAM": 209
+    },
+    "missing_fields": {}
+  },
+  "registry_raw_key_match": {
+    "material_document": {
+      "raw_matches": 210,
+      "registry_keys": 210
+    },
+    "payment_document": {
+      "raw_matches": 209,
+      "registry_keys": 209
+    },
+    "purchase_order": {
+      "raw_matches": 210,
+      "registry_keys": 210
+    },
+    "purchase_requisition": {
+      "raw_matches": 210,
+      "registry_keys": 210
+    },
+    "scrap_material_document": {
+      "raw_matches": 7,
+      "registry_keys": 7
+    },
+    "stock_release_material_document": {
+      "raw_matches": 13,
+      "registry_keys": 13
+    },
+    "supplier_invoice": {
+      "raw_matches": 210,
+      "registry_keys": 210
+    }
+  },
+  "warnings": []
+}
