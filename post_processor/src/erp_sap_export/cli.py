@@ -39,6 +39,7 @@ from erp_sap_export.specs import (
 DEFAULT_TABLES = SUPPORTED_TABLES
 POST_PROCESSOR_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DOWNLOADS_DIR = POST_PROCESSOR_ROOT / "downloads"
+CDHDR_UTC_OBJECT_CLASSES = {"BUPA_BUP"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -112,6 +113,7 @@ def _download(args: argparse.Namespace) -> int:
             max_rows_per_request=args.max_rows_per_request,
             chunk_minutes=args.cdhdr_window_min,
             sap_timezone=args.cdhdr_timezone,
+            include_utc_window=args.cdhdr_include_utc_window,
         )
         _log(f"CDHDR chunks={len(cdhdr_requests)} chunk_minutes={args.cdhdr_window_min:g}")
         cdhdr_results = _extract_requests(
@@ -136,6 +138,7 @@ def _download(args: argparse.Namespace) -> int:
                     start=window.start,
                     end=window.end,
                     sap_timezone=args.cdhdr_timezone,
+                    utc_object_classes=CDHDR_UTC_OBJECT_CLASSES,
                 )
             )
         cdhdr_rows = _dedupe_rows(cdhdr_rows)
@@ -149,7 +152,10 @@ def _download(args: argparse.Namespace) -> int:
                 [asdict(item) for item in request.selection]
                 for request in cdhdr_requests
             ],
-            "timestamp_timezone": args.cdhdr_timezone,
+            "timestamp_timezone": {
+                "default": args.cdhdr_timezone,
+                "utc_object_classes": sorted(CDHDR_UTC_OBJECT_CLASSES),
+            },
         }
 
     if "CDPOS" in requested_tables:
@@ -238,7 +244,10 @@ def _download(args: argparse.Namespace) -> int:
         report["tables"].setdefault(table, {"requests": 0, "rows": 0})
         report["tables"][table]["rows"] = len(rows_by_table[table])
     report["timezone_validation"] = {
-        "CDHDR.UDATE_UTIME": args.cdhdr_timezone,
+        "CDHDR.UDATE_UTIME": {
+            "default": args.cdhdr_timezone,
+            "utc_object_classes": sorted(CDHDR_UTC_OBJECT_CLASSES),
+        },
         "business.CPUDT_CPUTM": "Europe/Berlin",
     }
     full_refresh = set(requested_tables) == set(DEFAULT_TABLES)
@@ -301,6 +310,38 @@ def _cdhdr_requests(
     max_rows_per_request: int | None,
     chunk_minutes: float,
     sap_timezone: str = "Europe/Berlin",
+    include_utc_window: bool = True,
+) -> list[TableRequest]:
+    timezones = [sap_timezone]
+    if include_utc_window and sap_timezone.upper() != "UTC":
+        timezones.append("UTC")
+    requests: list[TableRequest] = []
+    seen: set[tuple[tuple[str, str, str | None], ...]] = set()
+    for timezone in timezones:
+        for request in _cdhdr_requests_for_timezone(
+            window,
+            user_from=user_from,
+            user_to=user_to,
+            max_rows_per_request=max_rows_per_request,
+            chunk_minutes=chunk_minutes,
+            sap_timezone=timezone,
+        ):
+            key = tuple((item.field, item.low, item.high) for item in request.selection)
+            if key in seen:
+                continue
+            seen.add(key)
+            requests.append(request)
+    return requests
+
+
+def _cdhdr_requests_for_timezone(
+    window: ExecutionWindow,
+    *,
+    user_from: str,
+    user_to: str,
+    max_rows_per_request: int | None,
+    chunk_minutes: float,
+    sap_timezone: str,
 ) -> list[TableRequest]:
     if chunk_minutes <= 0:
         return [
@@ -450,13 +491,19 @@ def _post_filter_cdhdr(
     start: datetime,
     end: datetime,
     sap_timezone: str = "Europe/Berlin",
+    utc_object_classes: set[str] | None = None,
 ) -> list[dict[str, str]]:
     start_utc = _as_utc(start)
     end_utc = _as_utc(end)
+    utc_object_classes = utc_object_classes or set()
     output: list[dict[str, str]] = []
     for row in rows:
         username = str(row.get("USERNAME") or "")
-        changed_at = _sap_change_datetime(row, sap_timezone=sap_timezone)
+        object_class = str(row.get("OBJECTCLAS") or "")
+        changed_at = _sap_change_datetime(
+            row,
+            sap_timezone="UTC" if object_class in utc_object_classes else sap_timezone,
+        )
         if changed_at is None:
             continue
         if user_from <= username <= user_to and start_utc <= changed_at <= end_utc:
@@ -619,6 +666,7 @@ def _build_parser() -> argparse.ArgumentParser:
     download.add_argument("--max-keys-per-batch", type=int, default=20)
     download.add_argument("--cdhdr-window-min", type=float, default=15)
     download.add_argument("--cdhdr-timezone", default="Europe/Berlin")
+    download.add_argument("--no-cdhdr-include-utc-window", dest="cdhdr_include_utc_window", action="store_false")
     download.add_argument("--max-runtime-min", type=float, default=60)
     download.add_argument("--default-company-code", default="US00")
     download.add_argument("--tables", nargs="+", default=DEFAULT_TABLES)

@@ -128,8 +128,29 @@ def test_cdhdr_requests_split_execution_window_into_sap_local_chunks() -> None:
     assert [(item.selection[1].low, item.selection[2].low, item.selection[2].high) for item in requests] == [
         ("06/01/2026", "18:38:08", "18:53:08"),
         ("06/01/2026", "18:53:09", "19:08:08"),
+        ("06/01/2026", "16:38:08", "16:53:08"),
+        ("06/01/2026", "16:53:09", "17:08:08"),
     ]
     assert all(item.max_rows == 5_000 for item in requests)
+
+
+def test_post_filter_cdhdr_uses_utc_for_bupa_bup_and_local_time_for_banf() -> None:
+    rows = [
+        {"OBJECTCLAS": "BANF", "USERNAME": "LEARN-801", "UDATE": "06/01/2026", "UTIME": "16:43:23"},
+        {"OBJECTCLAS": "BANF", "USERNAME": "LEARN-801", "UDATE": "06/01/2026", "UTIME": "18:43:23"},
+        {"OBJECTCLAS": "BUPA_BUP", "USERNAME": "LEARN-804", "UDATE": "06/01/2026", "UTIME": "16:48:23"},
+    ]
+
+    filtered = _post_filter_cdhdr(
+        rows,
+        user_from="LEARN-800",
+        user_to="LEARN-899",
+        start=datetime(2026, 6, 1, 16, 38, tzinfo=UTC),
+        end=datetime(2026, 6, 1, 16, 53, tzinfo=UTC),
+        utc_object_classes={"BUPA_BUP"},
+    )
+
+    assert filtered == [rows[1], rows[2]]
 
 
 def test_merge_partial_report_preserves_unrequested_table_counts() -> None:
