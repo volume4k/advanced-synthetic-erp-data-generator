@@ -11,6 +11,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Sequence
+from zoneinfo import ZoneInfo
 
 from erp_sap_export.artifacts import (
     ExecutionWindow,
@@ -110,6 +111,7 @@ def _download(args: argparse.Namespace) -> int:
             user_to=args.user_to,
             max_rows_per_request=args.max_rows_per_request,
             chunk_minutes=args.cdhdr_window_min,
+            sap_timezone=args.cdhdr_timezone,
         )
         _log(f"CDHDR chunks={len(cdhdr_requests)} chunk_minutes={args.cdhdr_window_min:g}")
         cdhdr_results = _extract_requests(
@@ -133,6 +135,7 @@ def _download(args: argparse.Namespace) -> int:
                     user_to=args.user_to,
                     start=window.start,
                     end=window.end,
+                    sap_timezone=args.cdhdr_timezone,
                 )
             )
         cdhdr_rows = _dedupe_rows(cdhdr_rows)
@@ -146,7 +149,7 @@ def _download(args: argparse.Namespace) -> int:
                 [asdict(item) for item in request.selection]
                 for request in cdhdr_requests
             ],
-            "timestamp_timezone": "UTC",
+            "timestamp_timezone": args.cdhdr_timezone,
         }
 
     if "CDPOS" in requested_tables:
@@ -235,7 +238,7 @@ def _download(args: argparse.Namespace) -> int:
         report["tables"].setdefault(table, {"requests": 0, "rows": 0})
         report["tables"][table]["rows"] = len(rows_by_table[table])
     report["timezone_validation"] = {
-        "CDHDR.UDATE_UTIME": "UTC",
+        "CDHDR.UDATE_UTIME": args.cdhdr_timezone,
         "business.CPUDT_CPUTM": "Europe/Berlin",
     }
     full_refresh = set(requested_tables) == set(DEFAULT_TABLES)
@@ -297,12 +300,19 @@ def _cdhdr_requests(
     user_to: str,
     max_rows_per_request: int | None,
     chunk_minutes: float,
+    sap_timezone: str = "Europe/Berlin",
 ) -> list[TableRequest]:
     if chunk_minutes <= 0:
         return [
             TableRequest(
                 "CDHDR",
-                cdhdr_selection(start=window.start, end=window.end, user_from=user_from, user_to=user_to),
+                cdhdr_selection(
+                    start=window.start,
+                    end=window.end,
+                    user_from=user_from,
+                    user_to=user_to,
+                    sap_timezone=sap_timezone,
+                ),
                 max_rows=max_rows_per_request,
             )
         ]
@@ -314,7 +324,13 @@ def _cdhdr_requests(
         requests.append(
             TableRequest(
                 "CDHDR",
-                cdhdr_selection(start=cursor, end=chunk_end, user_from=user_from, user_to=user_to),
+                cdhdr_selection(
+                    start=cursor,
+                    end=chunk_end,
+                    user_from=user_from,
+                    user_to=user_to,
+                    sap_timezone=sap_timezone,
+                ),
                 max_rows=max_rows_per_request,
             )
         )
@@ -433,13 +449,14 @@ def _post_filter_cdhdr(
     user_to: str,
     start: datetime,
     end: datetime,
+    sap_timezone: str = "Europe/Berlin",
 ) -> list[dict[str, str]]:
     start_utc = _as_utc(start)
     end_utc = _as_utc(end)
     output: list[dict[str, str]] = []
     for row in rows:
         username = str(row.get("USERNAME") or "")
-        changed_at = _sap_change_datetime(row)
+        changed_at = _sap_change_datetime(row, sap_timezone=sap_timezone)
         if changed_at is None:
             continue
         if user_from <= username <= user_to and start_utc <= changed_at <= end_utc:
@@ -531,13 +548,14 @@ def _probe_table_ok(table_result: Any) -> bool:
     )
 
 
-def _sap_change_datetime(row: dict[str, str]) -> datetime | None:
+def _sap_change_datetime(row: dict[str, str], *, sap_timezone: str = "Europe/Berlin") -> datetime | None:
     date_text = str(row.get("UDATE") or "").strip()
     time_text = str(row.get("UTIME") or "").strip()
     if not date_text or not time_text:
         return None
     try:
-        return datetime.strptime(f"{date_text} {time_text}", "%m/%d/%Y %H:%M:%S").replace(tzinfo=UTC)
+        local = datetime.strptime(f"{date_text} {time_text}", "%m/%d/%Y %H:%M:%S").replace(tzinfo=ZoneInfo(sap_timezone))
+        return local.astimezone(UTC)
     except ValueError:
         return None
 
@@ -600,6 +618,7 @@ def _build_parser() -> argparse.ArgumentParser:
     download.add_argument("--max-rows-per-request", type=int, default=5_000)
     download.add_argument("--max-keys-per-batch", type=int, default=20)
     download.add_argument("--cdhdr-window-min", type=float, default=15)
+    download.add_argument("--cdhdr-timezone", default="Europe/Berlin")
     download.add_argument("--max-runtime-min", type=float, default=60)
     download.add_argument("--default-company-code", default="US00")
     download.add_argument("--tables", nargs="+", default=DEFAULT_TABLES)

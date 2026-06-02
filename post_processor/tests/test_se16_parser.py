@@ -42,8 +42,8 @@ def test_parse_abap_list_maps_header_positions_to_rows() -> None:
 
 def test_cdhdr_selection_uses_user_range_and_same_day_time_range() -> None:
     ranges = cdhdr_selection(
-        start=datetime(2026, 5, 28, 20, 0, tzinfo=UTC),
-        end=datetime(2026, 5, 28, 23, 15, 30, tzinfo=UTC),
+        start=datetime(2026, 5, 28, 16, 0, tzinfo=UTC),
+        end=datetime(2026, 5, 28, 17, 15, 30, tzinfo=UTC),
         user_from="LEARN-800",
         user_to="LEARN-899",
     )
@@ -51,7 +51,7 @@ def test_cdhdr_selection_uses_user_range_and_same_day_time_range() -> None:
     assert ranges == [
         SelectionRange("USERNAME", "LEARN-800", "LEARN-899"),
         SelectionRange("UDATE", "05/28/2026", "05/28/2026"),
-        SelectionRange("UTIME", "20:00:00", "23:15:30"),
+        SelectionRange("UTIME", "18:00:00", "19:15:30"),
     ]
 
 

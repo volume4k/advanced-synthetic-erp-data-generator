@@ -104,14 +104,14 @@ def test_post_filter_cdhdr_enforces_user_and_exact_time_window() -> None:
         rows,
         user_from="LEARN-800",
         user_to="LEARN-899",
-        start=datetime(2026, 5, 28, 20, 0, tzinfo=UTC),
-        end=datetime(2026, 5, 28, 21, 0, tzinfo=UTC),
+        start=datetime(2026, 5, 28, 18, 0, tzinfo=UTC),
+        end=datetime(2026, 5, 28, 19, 0, tzinfo=UTC),
     )
 
     assert filtered == [rows[1], rows[2]]
 
 
-def test_cdhdr_requests_split_execution_window_into_utc_chunks() -> None:
+def test_cdhdr_requests_split_execution_window_into_sap_local_chunks() -> None:
     window = ExecutionWindow(
         start=datetime(2026, 6, 1, 16, 38, 8, tzinfo=UTC),
         end=datetime(2026, 6, 1, 17, 8, 8, tzinfo=UTC),
@@ -126,8 +126,8 @@ def test_cdhdr_requests_split_execution_window_into_utc_chunks() -> None:
     )
 
     assert [(item.selection[1].low, item.selection[2].low, item.selection[2].high) for item in requests] == [
-        ("06/01/2026", "16:38:08", "16:53:08"),
-        ("06/01/2026", "16:53:09", "17:08:08"),
+        ("06/01/2026", "18:38:08", "18:53:08"),
+        ("06/01/2026", "18:53:09", "19:08:08"),
     ]
     assert all(item.max_rows == 5_000 for item in requests)
 
