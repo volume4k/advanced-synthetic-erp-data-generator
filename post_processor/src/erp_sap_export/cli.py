@@ -8,11 +8,12 @@ import json
 import time
 from collections import defaultdict
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Sequence
 
 from erp_sap_export.artifacts import (
+    ExecutionWindow,
     build_linkage_index,
     derive_execution_window,
     first_actor_session_credentials,
@@ -61,6 +62,9 @@ def _probe(args: argparse.Namespace) -> int:
 def _download(args: argparse.Namespace) -> int:
     started_at = time.monotonic()
     deadline = _deadline(started_at, args.max_runtime_min)
+    requested_tables = _requested_tables(args.tables)
+    if "CDPOS" in requested_tables and "CDHDR" not in requested_tables:
+        requested_tables = ["CDHDR", *requested_tables]
     trace = load_yaml(args.execution_trace)
     manifest = load_yaml(args.post_processing_manifest)
     env = load_env_file(args.env_file)
@@ -78,6 +82,7 @@ def _download(args: argparse.Namespace) -> int:
     out_dir = _resolve_download_dir(args.out_dir, manifest)
     out_dir.mkdir(parents=True, exist_ok=True)
     _log(f"run={run_id} output_dir={out_dir}")
+    _log(f"tables={','.join(requested_tables)}")
     _log(f"window={window.start.isoformat()}..{window.end.isoformat()} user_range={args.user_from}..{args.user_to}")
     if deadline is not None:
         _log(f"runtime_guard={args.max_runtime_min:g}min")
@@ -97,47 +102,72 @@ def _download(args: argparse.Namespace) -> int:
 
     rows_by_table: dict[str, list[dict[str, str]]] = defaultdict(list)
     timed_out = False
-    cdhdr_request = TableRequest(
-        "CDHDR",
-        cdhdr_selection(start=window.start, end=window.end, user_from=args.user_from, user_to=args.user_to),
-        max_rows=args.max_rows_per_request,
-    )
-    _log(f"CDHDR start filter={_selection_summary(cdhdr_request)}")
-    cdhdr_rows = _post_filter_cdhdr(
-        client.extract(cdhdr_request),
-        user_from=args.user_from,
-        user_to=args.user_to,
-        start=window.start,
-        end=window.end,
-    )
-    _log(f"CDHDR done rows={len(cdhdr_rows)} elapsed={_elapsed(started_at)}")
-    rows_by_table["CDHDR"].extend(cdhdr_rows)
-    report["tables"]["CDHDR"] = _request_report(cdhdr_request, len(cdhdr_rows))
+    cdhdr_rows: list[dict[str, str]] = []
+    if "CDHDR" in requested_tables:
+        cdhdr_requests = _cdhdr_requests(
+            window,
+            user_from=args.user_from,
+            user_to=args.user_to,
+            max_rows_per_request=args.max_rows_per_request,
+            chunk_minutes=args.cdhdr_window_min,
+        )
+        _log(f"CDHDR chunks={len(cdhdr_requests)} chunk_minutes={args.cdhdr_window_min:g}")
+        cdhdr_results = _extract_requests(client, cdhdr_requests, "CDHDR", started_at=started_at, deadline=deadline)
+        if len(cdhdr_results) < len(cdhdr_requests):
+            timed_out = True
+            warning = f"Runtime guard stopped CDHDR after {len(cdhdr_results)}/{len(cdhdr_requests)} chunks"
+            report["warnings"].append(warning)
+            _log(warning)
+        for rows in cdhdr_results:
+            cdhdr_rows.extend(
+                _post_filter_cdhdr(
+                    rows,
+                    user_from=args.user_from,
+                    user_to=args.user_to,
+                    start=window.start,
+                    end=window.end,
+                )
+            )
+        cdhdr_rows = _dedupe_rows(cdhdr_rows)
+        _log(f"CDHDR done rows={len(cdhdr_rows)} elapsed={_elapsed(started_at)}")
+        rows_by_table["CDHDR"].extend(cdhdr_rows)
+        report["tables"]["CDHDR"] = {
+            "chunks": len(cdhdr_results),
+            "planned_chunks": len(cdhdr_requests),
+            "rows": len(cdhdr_rows),
+            "selection": [
+                [asdict(item) for item in request.selection]
+                for request in cdhdr_requests
+            ],
+            "timestamp_timezone": "UTC",
+        }
 
-    cdpos_rows: list[dict[str, str]] = []
-    exact_cdpos_requests = cdpos_requests_from_cdhdr(cdhdr_rows)
-    cdpos_requests = [
-        TableRequest(request.table, request.selection, max_rows=args.max_rows_per_request)
-        for request in _batched_cdpos_requests_from_cdhdr(cdhdr_rows)
-    ]
-    _log(f"CDPOS exact_keys={len(exact_cdpos_requests)} batched_requests={len(cdpos_requests)}")
-    cdpos_results = _extract_requests(client, cdpos_requests, "CDPOS", started_at=started_at, deadline=deadline)
-    if len(cdpos_results) < len(cdpos_requests):
-        timed_out = True
-        warning = f"Runtime guard stopped CDPOS after {len(cdpos_results)}/{len(cdpos_requests)} requests"
-        report["warnings"].append(warning)
-        _log(warning)
-    for rows in cdpos_results:
-        cdpos_rows.extend(_post_filter_cdpos(rows, cdhdr_rows))
-    rows_by_table["CDPOS"].extend(_dedupe_rows(cdpos_rows))
-    report["tables"]["CDPOS"] = {
-        "source": "CDHDR composite keys",
-        "exact_keys": len(exact_cdpos_requests),
-        "requests": len(cdpos_results),
-        "planned_requests": len(cdpos_requests),
-        "rows": len(rows_by_table["CDPOS"]),
-    }
+    if "CDPOS" in requested_tables:
+        cdpos_rows: list[dict[str, str]] = []
+        exact_cdpos_requests = cdpos_requests_from_cdhdr(cdhdr_rows)
+        cdpos_requests = [
+            TableRequest(request.table, request.selection, max_rows=args.max_rows_per_request)
+            for request in _batched_cdpos_requests_from_cdhdr(cdhdr_rows)
+        ]
+        _log(f"CDPOS exact_keys={len(exact_cdpos_requests)} batched_requests={len(cdpos_requests)}")
+        cdpos_results = _extract_requests(client, cdpos_requests, "CDPOS", started_at=started_at, deadline=deadline)
+        if len(cdpos_results) < len(cdpos_requests):
+            timed_out = True
+            warning = f"Runtime guard stopped CDPOS after {len(cdpos_results)}/{len(cdpos_requests)} requests"
+            report["warnings"].append(warning)
+            _log(warning)
+        for rows in cdpos_results:
+            cdpos_rows.extend(_post_filter_cdpos(rows, cdhdr_rows))
+        rows_by_table["CDPOS"].extend(_dedupe_rows(cdpos_rows))
+        report["tables"]["CDPOS"] = {
+            "source": "CDHDR composite keys",
+            "exact_keys": len(exact_cdpos_requests),
+            "requests": len(cdpos_results),
+            "planned_requests": len(cdpos_requests),
+            "rows": len(rows_by_table["CDPOS"]),
+        }
 
+    p2p_tables = [table for table in requested_tables if table not in {"CDHDR", "CDPOS"}]
     index = build_linkage_index(registry_entries, trace_steps, default_company_code=args.default_company_code)
     exact_p2p_requests = p2p_requests_from_registry(
         registry_entries,
@@ -152,12 +182,14 @@ def _download(args: argparse.Namespace) -> int:
             default_company_code=args.default_company_code,
             max_keys_per_batch=args.max_keys_per_batch,
         )
+        if request.table in p2p_tables
     ]
-    _log(
-        "P2P "
-        f"registry_entries={len(registry_entries)} exact_keys={len(exact_p2p_requests)} "
-        f"max_keys_per_batch={args.max_keys_per_batch} batched_requests={len(p2p_requests)}"
-    )
+    if p2p_tables:
+        _log(
+            "P2P "
+            f"registry_entries={len(registry_entries)} exact_keys={len(exact_p2p_requests)} "
+            f"max_keys_per_batch={args.max_keys_per_batch} batched_requests={len(p2p_requests)}"
+        )
 
     for request_index, request in enumerate(p2p_requests, start=1):
         if _deadline_reached(deadline):
@@ -184,12 +216,16 @@ def _download(args: argparse.Namespace) -> int:
         report["tables"][request.table]["requests"] += 1
         report["tables"][request.table]["selection"] = [asdict(item) for item in request.selection]
 
-    for table in DEFAULT_TABLES:
+    for table in requested_tables:
         rows_by_table[table] = _dedupe_rows(rows_by_table.get(table, []))
         report["tables"].setdefault(table, {"requests": 0, "rows": 0})
         report["tables"][table]["rows"] = len(rows_by_table[table])
-    _write_table_csvs(out_dir, rows_by_table, tables=DEFAULT_TABLES)
-    _log(f"wrote table CSVs count={len(DEFAULT_TABLES)} dir={out_dir}")
+    report["timezone_validation"] = {
+        "CDHDR.UDATE_UTIME": "UTC",
+        "business.CPUDT_CPUTM": "Europe/Berlin",
+    }
+    _write_table_csvs(out_dir, rows_by_table, tables=requested_tables)
+    _log(f"wrote table CSVs count={len(requested_tables)} dir={out_dir}")
 
     linkage_rows: list[dict[str, str]] = []
     for table, rows in rows_by_table.items():
@@ -227,6 +263,40 @@ def _write_table_csvs(
 ) -> None:
     for table in tables:
         _write_csv(out_dir / f"{table}.csv", rows_by_table.get(table, []))
+
+
+def _cdhdr_requests(
+    window: ExecutionWindow,
+    *,
+    user_from: str,
+    user_to: str,
+    max_rows_per_request: int | None,
+    chunk_minutes: float,
+) -> list[TableRequest]:
+    if chunk_minutes <= 0:
+        return [
+            TableRequest(
+                "CDHDR",
+                cdhdr_selection(start=window.start, end=window.end, user_from=user_from, user_to=user_to),
+                max_rows=max_rows_per_request,
+            )
+        ]
+    requests: list[TableRequest] = []
+    cursor = window.start
+    step = timedelta(minutes=chunk_minutes)
+    while cursor <= window.end:
+        chunk_end = min(cursor + step, window.end)
+        requests.append(
+            TableRequest(
+                "CDHDR",
+                cdhdr_selection(start=cursor, end=chunk_end, user_from=user_from, user_to=user_to),
+                max_rows=max_rows_per_request,
+            )
+        )
+        if chunk_end >= window.end:
+            break
+        cursor = chunk_end + timedelta(seconds=1)
+    return requests
 
 
 def _extract_requests(
@@ -356,6 +426,17 @@ def _request_report(request: TableRequest, row_count: int) -> dict[str, Any]:
     return {"selection": [asdict(item) for item in request.selection], "rows": row_count}
 
 
+def _requested_tables(values: Sequence[str]) -> list[str]:
+    requested: list[str] = []
+    for value in values:
+        table = value.upper()
+        if table not in SUPPORTED_TABLES:
+            raise ValueError(f"Unsupported table '{value}'")
+        if table not in requested:
+            requested.append(table)
+    return requested
+
+
 def _probe_result_ok(result: dict[str, Any]) -> bool:
     table_results = result.get("tables")
     if not result.get("webgui") or not result.get("se16") or not isinstance(table_results, dict):
@@ -442,7 +523,9 @@ def _build_parser() -> argparse.ArgumentParser:
     download.add_argument("--window-padding-min", type=int, default=30)
     download.add_argument("--max-rows-per-request", type=int, default=5_000)
     download.add_argument("--max-keys-per-batch", type=int, default=20)
+    download.add_argument("--cdhdr-window-min", type=float, default=15)
     download.add_argument("--max-runtime-min", type=float, default=60)
     download.add_argument("--default-company-code", default="US00")
+    download.add_argument("--tables", nargs="+", default=DEFAULT_TABLES)
     download.add_argument("--headed", action="store_true")
     return parser

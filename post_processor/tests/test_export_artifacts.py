@@ -9,8 +9,10 @@ from erp_sap_export.artifacts import (
     derive_execution_window,
     load_jsonl,
 )
+from erp_sap_export.artifacts import ExecutionWindow
 from erp_sap_export.cli import (
     _batched_cdpos_requests_from_cdhdr,
+    _cdhdr_requests,
     _post_filter_cdhdr,
     _probe_result_ok,
     _resolve_download_dir,
@@ -104,6 +106,27 @@ def test_post_filter_cdhdr_enforces_user_and_exact_time_window() -> None:
     )
 
     assert filtered == [rows[1], rows[2]]
+
+
+def test_cdhdr_requests_split_execution_window_into_utc_chunks() -> None:
+    window = ExecutionWindow(
+        start=datetime(2026, 6, 1, 16, 38, 8, tzinfo=UTC),
+        end=datetime(2026, 6, 1, 17, 8, 8, tzinfo=UTC),
+    )
+
+    requests = _cdhdr_requests(
+        window,
+        user_from="LEARN-800",
+        user_to="LEARN-899",
+        max_rows_per_request=5_000,
+        chunk_minutes=15,
+    )
+
+    assert [(item.selection[1].low, item.selection[2].low, item.selection[2].high) for item in requests] == [
+        ("06/01/2026", "16:38:08", "16:53:08"),
+        ("06/01/2026", "16:53:09", "17:08:08"),
+    ]
+    assert all(item.max_rows == 5_000 for item in requests)
 
 
 def test_probe_result_requires_all_requested_tables_usable() -> None:
