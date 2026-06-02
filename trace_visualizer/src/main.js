@@ -3,6 +3,7 @@ import cytoscape from "cytoscape";
 import "./styles.css";
 
 const views = [
+  ["scenarioLens", "Scenario Lens"],
   ["caseGantt", "Case Gantt"],
   ["waveMatrix", "Wave Matrix"],
   ["actorCalendar", "Actor Calendar"],
@@ -22,10 +23,27 @@ const actorPalette = [
   { bg: "#78628c", fg: "#ffffff", soft: "#eee6f3", border: "#c0abd0" },
 ];
 
+const fraudScenarioTypes = new Set(["VENDOR_FLIPFLOP", "LARCENY3", "LARCENY5"]);
+const scenarioFilters = [
+  ["all", "All"],
+  ["fraud", "Fraud"],
+  ["routine", "Routine Variants"],
+  ["normal", "Normal"],
+  ["cleanup", "Cleanup"],
+];
+
+const stepLabelMeta = {
+  fraud_step: { label: "Fraud", tone: "fraud" },
+  fraud_supporting_step: { label: "Fraud support", tone: "fraud-support" },
+  routine_step: { label: "Routine variant", tone: "routine" },
+  cleanup_step: { label: "Cleanup", tone: "cleanup" },
+  normal: { label: "Normal", tone: "normal" },
+};
+
 const state = {
   runs: new Map(),
   activeRunId: "",
-  activeView: "caseGantt",
+  activeView: "scenarioLens",
   selectedNodeId: "",
   query: "",
   messages: [],
@@ -34,6 +52,7 @@ const state = {
   calendarActorId: "",
   expandedCalendarDays: new Set(),
   ganttZoom: 0.35,
+  scenarioFilter: "all",
 };
 
 let graph = null;
@@ -105,6 +124,10 @@ function renderSummary(model) {
       ${metric("Execution Waves", model.waves.length)}
       ${metric("Synthetic Actors", model.actors.length)}
       ${metric("Planned Range", timeRange)}
+      ${metric("Fraud Cases", model.scenarioStats.fraudCases)}
+      ${metric("Routine Variants", model.scenarioStats.routineCases)}
+      ${metric("Fraud Steps", model.scenarioStats.fraudSteps)}
+      ${metric("Cleanup Steps", model.scenarioStats.cleanupSteps)}
     </section>
   `;
 }
@@ -215,6 +238,9 @@ function renderWorkspace(model) {
 }
 
 function renderActiveView(model) {
+  if (state.activeView === "scenarioLens") {
+    return renderScenarioLens(model);
+  }
   if (state.activeView === "waveMatrix") {
     return renderWaveMatrix(model);
   }
@@ -237,6 +263,95 @@ function renderActiveView(model) {
     return renderRaw(model);
   }
   return renderCaseGantt(model);
+}
+
+function renderScenarioLens(model) {
+  if (!model.execution) {
+    return renderBlank("No Scenario Lens", "Load an Execution Trace to inspect fraud and routine variant cases.");
+  }
+
+  const rows = model.scenarioSummaries.filter((row) => scenarioSummaryVisible(row));
+  if (rows.length === 0) {
+    return renderBlank("No matching scenarios", "Filter or search did not match case, scenario, family, actor, material, or vendor data.");
+  }
+
+  return `
+    <div class="section-title">
+      <div>
+        <h2>Scenario Lens</h2>
+        <p>Fraud cases, non-fraud variants, cleanup work, and normal process cases joined from trace and manifest truth.</p>
+      </div>
+      <span>${rows.length} case rows</span>
+    </div>
+    <div class="scenario-toolbar">
+      <div class="segmented scenario-segmented" aria-label="Scenario filter">
+        ${scenarioFilters
+          .map(
+            ([id, label]) => `
+              <button type="button" data-scenario-filter="${id}" class="${state.scenarioFilter === id ? "active" : ""}">
+                ${escapeHtml(label)}
+              </button>
+            `,
+          )
+          .join("")}
+      </div>
+      <div class="scenario-stat-strip">
+        ${metric("Fraud", model.scenarioStats.fraudCases)}
+        ${metric("Routine", model.scenarioStats.routineCases)}
+        ${metric("Normal", model.scenarioStats.normalCases)}
+        ${metric("Cleanup", model.scenarioStats.cleanupSteps)}
+      </div>
+    </div>
+    <div class="scenario-grid">
+      ${rows.map((row) => renderScenarioCard(row)).join("")}
+    </div>
+  `;
+}
+
+function renderScenarioCard(row) {
+  const selected = row.steps.some((step) => step.plannedStepId === state.selectedNodeId) ? "selected" : "";
+  return `
+    <article class="scenario-card ${scenarioToneClass(row.tone)} ${selected}">
+      <header class="scenario-card-head">
+        <div>
+          <strong>${escapeHtml(row.caseId)}</strong>
+          <span>${escapeHtml(row.caseRecord.process_type || "process")}</span>
+        </div>
+        <div class="scenario-badge-stack">
+          ${renderScenarioBadge(row.caseOutcome, row.tone)}
+          ${renderScenarioBadge(row.scenarioType, row.tone)}
+        </div>
+      </header>
+      <div class="scenario-facts">
+        <dl>
+          <div><dt>Family</dt><dd>${escapeHtml(row.primaryFamily || "-")}</dd></div>
+          <div><dt>Material</dt><dd>${escapeHtml(row.lineItem.material_id || "-")}</dd></div>
+          <div><dt>Vendor</dt><dd>${escapeHtml(row.lineItem.vendor_id || "-")}</dd></div>
+          <div><dt>Qty</dt><dd>${escapeHtml(row.lineItem.quantity ?? "-")}</dd></div>
+          <div><dt>RDD</dt><dd>${escapeHtml(row.caseRecord.requested_delivery_date || "-")}</dd></div>
+          <div><dt>Steps</dt><dd>${escapeHtml(row.steps.length)}</dd></div>
+        </dl>
+      </div>
+      <div class="lineage-strip">
+        ${(row.lineage?.chain || []).map((item) => `<span>${escapeHtml(item)}</span>`).join("") || `<span>-</span>`}
+      </div>
+      <div class="scenario-step-list">
+        ${row.steps.map((step) => renderScenarioStep(step)).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderScenarioStep(step) {
+  const selected = step.plannedStepId === state.selectedNodeId ? "selected" : "";
+  return `
+    <button type="button" class="scenario-step ${stepToneClass(step)} ${selected}" data-node-id="${escapeAttr(step.plannedStepId)}">
+      ${renderStepBadge(step)}
+      <strong>${escapeHtml(shortStepType(step.stepType))}</strong>
+      <em>${escapeHtml(formatRange(step.plannedStart, step.plannedEnd))}</em>
+      <small>${escapeHtml(step.actorId || "-")}</small>
+    </button>
+  `;
 }
 
 function renderCaseGantt(model) {
@@ -294,8 +409,8 @@ function renderCaseGantt(model) {
           .map((row) => {
             const visibleSteps = row.steps.filter((step) => row.caseMatches || matchesEnrichedStep(step));
             return `
-              <section class="gantt-row" style="min-height:${Math.max(128, 78 + row.maxLane * 34)}px">
-                ${renderCaseRail(row.caseRecord, row.lineItem)}
+              <section class="gantt-row ${scenarioToneClass(row.scenarioSummary?.tone)}" style="min-height:${Math.max(128, 78 + row.maxLane * 34)}px">
+                ${renderCaseRail(row.caseRecord, row.lineItem, row.scenarioSummary)}
                 <div class="gantt-track">
                   ${visibleSteps.map((step) => renderGanttBar(step, model.timeRange)).join("")}
                 </div>
@@ -308,11 +423,15 @@ function renderCaseGantt(model) {
   `;
 }
 
-function renderCaseRail(caseRecord, lineItem) {
+function renderCaseRail(caseRecord, lineItem, scenarioSummary) {
   return `
     <div class="case-rail">
-      <strong>${escapeHtml(caseRecord.case_id || "-")}</strong>
+      <div class="case-rail-head">
+        <strong>${escapeHtml(caseRecord.case_id || "-")}</strong>
+        ${scenarioSummary ? renderScenarioBadge(scenarioSummary.scenarioType, scenarioSummary.tone) : ""}
+      </div>
       <span>${escapeHtml(caseRecord.process_type || "process")}</span>
+      ${scenarioSummary ? `<span>${escapeHtml(scenarioSummary.primaryFamily || scenarioSummary.caseOutcome || "-")}</span>` : ""}
       <small>RDD ${escapeHtml(caseRecord.requested_delivery_date || "-")}</small>
       <dl>
         <div><dt>Material</dt><dd>${escapeHtml(lineItem.material_id || "-")}</dd></div>
@@ -330,13 +449,13 @@ function renderGanttBar(step, range) {
   return `
     <button
       type="button"
-      class="gantt-bar ${selected}"
+      class="gantt-bar ${stepToneClass(step)} ${selected}"
       data-node-id="${escapeAttr(step.plannedStepId)}"
       title="${escapeAttr(stepTitle(step))}"
       style="left:${geometry.left}%;width:${geometry.width}%;--lane-top:${28 + (step.rowLaneIndex || 0) * 34}px;--actor-bg:${step.actorColor.bg};--actor-soft:${step.actorColor.soft};--actor-border:${step.actorColor.border}"
     >
       <span>${escapeHtml(compactStepLabel(step.stepType))}</span>
-      <em>${escapeHtml(step.actorId)}</em>
+      <em>${escapeHtml(stepLabelTitle(step.stepLabel))} · ${escapeHtml(step.actorId)}</em>
     </button>
   `;
 }
@@ -392,8 +511,9 @@ function renderWaveMatrix(model) {
 function renderWaveStepCard(step) {
   const selected = step.plannedStepId === state.selectedNodeId ? "selected" : "";
   return `
-    <button type="button" class="matrix-step ${selected}" data-node-id="${escapeAttr(step.plannedStepId)}">
+    <button type="button" class="matrix-step ${stepToneClass(step)} ${selected}" data-node-id="${escapeAttr(step.plannedStepId)}">
       <span class="step-order">#${escapeHtml(step.schedule?.startup_order || "-")}</span>
+      ${renderStepBadge(step)}
       <strong>${escapeHtml(step.caseId)} ${escapeHtml(shortStepType(step.stepType))}</strong>
       <small>${escapeHtml(formatTime(step.plannedStart))} - ${escapeHtml(formatTime(step.plannedEnd))}</small>
       <em>${escapeHtml(step.lineItem.material_id || "-")} / ${escapeHtml(step.lineItem.quantity ?? "-")}</em>
@@ -521,13 +641,14 @@ function renderCalendarPill(event, actor) {
   return `
     <button
       type="button"
-      class="calendar-pill ${selected}"
+      class="calendar-pill ${stepToneClass(event.step)} ${selected}"
       data-node-id="${escapeAttr(event.step.plannedStepId)}"
       style="--actor-bg:${actor.color.bg};--actor-soft:${actor.color.soft};--actor-border:${actor.color.border}"
       title="${escapeAttr(stepTitle(event.step))}"
     >
       <strong>${escapeHtml(formatTime(event.step.plannedStart))}</strong>
       <span>${escapeHtml(event.step.caseId)} ${escapeHtml(shortStepType(event.step.stepType))}</span>
+      <em>${escapeHtml(stepLabelTitle(event.step.stepLabel))}</em>
     </button>
   `;
 }
@@ -543,14 +664,14 @@ function renderWeekEvent(event, actor, startHour, endHour, hourHeight) {
   return `
     <button
       type="button"
-      class="week-event ${selected}"
+      class="week-event ${stepToneClass(event.step)} ${selected}"
       data-node-id="${escapeAttr(event.step.plannedStepId)}"
       style="top:${top}px;height:${height}px;--actor-bg:${actor.color.bg};--actor-soft:${actor.color.soft};--actor-border:${actor.color.border}"
       title="${escapeAttr(stepTitle(event.step))}"
     >
       <strong>${escapeHtml(segmentStart ? formatTime(segmentStart.toISOString()) : formatTime(event.step.plannedStart))}</strong>
       <span>${escapeHtml(event.step.caseId)} ${escapeHtml(shortStepType(event.step.stepType))}</span>
-      <em>${escapeHtml(event.step.lineItem.material_id || "")} ${escapeHtml(event.step.lineItem.quantity ?? "")}</em>
+      <em>${escapeHtml(stepLabelTitle(event.step.stepLabel))} · ${escapeHtml(event.step.lineItem.material_id || "")} ${escapeHtml(event.step.lineItem.quantity ?? "")}</em>
     </button>
   `;
 }
@@ -587,6 +708,8 @@ function renderGraph(model) {
         label: `${node.planned_step_id}\n${node.step_type}`,
         caseId: node.case_id,
         selected: node.planned_step_id === state.selectedNodeId,
+        stepLabel: (model.enrichedByNode.get(node.planned_step_id)?.stepLabel || "normal"),
+        caseOutcome: (model.enrichedByNode.get(node.planned_step_id)?.caseOutcome || "non_fraud"),
       },
     })),
     ...model.edges
@@ -630,6 +753,34 @@ function renderGraph(model) {
           "background-color": "#8a6a2f",
           "border-color": "#e7d7b8",
           "border-width": 4,
+        },
+      },
+      {
+        selector: 'node[stepLabel = "fraud_step"]',
+        style: {
+          "background-color": "#b7412e",
+          "border-color": "#ffd0c5",
+        },
+      },
+      {
+        selector: 'node[stepLabel = "fraud_supporting_step"]',
+        style: {
+          "background-color": "#c27a22",
+          "border-color": "#f2d7ac",
+        },
+      },
+      {
+        selector: 'node[stepLabel = "routine_step"]',
+        style: {
+          "background-color": "#3f6f9a",
+          "border-color": "#c5d8ea",
+        },
+      },
+      {
+        selector: 'node[stepLabel = "cleanup_step"]',
+        style: {
+          "background-color": "#6f6482",
+          "border-color": "#d5cde2",
         },
       },
       {
@@ -697,10 +848,13 @@ function renderCases(model) {
 
   const caseRows = model.cases.flatMap((item) => {
     const lineItems = Array.isArray(item.line_items) && item.line_items.length > 0 ? item.line_items : [{}];
+    const scenario = model.scenarioByCase.get(item.case_id);
     return lineItems.map((lineItem) => [
       item.case_id,
       item.process_type,
-      item.case_scenario_type,
+      scenario?.scenarioType || item.case_scenario_type,
+      scenario?.caseOutcome,
+      scenario?.primaryFamily,
       item.requested_delivery_date,
       lineItem.line_id,
       lineItem.material_id,
@@ -726,6 +880,8 @@ function renderCases(model) {
         "case_id",
         "process",
         "case_scenario_type",
+        "case_outcome",
+        "scenario_family",
         "requested_delivery_date",
         "line_id",
         "material",
@@ -747,15 +903,61 @@ function renderManifest(model) {
   }
 
   const manifest = model.manifest;
+  const joinedManifestRows = model.enrichedSteps.map((step) => [
+    step.plannedStepId,
+    step.caseId,
+    step.scenarioType,
+    step.caseOutcome,
+    step.scenarioFamily,
+    step.stepLabel,
+    step.plannedStart,
+    step.plannedEnd,
+    (model.expectedKeysByNode.get(step.plannedStepId) || []).flatMap((item) => item.required_sap_object_keys || []),
+    (model.dateOverridesByNode.get(step.plannedStepId) || []).length,
+  ]);
+  const manifestCaseRows = model.scenarioSummaries.map((row) => [
+    row.caseId,
+    row.scenarioType,
+    row.caseOutcome,
+    row.primaryFamily,
+    row.fraudStepCount,
+    row.cleanupStepCount,
+    row.lineage?.chain || [],
+  ]);
   return `
     <div class="section-title">
       <div>
         <h2>Post-Processing Manifest</h2>
-        <p>Post-Processor contract for timestamps, actor projection, lineage, and planned date overrides.</p>
+        <p>Post-Processor contract joined with trace scenario labels, lineage, timestamps, expected keys, and date overrides.</p>
       </div>
       <span>${escapeHtml(manifest.manifest_version || "unknown version")}</span>
     </div>
     <div class="manifest-grid">
+      ${renderDataSection(
+        "Joined Case Scenarios",
+        renderTable(
+          ["case_id", "case_scenario_type", "case_outcome", "scenario_family", "fraud_steps", "cleanup_steps", "lineage"],
+          manifestCaseRows,
+        ),
+      )}
+      ${renderDataSection(
+        "Joined Planned Step Manifest",
+        renderTable(
+          [
+            "planned_step_id",
+            "case_id",
+            "scenario",
+            "outcome",
+            "family",
+            "step_label",
+            "start",
+            "end",
+            "required_keys",
+            "date_overrides",
+          ],
+          joinedManifestRows,
+        ),
+      )}
       ${renderDataSection("Timestamp Policy", renderKeyValueRows(manifest.timestamp_policy || {}))}
       ${renderDataSection(
         "Actor Projection",
@@ -867,6 +1069,7 @@ function renderDetail(model) {
   const outgoing = model.edges.filter((edge) => edge.from === node.planned_step_id);
   const caseRecord = enriched?.caseRecord || model.caseById.get(node.case_id) || {};
   const lineItem = enriched?.lineItem || firstLineItem(caseRecord);
+  const scenarioSummary = model.scenarioByCase.get(node.case_id);
 
   return `
     <div class="detail-header">
@@ -876,6 +1079,17 @@ function renderDetail(model) {
       </div>
       <button type="button" class="ghost compact" data-clear-selection>Clear</button>
     </div>
+    ${renderDataSection(
+      "Scenario Facts",
+      renderKeyValueRows({
+        case_scenario_type: enriched?.scenarioType || scenarioSummary?.scenarioType,
+        case_outcome: enriched?.caseOutcome || scenarioSummary?.caseOutcome,
+        scenario_family: enriched?.scenarioFamily || scenarioSummary?.primaryFamily,
+        step_label: enriched?.stepLabel,
+        case_contains_cleanup: scenarioSummary?.cleanupStepCount > 0,
+        manifest_lineage: scenarioSummary?.lineage?.chain,
+      }),
+    )}
     ${renderDataSection(
       "Procurement Facts",
       renderKeyValueRows({
@@ -1037,6 +1251,13 @@ function bindEvents() {
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
       state.activeView = button.dataset.view;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-scenario-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.scenarioFilter = button.dataset.scenarioFilter || "all";
       render();
     });
   });
@@ -1295,6 +1516,7 @@ function getActiveModel() {
   const waves = execution?.execution_schedule?.waves || [];
   const nodeById = new Map(nodes.map((node) => [node.planned_step_id, node]));
   const caseById = new Map(cases.map((item) => [item.case_id, item]));
+  const manifestScenarioByCase = indexByFirst(manifest?.case_scenario_types || [], "case_id");
   const scheduleByNode = buildScheduleIndex(waves);
   const timestampByNode = indexByFirst(manifest?.planned_step_timestamps || [], "planned_step_id");
   const expectedKeysByNode = groupBy(manifest?.required_sap_object_keys || [], "planned_step_id");
@@ -1302,10 +1524,13 @@ function getActiveModel() {
   const lineageByCase = indexByFirst(manifest?.object_lineage || [], "case_id");
   const actors = buildActors(sessions, nodes);
   const actorById = new Map(actors.map((actor) => [actor.id, actor]));
-  const enrichedSteps = buildEnrichedSteps({ nodes, caseById, scheduleByNode, timestampByNode, actorById });
+  const enrichedSteps = buildEnrichedSteps({ nodes, caseById, manifestScenarioByCase, scheduleByNode, timestampByNode, actorById });
   const enrichedByNode = new Map(enrichedSteps.map((step) => [step.plannedStepId, step]));
   const timeRange = buildTimeRange(enrichedSteps);
-  const caseGanttRows = buildCaseGanttRows({ cases, caseById, enrichedSteps });
+  const scenarioSummaries = buildScenarioSummaries({ cases, caseById, enrichedSteps, lineageByCase, manifestScenarioByCase });
+  const scenarioByCase = new Map(scenarioSummaries.map((summary) => [summary.caseId, summary]));
+  const scenarioStats = buildScenarioStats(scenarioSummaries, enrichedSteps);
+  const caseGanttRows = buildCaseGanttRows({ cases, caseById, enrichedSteps, scenarioByCase });
   const waveMatrix = buildWaveMatrix({ waves, enrichedByNode });
   const actorCalendarEvents = enrichedSteps
     .filter((step) => step.hasManifestTime)
@@ -1328,10 +1553,14 @@ function getActiveModel() {
     expectedKeysByNode,
     dateOverridesByNode,
     lineageByCase,
+    manifestScenarioByCase,
     actors,
     actorById,
     enrichedSteps,
     enrichedByNode,
+    scenarioSummaries,
+    scenarioByCase,
+    scenarioStats,
     timeRange,
     caseGanttRows,
     waveMatrix,
@@ -1408,10 +1637,15 @@ function buildScheduleIndex(waves) {
   return byNode;
 }
 
-function buildEnrichedSteps({ nodes, caseById, scheduleByNode, timestampByNode, actorById }) {
+function buildEnrichedSteps({ nodes, caseById, manifestScenarioByCase, scheduleByNode, timestampByNode, actorById }) {
   return nodes.map((node) => {
     const caseRecord = caseById.get(node.case_id) || {};
     const lineItem = firstLineItem(caseRecord);
+    const scenarioType = scenarioTypeForCase(caseRecord, manifestScenarioByCase.get(node.case_id));
+    const labels = node.labels || {};
+    const stepLabel = normalizeStepLabel(labels.step_label);
+    const scenarioFamily = labels.scenario_family || scenarioFamilyFromScenario(scenarioType);
+    const caseOutcome = caseOutcomeForStep(labels, scenarioType);
     const timestamp = timestampByNode.get(node.planned_step_id) || null;
     const plannedStart = timestamp?.planned_synthetic_start || "";
     const plannedEnd = timestamp?.planned_synthetic_end || "";
@@ -1429,6 +1663,10 @@ function buildEnrichedSteps({ nodes, caseById, scheduleByNode, timestampByNode, 
       plannedStepId: node.planned_step_id,
       caseId: node.case_id,
       stepType: node.step_type,
+      scenarioType,
+      scenarioFamily,
+      stepLabel,
+      caseOutcome,
       actorId,
       actorColor: actor.color,
       plannedStart,
@@ -1440,6 +1678,57 @@ function buildEnrichedSteps({ nodes, caseById, scheduleByNode, timestampByNode, 
       hasManifestTime: Boolean(timestamp && startDate && endDate),
     };
   });
+}
+
+function buildScenarioSummaries({ cases, caseById, enrichedSteps, lineageByCase, manifestScenarioByCase }) {
+  const grouped = groupBy(enrichedSteps, "caseId");
+  const caseIds = new Set([...cases.map((item) => item.case_id), ...grouped.keys(), ...manifestScenarioByCase.keys()]);
+  return [...caseIds]
+    .map((caseId) => {
+      const caseRecord = caseById.get(caseId) || { case_id: caseId };
+      const steps = [...(grouped.get(caseId) || [])].sort(compareEnrichedByManifestTime);
+      const scenarioType = scenarioTypeForCase(caseRecord, manifestScenarioByCase.get(caseId), steps[0]);
+      const families = uniqueTruthy(steps.map((step) => step.scenarioFamily));
+      const primaryFamily = families.find((item) => item !== "standard") || families[0] || scenarioFamilyFromScenario(scenarioType);
+      const fraudStepCount = steps.filter((step) => step.stepLabel === "fraud_step").length;
+      const fraudSupportCount = steps.filter((step) => step.stepLabel === "fraud_supporting_step").length;
+      const cleanupStepCount = steps.filter((step) => step.stepLabel === "cleanup_step").length;
+      const routineStepCount = steps.filter((step) => step.stepLabel === "routine_step").length;
+      const caseOutcome = caseOutcomeForCase({ scenarioType, steps, fraudStepCount, fraudSupportCount });
+      const tone = caseTone({ scenarioType, caseOutcome, cleanupStepCount, routineStepCount });
+      return {
+        caseId,
+        caseRecord,
+        lineItem: firstLineItem(caseRecord),
+        scenarioType,
+        caseOutcome,
+        primaryFamily,
+        families,
+        fraudStepCount,
+        fraudSupportCount,
+        cleanupStepCount,
+        routineStepCount,
+        normalStepCount: steps.filter((step) => step.stepLabel === "normal").length,
+        steps,
+        lineage: lineageByCase.get(caseId) || null,
+        tone,
+        firstStartMs: Math.min(...steps.filter((step) => step.hasManifestTime).map((step) => step.startMs), Number.POSITIVE_INFINITY),
+      };
+    })
+    .sort(compareScenarioSummary);
+}
+
+function buildScenarioStats(scenarioSummaries, enrichedSteps) {
+  return {
+    fraudCases: scenarioSummaries.filter((item) => item.caseOutcome === "fraud").length,
+    routineCases: scenarioSummaries.filter((item) => isRoutineScenario(item.scenarioType)).length,
+    normalCases: scenarioSummaries.filter((item) => item.scenarioType === "NORMAL").length,
+    cleanupCases: scenarioSummaries.filter((item) => item.cleanupStepCount > 0).length,
+    fraudSteps: enrichedSteps.filter((step) => step.stepLabel === "fraud_step").length,
+    fraudSupportSteps: enrichedSteps.filter((step) => step.stepLabel === "fraud_supporting_step").length,
+    routineSteps: enrichedSteps.filter((step) => step.stepLabel === "routine_step").length,
+    cleanupSteps: enrichedSteps.filter((step) => step.stepLabel === "cleanup_step").length,
+  };
 }
 
 function buildTimeRange(enrichedSteps) {
@@ -1458,7 +1747,7 @@ function buildTimeRange(enrichedSteps) {
   };
 }
 
-function buildCaseGanttRows({ cases, caseById, enrichedSteps }) {
+function buildCaseGanttRows({ cases, caseById, enrichedSteps, scenarioByCase }) {
   const grouped = groupBy(enrichedSteps, "caseId");
   const caseIds = new Set([...cases.map((item) => item.case_id), ...grouped.keys()]);
   return [...caseIds]
@@ -1472,8 +1761,9 @@ function buildCaseGanttRows({ cases, caseById, enrichedSteps }) {
         caseId,
         caseRecord,
         lineItem: firstLineItem(caseRecord),
+        scenarioSummary: scenarioByCase.get(caseId),
         steps,
-        caseMatches: matchesText([caseRecord, firstLineItem(caseRecord)], state.query),
+        caseMatches: matchesText([caseRecord, firstLineItem(caseRecord), scenarioByCase.get(caseId)], state.query),
         firstStartMs: Math.min(...steps.filter((step) => step.hasManifestTime).map((step) => step.startMs), Number.POSITIVE_INFINITY),
         maxLane: Math.max(0, steps.length - 1),
       };
@@ -1562,7 +1852,29 @@ function isVisibleNode(node, caseRecord) {
 }
 
 function matchesEnrichedStep(step) {
-  return matchesText([step.node, step.timestamp, step.caseRecord, step.lineItem, step.schedule, step.actorId], state.query);
+  return matchesText(
+    [step.node, step.timestamp, step.caseRecord, step.lineItem, step.schedule, step.actorId, step.scenarioType, step.scenarioFamily, step.stepLabel, step.caseOutcome],
+    state.query,
+  );
+}
+
+function scenarioSummaryVisible(row) {
+  if (state.scenarioFilter === "fraud" && row.caseOutcome !== "fraud") {
+    return false;
+  }
+  if (state.scenarioFilter === "routine" && !isRoutineScenario(row.scenarioType)) {
+    return false;
+  }
+  if (state.scenarioFilter === "normal" && row.scenarioType !== "NORMAL") {
+    return false;
+  }
+  if (state.scenarioFilter === "cleanup" && row.cleanupStepCount === 0) {
+    return false;
+  }
+  if (!state.query.trim()) {
+    return true;
+  }
+  return matchesText([row, row.caseRecord, row.lineItem, row.lineage]) || row.steps.some((step) => matchesEnrichedStep(step));
 }
 
 function matchesText(values, query) {
@@ -1602,6 +1914,106 @@ function indexByFirst(items, key) {
 
 function firstLineItem(caseRecord) {
   return Array.isArray(caseRecord?.line_items) && caseRecord.line_items.length > 0 ? caseRecord.line_items[0] : {};
+}
+
+function scenarioTypeForCase(caseRecord, manifestRecord, fallbackStep) {
+  return String(manifestRecord?.case_scenario_type || caseRecord?.case_scenario_type || fallbackStep?.scenarioType || "NORMAL");
+}
+
+function normalizeStepLabel(value) {
+  const label = String(value || "normal");
+  return stepLabelMeta[label] ? label : "normal";
+}
+
+function caseOutcomeForStep(labels, scenarioType) {
+  if (labels?.case_outcome === "fraud" || labels?.case_outcome === "non_fraud") {
+    return labels.case_outcome;
+  }
+  return fraudScenarioTypes.has(scenarioType) ? "fraud" : "non_fraud";
+}
+
+function caseOutcomeForCase({ scenarioType, steps, fraudStepCount, fraudSupportCount }) {
+  if (steps.some((step) => step.caseOutcome === "fraud") || fraudStepCount > 0 || fraudSupportCount > 0 || fraudScenarioTypes.has(scenarioType)) {
+    return "fraud";
+  }
+  return "non_fraud";
+}
+
+function scenarioFamilyFromScenario(scenarioType) {
+  if (scenarioType === "VENDOR_FLIPFLOP") {
+    return "vendor_master_manipulation";
+  }
+  if (scenarioType === "LARCENY3") {
+    return "inventory_misappropriation";
+  }
+  if (scenarioType === "LARCENY5" || scenarioType === "ROUTINE_ADDRESS_CHANGE") {
+    return "delivery_address_manipulation";
+  }
+  if (scenarioType === "ROUTINE_QUALITY_INSPECTION") {
+    return "routine_quality_inspection";
+  }
+  if (scenarioType === "ROUTINE_VENDOR_BANK_CHANGE") {
+    return "routine_vendor_master_update";
+  }
+  return "standard";
+}
+
+function caseTone({ scenarioType, caseOutcome, cleanupStepCount, routineStepCount }) {
+  if (caseOutcome === "fraud" || fraudScenarioTypes.has(scenarioType)) {
+    return "fraud";
+  }
+  if (cleanupStepCount > 0) {
+    return "cleanup";
+  }
+  if (isRoutineScenario(scenarioType) || routineStepCount > 0) {
+    return "routine";
+  }
+  return "normal";
+}
+
+function isRoutineScenario(scenarioType) {
+  return String(scenarioType || "").startsWith("ROUTINE_");
+}
+
+function compareScenarioSummary(left, right) {
+  const rank = { fraud: 0, cleanup: 1, routine: 2, normal: 3 };
+  return (
+    (rank[left.tone] ?? 9) - (rank[right.tone] ?? 9) ||
+    left.firstStartMs - right.firstStartMs ||
+    String(left.caseId).localeCompare(String(right.caseId))
+  );
+}
+
+function uniqueTruthy(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function stepToneClass(step) {
+  return `tone-${stepLabelTone(step?.stepLabel)}`;
+}
+
+function scenarioToneClass(tone) {
+  return tone ? `tone-${tone}` : "tone-normal";
+}
+
+function stepLabelTone(stepLabel) {
+  return stepLabelMeta[stepLabel]?.tone || "normal";
+}
+
+function stepLabelTitle(stepLabel) {
+  return stepLabelMeta[stepLabel]?.label || "Normal";
+}
+
+function renderStepBadge(step) {
+  return renderScenarioBadge(stepLabelTitle(step.stepLabel), stepLabelTone(step.stepLabel));
+}
+
+function renderScenarioBadge(label, tone) {
+  return `<span class="scenario-badge tone-${escapeAttr(tone || "normal")}">${escapeHtml(formatScenarioLabel(label))}</span>`;
+}
+
+function formatScenarioLabel(value) {
+  return String(value || "-").replaceAll("_", " ").toLowerCase();
 }
 
 function stepBarGeometry(step, range) {
