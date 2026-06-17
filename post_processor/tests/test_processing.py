@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import csv
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 import yaml
 
-from erp_sap_export.processing import _projection_stats, process_dataset
+from erp_sap_export.processing import StepProjection, _apply_projection, _projection_stats, process_dataset
 
 
 def test_process_dataset_filters_failed_case_projects_eban_and_preserves_raw(tmp_path: Path) -> None:
@@ -202,6 +203,68 @@ def test_process_dataset_filters_failed_case_projects_eban_and_preserves_raw(tmp
     assert validation["errors"] == []
 
 
+def test_process_dataset_removes_stale_outputs_for_missing_raw_tables(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw"
+    processed_dir = tmp_path / "processed"
+    raw_dir.mkdir()
+    processed_dir.mkdir()
+    stale_path = processed_dir / "EBAN.csv"
+    stale_path.write_text("BANFN\n0010000317\n", encoding="utf-8")
+    trace_path = tmp_path / "trace.yaml"
+    manifest_path = tmp_path / "manifest.yaml"
+    log_path = tmp_path / "log.jsonl"
+    registry_path = tmp_path / "registry.jsonl"
+    trace_path.write_text(yaml.safe_dump({"run_id": "RUN_BA-210", "dependency_graph": {"planned_steps": []}}), encoding="utf-8")
+    manifest_path.write_text(
+        yaml.safe_dump({"run_id": "RUN_BA-210", "actor_projection": [], "planned_step_timestamps": []}),
+        encoding="utf-8",
+    )
+    log_path.write_text("", encoding="utf-8")
+    registry_path.write_text("", encoding="utf-8")
+
+    process_dataset(
+        raw_dir=raw_dir,
+        out_dir=processed_dir,
+        execution_trace_path=trace_path,
+        post_processing_manifest_path=manifest_path,
+        execution_log_path=log_path,
+        object_registry_path=registry_path,
+    )
+
+    assert not stale_path.exists()
+
+
+def test_apply_projection_converts_system_timestamps_to_sap_export_clock() -> None:
+    projection = StepProjection(
+        planned_step_id="C005_A1",
+        case_id="C005",
+        step_type="create_purchase_order",
+        planned_synthetic_end=datetime(2026, 6, 1, 10, 50, 4, tzinfo=UTC),
+        planned_date_inputs={},
+        expose_as="buyer_SYN",
+        synthetic_actor_id="buyer",
+        technical_sap_user_id="TU_01",
+        tool="fiori.create_purchase_order",
+        object_type="purchase_order",
+    )
+    provenance_rows: list[dict[str, str]] = []
+    ekko_row = {"AEDAT": "", "BEDAT": "", "LASTCHANGEDATETIME": "", "ERNAM": ""}
+    mkpf_row = {"BLDAT": "", "CPUDT": "", "CPUTM": "", "USNAM": ""}
+    cdhdr_local_row = {"OBJECTCLAS": "BANF", "UDATE": "", "UTIME": "", "USERNAME": ""}
+    cdhdr_utc_row = {"OBJECTCLAS": "BUPA_BUP", "UDATE": "", "UTIME": "", "USERNAME": ""}
+
+    _apply_projection("EKKO", ekko_row, projection, provenance_rows)
+    _apply_projection("MKPF", mkpf_row, projection, provenance_rows)
+    _apply_projection("CDHDR", cdhdr_local_row, projection, provenance_rows)
+    _apply_projection("CDHDR", cdhdr_utc_row, projection, provenance_rows)
+
+    assert ekko_row["LASTCHANGEDATETIME"] == "20,260,601,125,004.0000000"
+    assert mkpf_row["CPUDT"] == "06/01/2026"
+    assert mkpf_row["CPUTM"] == "12:50:04"
+    assert cdhdr_local_row["UTIME"] == "12:50:04"
+    assert cdhdr_utc_row["UTIME"] == "10:50:04"
+
+
 def test_projection_stats_flags_partial_field_coverage(tmp_path: Path) -> None:
     processed_dir = tmp_path / "processed"
     processed_dir.mkdir()
@@ -278,7 +341,7 @@ def test_process_dataset_requires_planned_synthetic_end(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="C005_A1.*planned_synthetic_end"):
+    with pytest.raises(ValueError, match=r"C005_A1.*planned_synthetic_end"):
         process_dataset(
             raw_dir=raw_dir,
             out_dir=processed_dir,

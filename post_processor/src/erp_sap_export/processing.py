@@ -91,6 +91,10 @@ def process_dataset(
     )
 
     out_dir.mkdir(parents=True, exist_ok=True)
+    for table in SUPPORTED_TABLES:
+        stale_table_path = out_dir / f"{table}.csv"
+        if stale_table_path.exists():
+            stale_table_path.unlink()
     provenance_rows: list[dict[str, str]] = []
     processed_linkage_rows: list[dict[str, str]] = []
     table_reports: dict[str, dict[str, int]] = {}
@@ -271,48 +275,49 @@ def _apply_projection(
     provenance_rows: list[dict[str, str]],
 ) -> None:
     table = table.upper()
+    sap_local_end = _as_timezone(projection.planned_synthetic_end, SAP_LOCAL_TIMEZONE)
     if table == "EBAN":
         for field in ("BADAT", "BEDAT", "ERDAT"):
-            _rewrite(row, table, field, _sap_date(projection.planned_synthetic_end), projection, provenance_rows)
+            _rewrite(row, table, field, _sap_date(sap_local_end), projection, provenance_rows)
         if "delivery_date" in projection.planned_date_inputs:
             _rewrite(row, table, "LFDAT", _sap_date_from_iso(projection.planned_date_inputs["delivery_date"]), projection, provenance_rows)
         _rewrite(row, table, "ERNAM", projection.expose_as, projection, provenance_rows)
     elif table == "EKKO":
         for field in ("AEDAT", "BEDAT"):
-            _rewrite(row, table, field, _sap_date(projection.planned_synthetic_end), projection, provenance_rows)
-        _rewrite(row, table, "LASTCHANGEDATETIME", _sap_decimal_timestamp(projection.planned_synthetic_end), projection, provenance_rows)
+            _rewrite(row, table, field, _sap_date(sap_local_end), projection, provenance_rows)
+        _rewrite(row, table, "LASTCHANGEDATETIME", _sap_decimal_timestamp(sap_local_end), projection, provenance_rows)
         _rewrite(row, table, "ERNAM", projection.expose_as, projection, provenance_rows)
     elif table == "EKPO":
         for field in ("AEDAT", "PRDAT"):
-            _rewrite(row, table, field, _sap_date(projection.planned_synthetic_end), projection, provenance_rows)
+            _rewrite(row, table, field, _sap_date(sap_local_end), projection, provenance_rows)
     elif table == "MKPF":
         document_date = projection.planned_date_inputs.get("document_date")
         _rewrite(
             row,
             table,
             "BLDAT",
-            _sap_date_from_iso(document_date) if document_date else _sap_date(projection.planned_synthetic_end),
+            _sap_date_from_iso(document_date) if document_date else _sap_date(sap_local_end),
             projection,
             provenance_rows,
         )
         if "posting_date" in projection.planned_date_inputs:
             _rewrite(row, table, "BUDAT", _sap_date_from_iso(projection.planned_date_inputs["posting_date"]), projection, provenance_rows)
-        _rewrite(row, table, "CPUDT", _sap_date(projection.planned_synthetic_end), projection, provenance_rows)
-        _rewrite(row, table, "CPUTM", _sap_time(projection.planned_synthetic_end), projection, provenance_rows)
+        _rewrite(row, table, "CPUDT", _sap_date(sap_local_end), projection, provenance_rows)
+        _rewrite(row, table, "CPUTM", _sap_time(sap_local_end), projection, provenance_rows)
         _rewrite(row, table, "USNAM", projection.expose_as, projection, provenance_rows)
     elif table == "RBKP":
         if "invoice_date" in projection.planned_date_inputs:
             _rewrite(row, table, "BLDAT", _sap_date_from_iso(projection.planned_date_inputs["invoice_date"]), projection, provenance_rows)
-        _rewrite(row, table, "CPUDT", _sap_date(projection.planned_synthetic_end), projection, provenance_rows)
-        _rewrite(row, table, "CPUTM", _sap_time(projection.planned_synthetic_end), projection, provenance_rows)
+        _rewrite(row, table, "CPUDT", _sap_date(sap_local_end), projection, provenance_rows)
+        _rewrite(row, table, "CPUTM", _sap_time(sap_local_end), projection, provenance_rows)
         _rewrite(row, table, "USNAM", projection.expose_as, projection, provenance_rows)
     elif table == "BKPF":
         if "posting_document_date" in projection.planned_date_inputs:
             _rewrite(row, table, "BLDAT", _sap_date_from_iso(projection.planned_date_inputs["posting_document_date"]), projection, provenance_rows)
         if "posting_date" in projection.planned_date_inputs:
             _rewrite(row, table, "BUDAT", _sap_date_from_iso(projection.planned_date_inputs["posting_date"]), projection, provenance_rows)
-        _rewrite(row, table, "CPUDT", _sap_date(projection.planned_synthetic_end), projection, provenance_rows)
-        _rewrite(row, table, "CPUTM", _sap_time(projection.planned_synthetic_end), projection, provenance_rows)
+        _rewrite(row, table, "CPUDT", _sap_date(sap_local_end), projection, provenance_rows)
+        _rewrite(row, table, "CPUTM", _sap_time(sap_local_end), projection, provenance_rows)
         _rewrite(row, table, "USNAM", projection.expose_as, projection, provenance_rows)
     elif table == "BSEG" and "posting_date" in projection.planned_date_inputs:
         value = _sap_date_from_iso(projection.planned_date_inputs["posting_date"])
@@ -320,8 +325,10 @@ def _apply_projection(
             if row.get(field) and row.get(field) != "00/00/0000":
                 _rewrite(row, table, field, value, projection, provenance_rows)
     elif table == "CDHDR":
-        _rewrite(row, table, "UDATE", _sap_date(projection.planned_synthetic_end), projection, provenance_rows)
-        _rewrite(row, table, "UTIME", _sap_time(projection.planned_synthetic_end), projection, provenance_rows)
+        change_timezone = "UTC" if str(row.get("OBJECTCLAS") or "") in CDHDR_UTC_OBJECT_CLASSES else SAP_LOCAL_TIMEZONE
+        change_end = _as_timezone(projection.planned_synthetic_end, change_timezone)
+        _rewrite(row, table, "UDATE", _sap_date(change_end), projection, provenance_rows)
+        _rewrite(row, table, "UTIME", _sap_time(change_end), projection, provenance_rows)
         _rewrite(row, table, "USERNAME", projection.expose_as, projection, provenance_rows)
 
 
@@ -764,6 +771,12 @@ def _csv_checksums(path: Path) -> dict[str, str]:
 
 def _parse_datetime(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _as_timezone(value: datetime, timezone: str) -> datetime:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(ZoneInfo(timezone))
 
 
 def _sap_date(value: datetime) -> str:

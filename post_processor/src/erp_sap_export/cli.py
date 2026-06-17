@@ -10,7 +10,7 @@ from collections import defaultdict
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 from zoneinfo import ZoneInfo
 
 from erp_sap_export.artifacts import (
@@ -109,6 +109,7 @@ def _download(args: argparse.Namespace) -> int:
     rows_by_table: dict[str, list[dict[str, str]]] = defaultdict(list)
     timed_out = False
     cdhdr_rows: list[dict[str, str]] = []
+    cdhdr_errors: list[str] = []
     if "CDHDR" in requested_tables:
         cdhdr_requests = _cdhdr_requests(
             window,
@@ -127,8 +128,10 @@ def _download(args: argparse.Namespace) -> int:
             started_at=started_at,
             deadline=deadline,
             fresh_page_per_request=True,
+            on_error=lambda _index, request, exc: cdhdr_errors.append(f"{request.table}: {exc}"),
         )
-        if len(cdhdr_results) < len(cdhdr_requests):
+        report["warnings"].extend(cdhdr_errors)
+        if len(cdhdr_results) + len(cdhdr_errors) < len(cdhdr_requests):
             timed_out = True
             warning = f"Runtime guard stopped CDHDR after {len(cdhdr_results)}/{len(cdhdr_requests)} chunks"
             report["warnings"].append(warning)
@@ -164,6 +167,7 @@ def _download(args: argparse.Namespace) -> int:
 
     if "CDPOS" in requested_tables:
         cdpos_rows: list[dict[str, str]] = []
+        cdpos_errors: list[str] = []
         exact_cdpos_requests = cdpos_requests_from_cdhdr(cdhdr_rows)
         cdpos_requests = [
             TableRequest(request.table, request.selection, max_rows=args.max_rows_per_request)
@@ -177,8 +181,10 @@ def _download(args: argparse.Namespace) -> int:
             started_at=started_at,
             deadline=deadline,
             fresh_page_per_request=True,
+            on_error=lambda _index, request, exc: cdpos_errors.append(f"{request.table}: {exc}"),
         )
-        if len(cdpos_results) < len(cdpos_requests):
+        report["warnings"].extend(cdpos_errors)
+        if len(cdpos_results) + len(cdpos_errors) < len(cdpos_requests):
             timed_out = True
             warning = f"Runtime guard stopped CDPOS after {len(cdpos_results)}/{len(cdpos_requests)} requests"
             report["warnings"].append(warning)
@@ -427,6 +433,7 @@ def _extract_requests(
     started_at: float,
     deadline: float | None,
     fresh_page_per_request: bool = False,
+    on_error: Callable[[int, TableRequest, RuntimeError], None] | None = None,
 ) -> list[list[dict[str, str]]]:
     request_started: dict[int, float] = {}
 
@@ -446,7 +453,13 @@ def _extract_requests(
             if _deadline_reached(deadline):
                 break
             on_start(index, request)
-            rows = client.extract(request)
+            try:
+                rows = client.extract(request)
+            except RuntimeError as exc:
+                _log(f"{phase} [{index}/{len(requests)}] {request.table} warning={exc}")
+                if on_error is not None:
+                    on_error(index, request, exc)
+                continue
             results.append(rows)
             on_done(index, request, rows)
         return results

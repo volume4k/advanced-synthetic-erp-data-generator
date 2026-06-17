@@ -242,6 +242,43 @@ def test_extract_requests_can_use_fresh_page_per_request() -> None:
     assert client.extract_calls == 2
 
 
+def test_extract_requests_continues_after_fresh_page_runtime_error() -> None:
+    class FreshClient:
+        def __init__(self) -> None:
+            self.extract_calls = 0
+
+        def extract(self, request):
+            self.extract_calls += 1
+            if self.extract_calls == 2:
+                raise RuntimeError("temporary SAP failure")
+            return [{"TABLE": request.table, "CALL": str(self.extract_calls)}]
+
+        def extract_many(self, *args, **kwargs):
+            raise AssertionError("extract_many should not be used")
+
+    client = FreshClient()
+    requests = [
+        TableRequest("CDHDR", [SelectionRange("USERNAME", "LEARN-800")]),
+        TableRequest("CDHDR", [SelectionRange("USERNAME", "LEARN-801")]),
+        TableRequest("CDHDR", [SelectionRange("USERNAME", "LEARN-802")]),
+    ]
+    errors = []
+
+    results = _extract_requests(
+        client,
+        requests,
+        "CDHDR",
+        started_at=0,
+        deadline=None,
+        fresh_page_per_request=True,
+        on_error=lambda index, request, exc: errors.append((index, request.table, str(exc))),
+    )
+
+    assert results == [[{"TABLE": "CDHDR", "CALL": "1"}], [{"TABLE": "CDHDR", "CALL": "3"}]]
+    assert errors == [(2, "CDHDR", "temporary SAP failure")]
+    assert client.extract_calls == 3
+
+
 def test_probe_result_requires_all_requested_tables_usable() -> None:
     assert _probe_result_ok(
         {

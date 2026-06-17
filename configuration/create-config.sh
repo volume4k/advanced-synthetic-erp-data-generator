@@ -21,7 +21,7 @@ fi
 
 mkdir -p "$(dirname "${OUTPUT_FILE}")"
 
-uv run --project "${REPO_ROOT}/generator" \
+uv run --project "${REPO_ROOT}/trace_generator" \
   python "${SCRIPT_DIR}/generate_tool_config.py" \
   --output "${GENERATED_PKL}"
 
