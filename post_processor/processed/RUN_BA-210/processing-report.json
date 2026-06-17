@@ -1,0 +1,183 @@
+{
+  "failed_cases": [
+    "C081"
+  ],
+  "processed_dir": "post_processor/processed/RUN_BA-210",
+  "raw_checksums": {
+    "BKPF.csv": "34c34eb7a7eb070179dcffca2d9f29fc323ee51db72257ad427a9df8b50f0631",
+    "BSEG.csv": "6df35bf78bfb0e69be795751f1900e9ca22ea80c072b1e28f629376ab1938638",
+    "CDHDR.csv": "071592f1402ce7b58d0b42e86763c176dc0aa9e4d84ce2f627f11cd763bc7fef",
+    "CDPOS.csv": "33947fb0973cd3c7820c4b5a1bc3d6a29eeb51a2d80a9f2ecbcaf7e7baf85670",
+    "EBAN.csv": "5518557d24fcb980125d01e43dbbd39c9872dde88053e5635797c973ffd20603",
+    "EKKO.csv": "e8298bd027a2ab35a1ff1477e304e30043637ea14b4c1e8ffbd64941b2424615",
+    "EKPO.csv": "f30ad3482b409b650fe11584b5a7a7d9e64b391d9e2893274c941c2fe3629573",
+    "MKPF.csv": "295ed39c36cd41cc32a9a44464924d506b76a6deb9e199b30a9bfd06adb90a86",
+    "MSEG.csv": "71f5734536af740d7e214b5dfdf222465603fb8323280be7389d96fa8e1bb448",
+    "RBKP.csv": "ce112fe9929135b8402ab4142f8bce14d6764305ad34f5df106bb2334c7076f6",
+    "RSEG.csv": "6fe6ab580081d983f0a0490db9896609cb843789d12c0c410bd78c5e3dc509cf",
+    "row-linkage.csv": "8d61be26f8ad6bcc66dfbab5518c71b3d6fc863c463129ddec8bceae11b70251"
+  },
+  "raw_dir": "post_processor/downloads/RUN_BA-210",
+  "run_id": "RUN_BA-210",
+  "tables": {
+    "BKPF": {
+      "dropped_failed_case_rows": 0,
+      "dropped_unlinked_rows": 0,
+      "processed_rows": 209,
+      "raw_rows": 209
+    },
+    "BSEG": {
+      "dropped_failed_case_rows": 0,
+      "dropped_unlinked_rows": 0,
+      "processed_rows": 418,
+      "raw_rows": 418
+    },
+    "CDHDR": {
+      "dropped_failed_case_rows": 5,
+      "dropped_unlinked_rows": 0,
+      "processed_rows": 1075,
+      "raw_rows": 1080
+    },
+    "CDPOS": {
+      "dropped_failed_case_rows": 1,
+      "dropped_unlinked_rows": 0,
+      "processed_rows": 379,
+      "raw_rows": 380
+    },
+    "EBAN": {
+      "dropped_failed_case_rows": 1,
+      "dropped_unlinked_rows": 0,
+      "processed_rows": 209,
+      "raw_rows": 210
+    },
+    "EKKO": {
+      "dropped_failed_case_rows": 1,
+      "dropped_unlinked_rows": 0,
+      "processed_rows": 209,
+      "raw_rows": 210
+    },
+    "EKPO": {
+      "dropped_failed_case_rows": 1,
+      "dropped_unlinked_rows": 0,
+      "processed_rows": 209,
+      "raw_rows": 210
+    },
+    "MKPF": {
+      "dropped_failed_case_rows": 1,
+      "dropped_unlinked_rows": 0,
+      "processed_rows": 229,
+      "raw_rows": 230
+    },
+    "MSEG": {
+      "dropped_failed_case_rows": 1,
+      "dropped_unlinked_rows": 0,
+      "processed_rows": 249,
+      "raw_rows": 250
+    },
+    "RBKP": {
+      "dropped_failed_case_rows": 1,
+      "dropped_unlinked_rows": 0,
+      "processed_rows": 209,
+      "raw_rows": 210
+    },
+    "RSEG": {
+      "dropped_failed_case_rows": 1,
+      "dropped_unlinked_rows": 0,
+      "processed_rows": 209,
+      "raw_rows": 210
+    }
+  },
+  "validation": {
+    "change_document_key_match": {
+      "BANF": {
+        "missing_registry_keys": 0,
+        "raw_keys": 210,
+        "raw_matches": 210,
+        "registry_keys": 210,
+        "stale_raw_keys": 0
+      },
+      "EINKBELEG": {
+        "missing_registry_keys": 0,
+        "raw_keys": 210,
+        "raw_matches": 210,
+        "registry_keys": 210,
+        "stale_raw_keys": 0
+      }
+    },
+    "errors": [],
+    "failed_cases": [
+      "C081"
+    ],
+    "process_order": {
+      "rows": 3604,
+      "violations": 0
+    },
+    "projection_stats": {
+      "counts": {
+        "BKPF.BLDAT": 209,
+        "BKPF.BUDAT": 209,
+        "BKPF.CPUDT": 209,
+        "BKPF.CPUTM": 209,
+        "BKPF.USNAM": 209,
+        "BSEG.AUGCP": 209,
+        "BSEG.AUGDT": 209,
+        "BSEG.VALUT": 209,
+        "CDHDR.UDATE": 1075,
+        "CDHDR.USERNAME": 1075,
+        "CDHDR.UTIME": 1075,
+        "EBAN.BADAT": 209,
+        "EBAN.BEDAT": 209,
+        "EBAN.ERDAT": 209,
+        "EBAN.ERNAM": 209,
+        "EBAN.LFDAT": 209,
+        "EKKO.AEDAT": 209,
+        "EKKO.BEDAT": 209,
+        "EKKO.ERNAM": 209,
+        "EKKO.LASTCHANGEDATETIME": 209,
+        "EKPO.AEDAT": 209,
+        "EKPO.PRDAT": 209,
+        "MKPF.BLDAT": 229,
+        "MKPF.BUDAT": 229,
+        "MKPF.CPUDT": 229,
+        "MKPF.CPUTM": 229,
+        "MKPF.USNAM": 229,
+        "RBKP.BLDAT": 209,
+        "RBKP.CPUDT": 209,
+        "RBKP.CPUTM": 209,
+        "RBKP.USNAM": 209
+      },
+      "missing_fields": {}
+    },
+    "registry_raw_key_match": {
+      "material_document": {
+        "raw_matches": 210,
+        "registry_keys": 210
+      },
+      "payment_document": {
+        "raw_matches": 209,
+        "registry_keys": 209
+      },
+      "purchase_order": {
+        "raw_matches": 210,
+        "registry_keys": 210
+      },
+      "purchase_requisition": {
+        "raw_matches": 210,
+        "registry_keys": 210
+      },
+      "scrap_material_document": {
+        "raw_matches": 7,
+        "registry_keys": 7
+      },
+      "stock_release_material_document": {
+        "raw_matches": 13,
+        "registry_keys": 13
+      },
+      "supplier_invoice": {
+        "raw_matches": 210,
+        "registry_keys": 210
+      }
+    },
+    "warnings": []
+  }
+}

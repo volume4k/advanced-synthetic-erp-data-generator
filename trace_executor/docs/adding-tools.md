@@ -147,7 +147,7 @@ Tool-specific tests are optional and should be reserved for:
 Run:
 
 ```bash
-uv run --project generator pytest generator/tests -q
+uv run --project trace_executor pytest trace_executor/tests -q
 ```
 
 ## Fixtures
@@ -169,7 +169,7 @@ For real SAP UI flows:
 Example:
 
 ```bash
-uv run --project generator erp-trace-exec generator/examples/sap-create-purchase-requisition.execution-trace.yaml --headed
+uv run --project trace_executor erp-trace-exec trace_executor/examples/sap-create-purchase-requisition.execution-trace.yaml --headed
 ```
 
 Live SAP smoke runs are optional and non-gating unless a PR explicitly opts into them. They should stay separate from the default pytest suite because they require credentials, a healthy SAP tenant, and mutable business data. If an automated live smoke test is added later, mark it with `@pytest.mark.live_sap`; the default pytest config excludes that marker.

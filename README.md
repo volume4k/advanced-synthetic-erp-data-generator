@@ -2,7 +2,7 @@
 
 This repository contains tools for generating and executing synthetic SAP Fiori ERP process traces. It is part of the SeLLMa research project.
 
-The current implementation focuses on a Pkl-backed trace planner in `trace_generator/` and a Playwright-backed trace executor in `generator/`. The planner writes canonical `execution-trace.yaml` files, and the executor runs those waves against SAP Fiori.
+The current implementation focuses on a Pkl-backed trace planner in `trace_generator/` and a Playwright-backed trace executor in `trace_executor/`. The planner writes canonical `execution-trace.yaml` files, and the executor runs those waves against SAP Fiori.
 
 The broader generator vision and planned architecture are documented in `generator_vision_architecture_specification.md`.
 Project glossary terms live in `CONTEXT.md`; architectural decision records live in `docs/adr/`.
@@ -11,7 +11,7 @@ Project glossary terms live in `CONTEXT.md`; architectural decision records live
 
 ```text
 .
-├── generator/       # Independent uv project for trace execution
+├── trace_executor/       # Independent uv project for trace execution
 ├── trace_generator/ # Independent uv project for trace planning
 ├── configuration/   # Scenario/configuration artifacts
 ├── generator_vision_architecture_specification.md
@@ -22,7 +22,7 @@ Project glossary terms live in `CONTEXT.md`; architectural decision records live
 
 - `configuration/` owns experiment parameters in Pkl: process steps, tools, actors, technical users, working hours, pause ranges, and delay ranges.
 - `trace_generator/` owns planning: case generation, input binding, actor assignment, synthetic timestamps, FIFO wave scheduling, validation, and artifact writing.
-- `generator/` owns execution mechanics only: actor sessions, SAP tool calls, runtime placeholder resolution, and SAP object capture.
+- `trace_executor/` owns execution mechanics only: actor sessions, SAP tool calls, runtime placeholder resolution, and SAP object capture.
 - Future `post_processor/` work should use the trace-generator execution trace and manifest as planned truth when shifting SAP export timestamps and projecting synthetic actors.
 
 ## Quick Start
@@ -30,14 +30,14 @@ Project glossary terms live in `CONTEXT.md`; architectural decision records live
 Bootstrap the trace executor:
 
 ```bash
-uv sync --project generator --python 3.13
-uv run --project generator playwright install chromium
+uv sync --project trace_executor --python 3.13
+uv run --project trace_executor playwright install chromium
 ```
 
 Run a trace:
 
 ```bash
-uv run --project generator erp-trace-exec path/to/execution-trace.yaml
+uv run --project trace_executor erp-trace-exec path/to/execution-trace.yaml
 ```
 
 Generate trace artifacts from compiled configuration:
@@ -50,10 +50,10 @@ uv run --project trace_generator erp-trace-generate configuration/build/main.yam
 Run with a visible browser:
 
 ```bash
-uv run --project generator erp-trace-exec path/to/execution-trace.yaml --headed
+uv run --project trace_executor erp-trace-exec path/to/execution-trace.yaml --headed
 ```
 
-`uv --project generator` uses `generator/.venv`. If another virtual environment is active, uv may print a warning and ignore it. That is expected.
+`uv --project trace_executor` uses `trace_executor/.venv`. If another virtual environment is active, uv may print a warning and ignore it. That is expected.
 
 ## Trace Login Flow
 
@@ -82,13 +82,13 @@ SAP_USER_1_PW=<SAP_PASSWORD>
 Run the canonical trace:
 
 ```bash
-uv run --project generator erp-trace-exec trace_generator/build/RUN.execution-trace.yaml --headed
+uv run --project trace_executor erp-trace-exec trace_generator/build/RUN.execution-trace.yaml --headed
 ```
 
 The executor resolves usernames, passwords, and login URLs from env vars at runtime. To use a different env file:
 
 ```bash
-uv run --project generator erp-trace-exec trace_generator/build/RUN.execution-trace.yaml --env-file path/to/credentials.env --headed
+uv run --project trace_executor erp-trace-exec trace_generator/build/RUN.execution-trace.yaml --env-file path/to/credentials.env --headed
 ```
 
 ## Development
@@ -96,16 +96,16 @@ uv run --project generator erp-trace-exec trace_generator/build/RUN.execution-tr
 Run tests:
 
 ```bash
-uv run --project generator pytest generator/tests -q
+uv run --project trace_executor pytest trace_executor/tests -q
 ```
 
-The executor is documented in more detail in `generator/README.md`.
+The executor is documented in more detail in `trace_executor/README.md`.
 
 External contributors adding browser tools should start with:
 
-- `generator/docs/adding-tools.md`
-- `generator/docs/recording-tools.md`
-- `generator/docs/locator-guidelines.md`
+- `trace_executor/docs/adding-tools.md`
+- `trace_executor/docs/recording-tools.md`
+- `trace_executor/docs/locator-guidelines.md`
 
 For architecture context, read:
 

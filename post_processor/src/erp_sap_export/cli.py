@@ -8,11 +8,13 @@ import json
 import time
 from collections import defaultdict
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
+from zoneinfo import ZoneInfo
 
 from erp_sap_export.artifacts import (
+    ExecutionWindow,
     build_linkage_index,
     derive_execution_window,
     first_actor_session_credentials,
@@ -37,6 +39,7 @@ from erp_sap_export.specs import (
 DEFAULT_TABLES = SUPPORTED_TABLES
 POST_PROCESSOR_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DOWNLOADS_DIR = POST_PROCESSOR_ROOT / "downloads"
+CDHDR_UTC_OBJECT_CLASSES = {"BUPA_BUP"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,6 +49,10 @@ def main(argv: list[str] | None = None) -> int:
         return _probe(args)
     if args.command == "download":
         return _download(args)
+    if args.command == "process":
+        return _process(args)
+    if args.command == "validate-processed":
+        return _validate_processed(args)
     parser.error("missing command")
     return 2
 
@@ -61,6 +68,9 @@ def _probe(args: argparse.Namespace) -> int:
 def _download(args: argparse.Namespace) -> int:
     started_at = time.monotonic()
     deadline = _deadline(started_at, args.max_runtime_min)
+    requested_tables = _requested_tables(args.tables)
+    if "CDPOS" in requested_tables and "CDHDR" not in requested_tables:
+        requested_tables = ["CDHDR", *requested_tables]
     trace = load_yaml(args.execution_trace)
     manifest = load_yaml(args.post_processing_manifest)
     env = load_env_file(args.env_file)
@@ -78,6 +88,7 @@ def _download(args: argparse.Namespace) -> int:
     out_dir = _resolve_download_dir(args.out_dir, manifest)
     out_dir.mkdir(parents=True, exist_ok=True)
     _log(f"run={run_id} output_dir={out_dir}")
+    _log(f"tables={','.join(requested_tables)}")
     _log(f"window={window.start.isoformat()}..{window.end.isoformat()} user_range={args.user_from}..{args.user_to}")
     if deadline is not None:
         _log(f"runtime_guard={args.max_runtime_min:g}min")
@@ -97,47 +108,99 @@ def _download(args: argparse.Namespace) -> int:
 
     rows_by_table: dict[str, list[dict[str, str]]] = defaultdict(list)
     timed_out = False
-    cdhdr_request = TableRequest(
-        "CDHDR",
-        cdhdr_selection(start=window.start, end=window.end, user_from=args.user_from, user_to=args.user_to),
-        max_rows=args.max_rows_per_request,
-    )
-    _log(f"CDHDR start filter={_selection_summary(cdhdr_request)}")
-    cdhdr_rows = _post_filter_cdhdr(
-        client.extract(cdhdr_request),
-        user_from=args.user_from,
-        user_to=args.user_to,
-        start=window.start,
-        end=window.end,
-    )
-    _log(f"CDHDR done rows={len(cdhdr_rows)} elapsed={_elapsed(started_at)}")
-    rows_by_table["CDHDR"].extend(cdhdr_rows)
-    report["tables"]["CDHDR"] = _request_report(cdhdr_request, len(cdhdr_rows))
+    cdhdr_rows: list[dict[str, str]] = []
+    cdhdr_errors: list[str] = []
+    if "CDHDR" in requested_tables:
+        cdhdr_requests = _cdhdr_requests(
+            window,
+            user_from=args.user_from,
+            user_to=args.user_to,
+            max_rows_per_request=args.max_rows_per_request,
+            chunk_minutes=args.cdhdr_window_min,
+            sap_timezone=args.cdhdr_timezone,
+            include_utc_window=args.cdhdr_include_utc_window,
+        )
+        _log(f"CDHDR chunks={len(cdhdr_requests)} chunk_minutes={args.cdhdr_window_min:g}")
+        cdhdr_results = _extract_requests(
+            client,
+            cdhdr_requests,
+            "CDHDR",
+            started_at=started_at,
+            deadline=deadline,
+            fresh_page_per_request=True,
+            on_error=lambda _index, request, exc: cdhdr_errors.append(f"{request.table}: {exc}"),
+        )
+        report["warnings"].extend(cdhdr_errors)
+        if len(cdhdr_results) + len(cdhdr_errors) < len(cdhdr_requests):
+            timed_out = True
+            warning = f"Runtime guard stopped CDHDR after {len(cdhdr_results)}/{len(cdhdr_requests)} chunks"
+            report["warnings"].append(warning)
+            _log(warning)
+        for rows in cdhdr_results:
+            cdhdr_rows.extend(
+                _post_filter_cdhdr(
+                    rows,
+                    user_from=args.user_from,
+                    user_to=args.user_to,
+                    start=window.start,
+                    end=window.end,
+                    sap_timezone=args.cdhdr_timezone,
+                    utc_object_classes=CDHDR_UTC_OBJECT_CLASSES,
+                )
+            )
+        cdhdr_rows = _dedupe_rows(cdhdr_rows)
+        _log(f"CDHDR done rows={len(cdhdr_rows)} elapsed={_elapsed(started_at)}")
+        rows_by_table["CDHDR"].extend(cdhdr_rows)
+        report["tables"]["CDHDR"] = {
+            "chunks": len(cdhdr_results),
+            "planned_chunks": len(cdhdr_requests),
+            "rows": len(cdhdr_rows),
+            "selection": [
+                [asdict(item) for item in request.selection]
+                for request in cdhdr_requests
+            ],
+            "timestamp_timezone": {
+                "default": args.cdhdr_timezone,
+                "utc_object_classes": sorted(CDHDR_UTC_OBJECT_CLASSES),
+            },
+        }
 
-    cdpos_rows: list[dict[str, str]] = []
-    exact_cdpos_requests = cdpos_requests_from_cdhdr(cdhdr_rows)
-    cdpos_requests = [
-        TableRequest(request.table, request.selection, max_rows=args.max_rows_per_request)
-        for request in _batched_cdpos_requests_from_cdhdr(cdhdr_rows)
-    ]
-    _log(f"CDPOS exact_keys={len(exact_cdpos_requests)} batched_requests={len(cdpos_requests)}")
-    cdpos_results = _extract_requests(client, cdpos_requests, "CDPOS", started_at=started_at, deadline=deadline)
-    if len(cdpos_results) < len(cdpos_requests):
-        timed_out = True
-        warning = f"Runtime guard stopped CDPOS after {len(cdpos_results)}/{len(cdpos_requests)} requests"
-        report["warnings"].append(warning)
-        _log(warning)
-    for rows in cdpos_results:
-        cdpos_rows.extend(_post_filter_cdpos(rows, cdhdr_rows))
-    rows_by_table["CDPOS"].extend(_dedupe_rows(cdpos_rows))
-    report["tables"]["CDPOS"] = {
-        "source": "CDHDR composite keys",
-        "exact_keys": len(exact_cdpos_requests),
-        "requests": len(cdpos_results),
-        "planned_requests": len(cdpos_requests),
-        "rows": len(rows_by_table["CDPOS"]),
-    }
+    if "CDPOS" in requested_tables:
+        cdpos_rows: list[dict[str, str]] = []
+        cdpos_errors: list[str] = []
+        exact_cdpos_requests = cdpos_requests_from_cdhdr(cdhdr_rows)
+        cdpos_requests = [
+            TableRequest(request.table, request.selection, max_rows=args.max_rows_per_request)
+            for request in _batched_cdpos_requests_from_cdhdr(cdhdr_rows)
+        ]
+        _log(f"CDPOS exact_keys={len(exact_cdpos_requests)} batched_requests={len(cdpos_requests)}")
+        cdpos_results = _extract_requests(
+            client,
+            cdpos_requests,
+            "CDPOS",
+            started_at=started_at,
+            deadline=deadline,
+            fresh_page_per_request=True,
+            on_error=lambda _index, request, exc: cdpos_errors.append(f"{request.table}: {exc}"),
+        )
+        report["warnings"].extend(cdpos_errors)
+        if len(cdpos_results) + len(cdpos_errors) < len(cdpos_requests):
+            timed_out = True
+            warning = f"Runtime guard stopped CDPOS after {len(cdpos_results)}/{len(cdpos_requests)} requests"
+            report["warnings"].append(warning)
+            _log(warning)
+        for rows in cdpos_results:
+            cdpos_rows.extend(_post_filter_cdpos(rows, cdhdr_rows))
+        rows_by_table["CDPOS"].extend(_dedupe_rows(cdpos_rows))
+        report["tables"]["CDPOS"] = {
+            "source": "CDHDR composite keys",
+            "exact_keys": len(exact_cdpos_requests),
+            "requests": len(cdpos_results),
+            "planned_requests": len(cdpos_requests),
+            "rows": len(rows_by_table["CDPOS"]),
+        }
 
+    p2p_tables = [table for table in requested_tables if table not in {"CDHDR", "CDPOS"}]
     index = build_linkage_index(registry_entries, trace_steps, default_company_code=args.default_company_code)
     exact_p2p_requests = p2p_requests_from_registry(
         registry_entries,
@@ -152,12 +215,14 @@ def _download(args: argparse.Namespace) -> int:
             default_company_code=args.default_company_code,
             max_keys_per_batch=args.max_keys_per_batch,
         )
+        if request.table in p2p_tables
     ]
-    _log(
-        "P2P "
-        f"registry_entries={len(registry_entries)} exact_keys={len(exact_p2p_requests)} "
-        f"max_keys_per_batch={args.max_keys_per_batch} batched_requests={len(p2p_requests)}"
-    )
+    if p2p_tables:
+        _log(
+            "P2P "
+            f"registry_entries={len(registry_entries)} exact_keys={len(exact_p2p_requests)} "
+            f"max_keys_per_batch={args.max_keys_per_batch} batched_requests={len(p2p_requests)}"
+        )
 
     for request_index, request in enumerate(p2p_requests, start=1):
         if _deadline_reached(deadline):
@@ -184,21 +249,69 @@ def _download(args: argparse.Namespace) -> int:
         report["tables"][request.table]["requests"] += 1
         report["tables"][request.table]["selection"] = [asdict(item) for item in request.selection]
 
-    for table in DEFAULT_TABLES:
+    for table in requested_tables:
         rows_by_table[table] = _dedupe_rows(rows_by_table.get(table, []))
         report["tables"].setdefault(table, {"requests": 0, "rows": 0})
         report["tables"][table]["rows"] = len(rows_by_table[table])
-    _write_table_csvs(out_dir, rows_by_table, tables=DEFAULT_TABLES)
-    _log(f"wrote table CSVs count={len(DEFAULT_TABLES)} dir={out_dir}")
+    report["timezone_validation"] = {
+        "CDHDR.UDATE_UTIME": {
+            "default": args.cdhdr_timezone,
+            "utc_object_classes": sorted(CDHDR_UTC_OBJECT_CLASSES),
+        },
+        "business.CPUDT_CPUTM": "Europe/Berlin",
+    }
+    full_refresh = set(requested_tables) == set(DEFAULT_TABLES)
+    _write_table_csvs(out_dir, rows_by_table, tables=requested_tables)
+    _log(f"wrote table CSVs count={len(requested_tables)} dir={out_dir}")
 
-    linkage_rows: list[dict[str, str]] = []
-    for table, rows in rows_by_table.items():
-        linkage_rows.extend(linkage_rows_for_table(table, rows, index))
-    _write_csv(out_dir / "row-linkage.csv", linkage_rows)
-    (out_dir / "export-report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    _log(f"wrote row-linkage.csv rows={len(linkage_rows)}")
+    if full_refresh:
+        linkage_rows: list[dict[str, str]] = []
+        for table, rows in rows_by_table.items():
+            linkage_rows.extend(linkage_rows_for_table(table, rows, index))
+        _write_csv(out_dir / "row-linkage.csv", linkage_rows)
+        report["row_linkage_written"] = True
+        _log(f"wrote row-linkage.csv rows={len(linkage_rows)}")
+    else:
+        report["row_linkage_written"] = False
+        report["partial_refresh"] = {"tables": requested_tables}
+        _log("preserved row-linkage.csv for partial table refresh")
+    report_to_write = _report_for_write(out_dir, report, requested_tables)
+    (out_dir / "export-report.json").write_text(
+        json.dumps(report_to_write, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     _log(f"wrote export-report.json elapsed={_elapsed(started_at)}")
     return 124 if timed_out else 0
+
+
+def _process(args: argparse.Namespace) -> int:
+    from erp_sap_export.processing import process_dataset
+
+    report = process_dataset(
+        raw_dir=args.raw_dir,
+        out_dir=args.out_dir,
+        execution_trace_path=args.execution_trace,
+        post_processing_manifest_path=args.post_processing_manifest,
+        execution_log_path=args.execution_log,
+        object_registry_path=args.object_registry,
+    )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if not report.get("validation", {}).get("errors") else 1
+
+
+def _validate_processed(args: argparse.Namespace) -> int:
+    from erp_sap_export.processing import validate_processed_dataset
+
+    report = validate_processed_dataset(
+        processed_dir=args.processed_dir,
+        raw_dir=args.raw_dir,
+        execution_trace_path=args.execution_trace,
+        post_processing_manifest_path=args.post_processing_manifest,
+        execution_log_path=args.execution_log,
+        object_registry_path=args.object_registry,
+    )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if not report.get("errors") else 1
 
 
 def _run_id_from_manifest(manifest: dict[str, Any]) -> str:
@@ -229,6 +342,89 @@ def _write_table_csvs(
         _write_csv(out_dir / f"{table}.csv", rows_by_table.get(table, []))
 
 
+def _cdhdr_requests(
+    window: ExecutionWindow,
+    *,
+    user_from: str,
+    user_to: str,
+    max_rows_per_request: int | None,
+    chunk_minutes: float,
+    sap_timezone: str = "Europe/Berlin",
+    include_utc_window: bool = True,
+) -> list[TableRequest]:
+    timezones = [sap_timezone]
+    if include_utc_window and sap_timezone.upper() != "UTC":
+        timezones.append("UTC")
+    requests: list[TableRequest] = []
+    seen: set[tuple[tuple[str, str, str | None], ...]] = set()
+    for timezone in timezones:
+        for request in _cdhdr_requests_for_timezone(
+            window,
+            user_from=user_from,
+            user_to=user_to,
+            max_rows_per_request=max_rows_per_request,
+            chunk_minutes=chunk_minutes,
+            sap_timezone=timezone,
+        ):
+            key = tuple((item.field, item.low, item.high) for item in request.selection)
+            if key in seen:
+                continue
+            seen.add(key)
+            requests.append(request)
+    return requests
+
+
+def _cdhdr_requests_for_timezone(
+    window: ExecutionWindow,
+    *,
+    user_from: str,
+    user_to: str,
+    max_rows_per_request: int | None,
+    chunk_minutes: float,
+    sap_timezone: str,
+) -> list[TableRequest]:
+    requests: list[TableRequest] = []
+    for cursor, chunk_end in _cdhdr_window_segments(window, chunk_minutes=chunk_minutes, sap_timezone=sap_timezone):
+        requests.append(
+            TableRequest(
+                "CDHDR",
+                cdhdr_selection(
+                    start=cursor,
+                    end=chunk_end,
+                    user_from=user_from,
+                    user_to=user_to,
+                    sap_timezone=sap_timezone,
+                ),
+                max_rows=max_rows_per_request,
+            )
+        )
+    return requests
+
+
+def _cdhdr_window_segments(
+    window: ExecutionWindow,
+    *,
+    chunk_minutes: float,
+    sap_timezone: str,
+) -> list[tuple[datetime, datetime]]:
+    timezone = ZoneInfo(sap_timezone)
+    cursor = window.start
+    segments: list[tuple[datetime, datetime]] = []
+    step = timedelta(minutes=chunk_minutes) if chunk_minutes > 0 else None
+    while cursor <= window.end:
+        chunk_end = window.end if step is None else min(cursor + step, window.end)
+        local_cursor = cursor.astimezone(timezone)
+        local_end = chunk_end.astimezone(timezone)
+        if local_cursor.date() != local_end.date():
+            next_midnight = local_cursor.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+            chunk_end = min(next_midnight.astimezone(UTC) - timedelta(seconds=1), window.end)
+        segments.append((cursor, chunk_end))
+        if chunk_end >= window.end:
+            break
+        cursor = chunk_end + timedelta(seconds=1)
+    return segments
+
+
 def _extract_requests(
     client: Se16Client,
     requests: Sequence[TableRequest],
@@ -236,6 +432,8 @@ def _extract_requests(
     *,
     started_at: float,
     deadline: float | None,
+    fresh_page_per_request: bool = False,
+    on_error: Callable[[int, TableRequest, RuntimeError], None] | None = None,
 ) -> list[list[dict[str, str]]]:
     request_started: dict[int, float] = {}
 
@@ -248,6 +446,23 @@ def _extract_requests(
             f"{phase} [{index}/{len(requests)}] {request.table} done "
             f"rows={len(rows)} request_elapsed={_elapsed(request_started[index])} total_elapsed={_elapsed(started_at)}"
         )
+
+    if fresh_page_per_request:
+        results: list[list[dict[str, str]]] = []
+        for index, request in enumerate(requests, start=1):
+            if _deadline_reached(deadline):
+                break
+            on_start(index, request)
+            try:
+                rows = client.extract(request)
+            except RuntimeError as exc:
+                _log(f"{phase} [{index}/{len(requests)}] {request.table} warning={exc}")
+                if on_error is not None:
+                    on_error(index, request, exc)
+                continue
+            results.append(rows)
+            on_done(index, request, rows)
+        return results
 
     return client.extract_many(
         requests,
@@ -326,13 +541,20 @@ def _post_filter_cdhdr(
     user_to: str,
     start: datetime,
     end: datetime,
+    sap_timezone: str = "Europe/Berlin",
+    utc_object_classes: set[str] | None = None,
 ) -> list[dict[str, str]]:
     start_utc = _as_utc(start)
     end_utc = _as_utc(end)
+    utc_object_classes = utc_object_classes or set()
     output: list[dict[str, str]] = []
     for row in rows:
         username = str(row.get("USERNAME") or "")
-        changed_at = _sap_change_datetime(row)
+        object_class = str(row.get("OBJECTCLAS") or "")
+        changed_at = _sap_change_datetime(
+            row,
+            sap_timezone="UTC" if object_class in utc_object_classes else sap_timezone,
+        )
         if changed_at is None:
             continue
         if user_from <= username <= user_to and start_utc <= changed_at <= end_utc:
@@ -356,6 +578,56 @@ def _request_report(request: TableRequest, row_count: int) -> dict[str, Any]:
     return {"selection": [asdict(item) for item in request.selection], "rows": row_count}
 
 
+def _report_for_write(out_dir: Path, report: dict[str, Any], requested_tables: Sequence[str]) -> dict[str, Any]:
+    if set(requested_tables) == set(DEFAULT_TABLES):
+        return report
+    existing_path = out_dir / "export-report.json"
+    if not existing_path.exists():
+        return report
+    try:
+        existing = json.loads(existing_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return report
+    if not isinstance(existing, dict):
+        return report
+    return _merge_partial_report(existing, report, requested_tables)
+
+
+def _merge_partial_report(
+    existing: dict[str, Any],
+    partial: dict[str, Any],
+    requested_tables: Sequence[str],
+) -> dict[str, Any]:
+    merged = dict(existing)
+    for key, value in partial.items():
+        if key not in {"tables", "warnings"}:
+            merged[key] = value
+    tables = dict(existing.get("tables") if isinstance(existing.get("tables"), dict) else {})
+    partial_tables = partial.get("tables") if isinstance(partial.get("tables"), dict) else {}
+    for table in requested_tables:
+        if table in partial_tables:
+            tables[table] = partial_tables[table]
+    merged["tables"] = tables
+    warnings: list[Any] = []
+    for source in (existing.get("warnings"), partial.get("warnings")):
+        if isinstance(source, list):
+            warnings.extend(source)
+    merged["warnings"] = warnings
+    merged["partial_refresh"] = {"tables": list(requested_tables)}
+    return merged
+
+
+def _requested_tables(values: Sequence[str]) -> list[str]:
+    requested: list[str] = []
+    for value in values:
+        table = value.upper()
+        if table not in SUPPORTED_TABLES:
+            raise ValueError(f"Unsupported table '{value}'")
+        if table not in requested:
+            requested.append(table)
+    return requested
+
+
 def _probe_result_ok(result: dict[str, Any]) -> bool:
     table_results = result.get("tables")
     if not result.get("webgui") or not result.get("se16") or not isinstance(table_results, dict):
@@ -374,13 +646,14 @@ def _probe_table_ok(table_result: Any) -> bool:
     )
 
 
-def _sap_change_datetime(row: dict[str, str]) -> datetime | None:
+def _sap_change_datetime(row: dict[str, str], *, sap_timezone: str = "Europe/Berlin") -> datetime | None:
     date_text = str(row.get("UDATE") or "").strip()
     time_text = str(row.get("UTIME") or "").strip()
     if not date_text or not time_text:
         return None
     try:
-        return datetime.strptime(f"{date_text} {time_text}", "%m/%d/%Y %H:%M:%S").replace(tzinfo=UTC)
+        local = datetime.strptime(f"{date_text} {time_text}", "%m/%d/%Y %H:%M:%S").replace(tzinfo=ZoneInfo(sap_timezone))
+        return local.astimezone(UTC)
     except ValueError:
         return None
 
@@ -442,7 +715,28 @@ def _build_parser() -> argparse.ArgumentParser:
     download.add_argument("--window-padding-min", type=int, default=30)
     download.add_argument("--max-rows-per-request", type=int, default=5_000)
     download.add_argument("--max-keys-per-batch", type=int, default=20)
+    download.add_argument("--cdhdr-window-min", type=float, default=15)
+    download.add_argument("--cdhdr-timezone", default="Europe/Berlin")
+    download.add_argument("--no-cdhdr-include-utc-window", dest="cdhdr_include_utc_window", action="store_false")
     download.add_argument("--max-runtime-min", type=float, default=60)
     download.add_argument("--default-company-code", default="US00")
+    download.add_argument("--tables", nargs="+", default=DEFAULT_TABLES)
     download.add_argument("--headed", action="store_true")
+
+    process = subparsers.add_parser("process", help="Create processed SAP export CSVs from raw run downloads")
+    _add_evidence_arguments(process)
+    process.add_argument("--raw-dir", type=Path, required=True)
+    process.add_argument("--out-dir", type=Path, required=True)
+
+    validate = subparsers.add_parser("validate-processed", help="Validate processed SAP export CSVs")
+    _add_evidence_arguments(validate)
+    validate.add_argument("--raw-dir", type=Path, required=True)
+    validate.add_argument("--processed-dir", type=Path, required=True)
     return parser
+
+
+def _add_evidence_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--execution-trace", type=Path, required=True)
+    parser.add_argument("--post-processing-manifest", type=Path, required=True)
+    parser.add_argument("--execution-log", type=Path, required=True)
+    parser.add_argument("--object-registry", type=Path, required=True)

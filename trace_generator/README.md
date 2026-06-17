@@ -20,7 +20,7 @@ flowchart LR
   cli --> writer
   writer --> canonical["execution-trace.yaml\ncanonical graph and waves"]
   writer --> manifest["post-processing-manifest.yaml\ncase scenario types, timestamp plan, object lineage, planned date inputs"]
-  canonical --> executor["generator/\nSAP execution"]
+  canonical --> executor["trace_executor/\nSAP execution"]
   canonical --> post["post processor\nplanned truth"]
   manifest --> post
 ```

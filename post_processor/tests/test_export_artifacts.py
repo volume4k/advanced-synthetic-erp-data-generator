@@ -9,14 +9,19 @@ from erp_sap_export.artifacts import (
     derive_execution_window,
     load_jsonl,
 )
+from erp_sap_export.artifacts import ExecutionWindow
 from erp_sap_export.cli import (
     _batched_cdpos_requests_from_cdhdr,
+    _cdhdr_requests,
+    _extract_requests,
+    _merge_partial_report,
     _post_filter_cdhdr,
     _probe_result_ok,
     _resolve_download_dir,
     _write_table_csvs,
 )
 from erp_sap_export.specs import SelectionRange
+from erp_sap_export.specs import TableRequest
 
 
 def test_derive_execution_window_uses_log_timestamps_with_padding(tmp_path: Path) -> None:
@@ -99,11 +104,179 @@ def test_post_filter_cdhdr_enforces_user_and_exact_time_window() -> None:
         rows,
         user_from="LEARN-800",
         user_to="LEARN-899",
-        start=datetime(2026, 5, 28, 20, 0, tzinfo=UTC),
-        end=datetime(2026, 5, 28, 21, 0, tzinfo=UTC),
+        start=datetime(2026, 5, 28, 18, 0, tzinfo=UTC),
+        end=datetime(2026, 5, 28, 19, 0, tzinfo=UTC),
     )
 
     assert filtered == [rows[1], rows[2]]
+
+
+def test_cdhdr_requests_split_execution_window_into_sap_local_chunks() -> None:
+    window = ExecutionWindow(
+        start=datetime(2026, 6, 1, 16, 38, 8, tzinfo=UTC),
+        end=datetime(2026, 6, 1, 17, 8, 8, tzinfo=UTC),
+    )
+
+    requests = _cdhdr_requests(
+        window,
+        user_from="LEARN-800",
+        user_to="LEARN-899",
+        max_rows_per_request=5_000,
+        chunk_minutes=15,
+    )
+
+    assert [(item.selection[1].low, item.selection[2].low, item.selection[2].high) for item in requests] == [
+        ("06/01/2026", "18:38:08", "18:53:08"),
+        ("06/01/2026", "18:53:09", "19:08:08"),
+        ("06/01/2026", "16:38:08", "16:53:08"),
+        ("06/01/2026", "16:53:09", "17:08:08"),
+    ]
+    assert all(item.max_rows == 5_000 for item in requests)
+
+
+def test_cdhdr_requests_split_at_local_midnight_to_keep_time_filters() -> None:
+    window = ExecutionWindow(
+        start=datetime(2026, 5, 28, 21, 50, tzinfo=UTC),
+        end=datetime(2026, 5, 28, 22, 10, tzinfo=UTC),
+    )
+
+    requests = _cdhdr_requests(
+        window,
+        user_from="LEARN-800",
+        user_to="LEARN-899",
+        max_rows_per_request=5_000,
+        chunk_minutes=0,
+        include_utc_window=False,
+    )
+
+    assert [item.selection for item in requests] == [
+        [
+            SelectionRange("USERNAME", "LEARN-800", "LEARN-899"),
+            SelectionRange("UDATE", "05/28/2026", "05/28/2026"),
+            SelectionRange("UTIME", "23:50:00", "23:59:59"),
+        ],
+        [
+            SelectionRange("USERNAME", "LEARN-800", "LEARN-899"),
+            SelectionRange("UDATE", "05/29/2026", "05/29/2026"),
+            SelectionRange("UTIME", "00:00:00", "00:10:00"),
+        ],
+    ]
+
+
+def test_post_filter_cdhdr_uses_utc_for_bupa_bup_and_local_time_for_banf() -> None:
+    rows = [
+        {"OBJECTCLAS": "BANF", "USERNAME": "LEARN-801", "UDATE": "06/01/2026", "UTIME": "16:43:23"},
+        {"OBJECTCLAS": "BANF", "USERNAME": "LEARN-801", "UDATE": "06/01/2026", "UTIME": "18:43:23"},
+        {"OBJECTCLAS": "BUPA_BUP", "USERNAME": "LEARN-804", "UDATE": "06/01/2026", "UTIME": "16:48:23"},
+    ]
+
+    filtered = _post_filter_cdhdr(
+        rows,
+        user_from="LEARN-800",
+        user_to="LEARN-899",
+        start=datetime(2026, 6, 1, 16, 38, tzinfo=UTC),
+        end=datetime(2026, 6, 1, 16, 53, tzinfo=UTC),
+        utc_object_classes={"BUPA_BUP"},
+    )
+
+    assert filtered == [rows[1], rows[2]]
+
+
+def test_merge_partial_report_preserves_unrequested_table_counts() -> None:
+    existing = {
+        "run_id": "RUN_BA-210",
+        "tables": {
+            "EBAN": {"rows": 210},
+            "CDHDR": {"rows": 182},
+        },
+        "warnings": ["old warning"],
+    }
+    partial = {
+        "run_id": "RUN_BA-210",
+        "tables": {
+            "CDHDR": {"rows": 320},
+            "CDPOS": {"rows": 140},
+        },
+        "warnings": ["new warning"],
+    }
+
+    merged = _merge_partial_report(existing, partial, ["CDHDR", "CDPOS"])
+
+    assert merged["tables"] == {
+        "EBAN": {"rows": 210},
+        "CDHDR": {"rows": 320},
+        "CDPOS": {"rows": 140},
+    }
+    assert merged["partial_refresh"]["tables"] == ["CDHDR", "CDPOS"]
+    assert merged["warnings"] == ["old warning", "new warning"]
+
+
+def test_extract_requests_can_use_fresh_page_per_request() -> None:
+    class FreshClient:
+        def __init__(self) -> None:
+            self.extract_calls = 0
+
+        def extract(self, request):
+            self.extract_calls += 1
+            return [{"TABLE": request.table, "CALL": str(self.extract_calls)}]
+
+        def extract_many(self, *args, **kwargs):
+            raise AssertionError("extract_many should not be used")
+
+    client = FreshClient()
+    requests = [
+        TableRequest("CDHDR", [SelectionRange("USERNAME", "LEARN-800")]),
+        TableRequest("CDHDR", [SelectionRange("USERNAME", "LEARN-801")]),
+    ]
+
+    results = _extract_requests(
+        client,
+        requests,
+        "CDHDR",
+        started_at=0,
+        deadline=None,
+        fresh_page_per_request=True,
+    )
+
+    assert results == [[{"TABLE": "CDHDR", "CALL": "1"}], [{"TABLE": "CDHDR", "CALL": "2"}]]
+    assert client.extract_calls == 2
+
+
+def test_extract_requests_continues_after_fresh_page_runtime_error() -> None:
+    class FreshClient:
+        def __init__(self) -> None:
+            self.extract_calls = 0
+
+        def extract(self, request):
+            self.extract_calls += 1
+            if self.extract_calls == 2:
+                raise RuntimeError("temporary SAP failure")
+            return [{"TABLE": request.table, "CALL": str(self.extract_calls)}]
+
+        def extract_many(self, *args, **kwargs):
+            raise AssertionError("extract_many should not be used")
+
+    client = FreshClient()
+    requests = [
+        TableRequest("CDHDR", [SelectionRange("USERNAME", "LEARN-800")]),
+        TableRequest("CDHDR", [SelectionRange("USERNAME", "LEARN-801")]),
+        TableRequest("CDHDR", [SelectionRange("USERNAME", "LEARN-802")]),
+    ]
+    errors = []
+
+    results = _extract_requests(
+        client,
+        requests,
+        "CDHDR",
+        started_at=0,
+        deadline=None,
+        fresh_page_per_request=True,
+        on_error=lambda index, request, exc: errors.append((index, request.table, str(exc))),
+    )
+
+    assert results == [[{"TABLE": "CDHDR", "CALL": "1"}], [{"TABLE": "CDHDR", "CALL": "3"}]]
+    assert errors == [(2, "CDHDR", "temporary SAP failure")]
+    assert client.extract_calls == 3
 
 
 def test_probe_result_requires_all_requested_tables_usable() -> None:

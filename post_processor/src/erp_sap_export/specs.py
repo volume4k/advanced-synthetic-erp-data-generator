@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 SUPPORTED_TABLES = ["CDHDR", "CDPOS", "EBAN", "EKKO", "EKPO", "MKPF", "MSEG", "RBKP", "RSEG", "BKPF", "BSEG"]
@@ -47,15 +48,17 @@ def cdhdr_selection(
     end: datetime,
     user_from: str,
     user_to: str,
+    sap_timezone: str = "Europe/Berlin",
 ) -> list[SelectionRange]:
-    start_utc = _as_utc(start)
-    end_utc = _as_utc(end)
+    timezone = ZoneInfo(sap_timezone)
+    start_local = _as_utc(start).astimezone(timezone)
+    end_local = _as_utc(end).astimezone(timezone)
     ranges = [
         SelectionRange("USERNAME", user_from, user_to),
-        SelectionRange("UDATE", _sap_date(start_utc), _sap_date(end_utc)),
+        SelectionRange("UDATE", _sap_date(start_local), _sap_date(end_local)),
     ]
-    if start_utc.date() == end_utc.date():
-        ranges.append(SelectionRange("UTIME", _sap_time(start_utc), _sap_time(end_utc)))
+    if start_local.date() == end_local.date():
+        ranges.append(SelectionRange("UTIME", _sap_time(start_local), _sap_time(end_local)))
     return ranges
 
 

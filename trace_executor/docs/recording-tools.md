@@ -4,10 +4,10 @@ Use Playwright recording as a draft generator for SAP browser flows. Do not comm
 
 ## Record A Flow
 
-Run Codegen from the generator project:
+Run Codegen from the trace executor project:
 
 ```bash
-uv run --project generator playwright codegen --target=python --output /tmp/recorded_flow.py "https://your-sap-host.example/path?client=XXX&lang=YY"
+uv run --project trace_executor playwright codegen --target=python --output /tmp/recorded_flow.py "https://your-sap-host.example/path?client=XXX&lang=YY"
 ```
 
 This opens a browser and the Playwright Inspector. Log in, perform the SAP action, stop recording, and inspect `/tmp/recorded_flow.py`.
@@ -25,11 +25,11 @@ Use it as a helper, not as the final source of truth. Generated code still needs
 1. Copy only the meaningful browser actions into a page helper in `src/erp_trace_executor/tools/fiori/pages.py`.
 2. Add a small input model and runner module under `src/erp_trace_executor/tools/fiori/`.
 3. Register the `ToolSpec` in `src/erp_trace_executor/registry.py`.
-4. Add or update a canonical example trace under `generator/examples/` with no passwords.
+4. Add or update a canonical example trace under `trace_executor/examples/` with no passwords.
 5. Run a headed smoke test:
 
 ```bash
-uv run --project generator erp-trace-exec generator/examples/sap-create-purchase-requisition.execution-trace.yaml --headed
+uv run --project trace_executor erp-trace-exec trace_executor/examples/sap-create-purchase-requisition.execution-trace.yaml --headed
 ```
 
 ## Clean Generated Code
@@ -62,7 +62,7 @@ context.tracing.stop(path="/tmp/tool-trace.zip")
 Open it with:
 
 ```bash
-uv run --project generator playwright show-trace /tmp/tool-trace.zip
+uv run --project trace_executor playwright show-trace /tmp/tool-trace.zip
 ```
 
 Do not commit trace archives. They may contain business data.
