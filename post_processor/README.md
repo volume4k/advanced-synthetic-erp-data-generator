@@ -106,7 +106,7 @@ This workflow is scoped only to `RUN_BA-210`. Do not use `RUN_LARCENY_ROUTINE_BA
 Latest evidence paths:
 
 - Trace and manifest: `trace_generator/build/RUN_BA-210/`
-- Execution log and object registry: `generator/build/RUN_BA-210/`
+- Execution log and object registry: `trace_executor/build/RUN_BA-210/`
 
 Raw downloads stay in place and are not mutated by processing:
 
@@ -114,8 +114,8 @@ Raw downloads stay in place and are not mutated by processing:
 uv run --project post_processor erp-sap-export download \
   --execution-trace trace_generator/build/RUN_BA-210/RUN_BA-210.execution-trace.yaml \
   --post-processing-manifest trace_generator/build/RUN_BA-210/RUN_BA-210.post-processing-manifest.yaml \
-  --execution-log generator/build/RUN_BA-210/RUN_BA-210.execution-log.jsonl \
-  --object-registry generator/build/RUN_BA-210/RUN_BA-210.object-registry.jsonl \
+  --execution-log trace_executor/build/RUN_BA-210/RUN_BA-210.execution-log.jsonl \
+  --object-registry trace_executor/build/RUN_BA-210/RUN_BA-210.object-registry.jsonl \
   --env-file configuration/.env \
   --out-dir post_processor/downloads/RUN_BA-210 \
   --tables CDHDR CDPOS \
@@ -131,8 +131,8 @@ uv run --project post_processor erp-sap-export process \
   --out-dir post_processor/processed/RUN_BA-210 \
   --execution-trace trace_generator/build/RUN_BA-210/RUN_BA-210.execution-trace.yaml \
   --post-processing-manifest trace_generator/build/RUN_BA-210/RUN_BA-210.post-processing-manifest.yaml \
-  --execution-log generator/build/RUN_BA-210/RUN_BA-210.execution-log.jsonl \
-  --object-registry generator/build/RUN_BA-210/RUN_BA-210.object-registry.jsonl
+  --execution-log trace_executor/build/RUN_BA-210/RUN_BA-210.execution-log.jsonl \
+  --object-registry trace_executor/build/RUN_BA-210/RUN_BA-210.object-registry.jsonl
 ```
 
 Validate processed outputs:
@@ -143,8 +143,8 @@ uv run --project post_processor erp-sap-export validate-processed \
   --raw-dir post_processor/downloads/RUN_BA-210 \
   --execution-trace trace_generator/build/RUN_BA-210/RUN_BA-210.execution-trace.yaml \
   --post-processing-manifest trace_generator/build/RUN_BA-210/RUN_BA-210.post-processing-manifest.yaml \
-  --execution-log generator/build/RUN_BA-210/RUN_BA-210.execution-log.jsonl \
-  --object-registry generator/build/RUN_BA-210/RUN_BA-210.object-registry.jsonl
+  --execution-log trace_executor/build/RUN_BA-210/RUN_BA-210.execution-log.jsonl \
+  --object-registry trace_executor/build/RUN_BA-210/RUN_BA-210.object-registry.jsonl
 ```
 
 `RUN_BA-210` failed-case policy:

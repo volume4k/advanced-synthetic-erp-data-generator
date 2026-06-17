@@ -1,18 +1,18 @@
 # ERP Trace Executor
 
-`generator/` is an independent `uv` project inside the repository. It executes canonical `execution-trace.yaml` files and reuses Playwright browser sessions by explicit `session_id`.
+`trace_executor/` is an independent `uv` project inside the repository. It executes canonical `execution-trace.yaml` files and reuses Playwright browser sessions by explicit `session_id`.
 
 ## Bootstrap
 
 ```bash
-uv sync --project generator --python 3.13
-uv run --project generator playwright install chromium
+uv sync --project trace_executor --python 3.13
+uv run --project trace_executor playwright install chromium
 ```
 
 ## Run
 
 ```bash
-uv run --project generator erp-trace-exec path/to/execution-trace.yaml
+uv run --project trace_executor erp-trace-exec path/to/execution-trace.yaml
 ```
 
 The CLI prints one JSON object per executed task result as a JSON array.
@@ -25,7 +25,7 @@ Canonical execution runs waves sequentially in planned `startup_order` and write
 Credentials can be loaded from `configuration/.env` by default, or from another file with `--env-file`:
 
 ```bash
-uv run --project generator erp-trace-exec path/to/execution-trace.yaml --env-file path/to/credentials.env --artifact-dir generator/build
+uv run --project trace_executor erp-trace-exec path/to/execution-trace.yaml --env-file path/to/credentials.env --artifact-dir trace_executor/build
 ```
 
 ## Logging
@@ -33,7 +33,7 @@ uv run --project generator erp-trace-exec path/to/execution-trace.yaml --env-fil
 The executor keeps stdout reserved for the final JSON result array. Runtime progress and diagnostics are logged to stderr through Python's standard `logging` package.
 
 ```bash
-uv run --project generator erp-trace-exec path/to/execution-trace.yaml --log-level DEBUG
+uv run --project trace_executor erp-trace-exec path/to/execution-trace.yaml --log-level DEBUG
 ```
 
 `--log-level` accepts `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` and defaults to `INFO`. Evidence artifacts remain the machine-readable source of truth:
@@ -78,7 +78,7 @@ See these contributor guides:
 Record a draft SAP browser flow with Playwright Codegen:
 
 ```bash
-uv run --project generator playwright codegen --target=python --output /tmp/recorded_flow.py "https://your-sap-host.example/path?client=XXX&lang=YY"
+uv run --project trace_executor playwright codegen --target=python --output /tmp/recorded_flow.py "https://your-sap-host.example/path?client=XXX&lang=YY"
 ```
 
 Keep the raw recording outside the repo, then rewrite the useful actions into a reviewed tool.
