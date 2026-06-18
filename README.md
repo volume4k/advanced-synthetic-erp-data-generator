@@ -1,118 +1,41 @@
 # Advanced Synthetic ERP Data Generator
 
-This repository contains tools for generating and executing synthetic SAP Fiori ERP process traces. It is part of the SeLLMa research project.
+This repository contains the **Synthetic ERP Data Generator**, a set of tools for creating synthetic SAP Fiori ERP process data for research workflows.
 
-The current implementation focuses on a Pkl-backed trace planner in `trace_generator/` and a Playwright-backed trace executor in `trace_executor/`. The planner writes canonical `execution-trace.yaml` files, and the executor runs those waves against SAP Fiori.
+The system plans realistic process cases, executes those planned steps against SAP Fiori, downloads the resulting SAP exports, and post-processes them into a final **Synthetic Dataset** with planned chronology, synthetic actor projection, and provenance.
 
-The broader generator vision and planned architecture are documented in `generator_vision_architecture_specification.md`.
-Project glossary terms live in `CONTEXT.md`; architectural decision records live in `docs/adr/`.
+## User Documentation
+
+Start here:
+
+- [User guide](docs/user-guide/README.md)
+- [Prerequisites](docs/user-guide/prerequisites.md)
+- [Create a dataset](docs/user-guide/create-dataset.md)
+- [Add Browser Tools](docs/user-guide/add-browser-tools.md)
+
+Component-level reference documentation remains in each project folder:
+
+- [Configuration](configuration/README.md)
+- [Trace Generator](trace_generator/README.md)
+- [Trace Executor](trace_executor/README.md)
+- [Post-Processor](post_processor/README.md)
+
+Project glossary terms live in [CONTEXT.md](CONTEXT.md). Architectural decisions live in [docs/adr/](docs/adr/).
 
 ## Repository Layout
 
 ```text
 .
-├── trace_executor/       # Independent uv project for trace execution
-├── trace_generator/ # Independent uv project for trace planning
-├── configuration/   # Scenario/configuration artifacts
-├── generator_vision_architecture_specification.md
-└── README.md        # Project overview
-```
-
-## Component Responsibilities
-
-- `configuration/` owns experiment parameters in Pkl: process steps, tools, actors, technical users, working hours, pause ranges, and delay ranges.
-- `trace_generator/` owns planning: case generation, input binding, actor assignment, synthetic timestamps, FIFO wave scheduling, validation, and artifact writing.
-- `trace_executor/` owns execution mechanics only: actor sessions, SAP tool calls, runtime placeholder resolution, and SAP object capture.
-- Future `post_processor/` work should use the trace-generator execution trace and manifest as planned truth when shifting SAP export timestamps and projecting synthetic actors.
-
-## Quick Start
-
-Bootstrap the trace executor:
-
-```bash
-uv sync --project trace_executor --python 3.13
-uv run --project trace_executor playwright install chromium
-```
-
-Run a trace:
-
-```bash
-uv run --project trace_executor erp-trace-exec path/to/execution-trace.yaml
-```
-
-Generate trace artifacts from compiled configuration:
-
-```bash
-configuration/create-config.sh
-uv run --project trace_generator erp-trace-generate configuration/build/main.yaml --out-dir trace_generator/build
-```
-
-Run with a visible browser:
-
-```bash
-uv run --project trace_executor erp-trace-exec path/to/execution-trace.yaml --headed
-```
-
-`uv --project trace_executor` uses `trace_executor/.venv`. If another virtual environment is active, uv may print a warning and ignore it. That is expected.
-
-## Trace Login Flow
-
-Canonical traces contain session blocks with env var names, not credentials:
-
-```yaml
-actor_sessions:
-- actor_session_id: buyer-session
-  synthetic_actor_id: buyer-a
-  technical_sap_user_id: TU_01
-  username_env_var: SAP_USER_1_UN
-  password_env_var: SAP_USER_1_PW
-  login_url_env_var: SAP_URL
-```
-
-Each session is logged in once before scheduled planned steps run. Keep real credentials out of Git and put them in `configuration/.env`:
-
-Put credentials in `configuration/.env`:
-
-```bash
-SAP_URL=<SAP_LOGIN_URL>
-SAP_USER_1_UN=<SAP_USERNAME>
-SAP_USER_1_PW=<SAP_PASSWORD>
-```
-
-Run the canonical trace:
-
-```bash
-uv run --project trace_executor erp-trace-exec trace_generator/build/RUN.execution-trace.yaml --headed
-```
-
-The executor resolves usernames, passwords, and login URLs from env vars at runtime. To use a different env file:
-
-```bash
-uv run --project trace_executor erp-trace-exec trace_generator/build/RUN.execution-trace.yaml --env-file path/to/credentials.env --headed
+├── configuration/        # Pkl scenario configuration and compiled YAML output
+├── trace_generator/      # uv project that creates Execution Trace artifacts
+├── trace_executor/       # uv project that executes traces against SAP Fiori
+├── post_processor/       # uv project that downloads and processes SAP exports
+├── docs/                 # user guide and architectural decision records
+├── CONTEXT.md            # project glossary and domain relationships
+└── README.md             # project overview
 ```
 
 ## Development
-
-Run tests:
-
-```bash
-uv run --project trace_executor pytest trace_executor/tests -q
-```
-
-The executor is documented in more detail in `trace_executor/README.md`.
-
-External contributors adding browser tools should start with:
-
-- `trace_executor/docs/adding-tools.md`
-- `trace_executor/docs/recording-tools.md`
-- `trace_executor/docs/locator-guidelines.md`
-
-For architecture context, read:
-
-- `CONTEXT.md`
-- `docs/adr/`
-
-## Commit Conventions
 
 Use conventional commit messages:
 

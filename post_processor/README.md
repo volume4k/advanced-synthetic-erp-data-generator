@@ -26,8 +26,8 @@ Download raw CSVs for one execution run:
 uv run --project post_processor erp-sap-export download \
   --execution-trace trace_generator/build/RUN.execution-trace.yaml \
   --post-processing-manifest trace_generator/build/RUN.post-processing-manifest.yaml \
-  --execution-log trace_generator/build/RUN.execution-log.jsonl \
-  --object-registry trace_generator/build/RUN.object-registry.jsonl \
+  --execution-log trace_executor/build/RUN.execution-log.jsonl \
+  --object-registry trace_executor/build/RUN.object-registry.jsonl \
   --env-file configuration/.env \
   --user-from LEARN-800 \
   --user-to LEARN-899 \
