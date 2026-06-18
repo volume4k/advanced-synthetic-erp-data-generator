@@ -63,13 +63,17 @@ SAP_USER_5_PW=<SAP_PASSWORD_5>
 
 When `runSettings.realism.enabled` is `true`, the Trace Generator calls an OpenAI-compatible local LLM endpoint before scheduling. The LLM produces compact realism inputs such as actor baseline models, material demand profiles, quantity profiles, price anchors, and daily demand patterns. The Trace Generator validates those values against configured guardrails and expands exact process cases locally.
 
+The current client appends `/v1/chat/completions` itself. Set `REALISM_LLM_BASE_URL` to the URL prefix that comes before `/v1`. For this project's OpenAI-compatible local endpoint shape, that means the base URL should end in `/api`.
+
 Add the endpoint configuration to `configuration/.env` or export it in your shell:
 
 ```bash
-REALISM_LLM_BASE_URL=http://localhost:1234
+REALISM_LLM_BASE_URL=http://localhost:1234/api
 REALISM_LLM_MODEL=<model-name>
 REALISM_LLM_API_KEY=<optional-token>
 ```
+
+With the example above, the Trace Generator calls `http://localhost:1234/api/v1/chat/completions`. Do not include `/v1` or `/v1/chat/completions` in `REALISM_LLM_BASE_URL`.
 
 Shell environment variables take precedence over values in `configuration/.env`.
 

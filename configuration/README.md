@@ -131,13 +131,17 @@ Keep trace-planning settings in Pkl. `run_settings.pkl` defines FIFO scheduling,
 
 When `runSettings.realism.enabled` is `true`, `erp-trace-generate` calls an OpenAI-compatible local LLM endpoint before scheduling. Realism v2 asks the LLM for compact actor baseline models, per-material price anchors, material demand profiles, quantity profiles, and daily demand patterns; the trace generator expands exact process cases deterministically from those models.
 
+The client appends `/v1/chat/completions` to `REALISM_LLM_BASE_URL`. Configure the base URL as the prefix before `/v1`; for this project's OpenAI-compatible local endpoint shape, use a base URL ending in `/api`.
+
 Configure the endpoint with:
 
 ```bash
-REALISM_LLM_BASE_URL=http://localhost:1234
+REALISM_LLM_BASE_URL=http://localhost:1234/api
 REALISM_LLM_MODEL=<model-name>
 REALISM_LLM_API_KEY=<optional-token>
 ```
+
+That example resolves to `http://localhost:1234/api/v1/chat/completions`. Do not include `/v1` or `/v1/chat/completions` in `REALISM_LLM_BASE_URL`.
 
 The trace-generator CLI reads these values from `configuration/.env` by default. Shell environment variables take precedence over values in that file.
 
