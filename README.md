@@ -21,6 +21,7 @@ Component-level reference documentation remains in each project folder:
 - [Post-Processor](post_processor/README.md)
 
 Project glossary terms live in [CONTEXT.md](CONTEXT.md). Architectural decisions live in [docs/adr/](docs/adr/).
+Run-specific operational notes live in [docs/runs/](docs/runs/).
 
 ## Repository Layout
 
@@ -30,7 +31,7 @@ Project glossary terms live in [CONTEXT.md](CONTEXT.md). Architectural decisions
 ├── trace_generator/      # uv project that creates Execution Trace artifacts
 ├── trace_executor/       # uv project that executes traces against SAP Fiori
 ├── post_processor/       # uv project that downloads and processes SAP exports
-├── docs/                 # user guide and architectural decision records
+├── docs/                 # user guide, runbooks, and architectural decision records
 ├── CONTEXT.md            # project glossary and domain relationships
 └── README.md             # project overview
 ```
