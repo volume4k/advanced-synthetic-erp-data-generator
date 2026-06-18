@@ -79,13 +79,29 @@ def build_default_registry() -> ToolRegistry:
 
 The configuration generator reads this registry and extracts the tool name and Pydantic input schema.
 
-## 4. Add a Password-Free Example Trace
+## 4. Optionally Add a Password-Free Example Trace
 
-Add or update an example under `trace_executor/examples/`. The example should prove the canonical trace shape for the new tool without containing credentials.
+An example trace is optional. Add one under `trace_executor/examples/` when it helps reviewers or future contributors run a small smoke check without generating a full dataset first. The example should prove the canonical trace shape for the new tool without containing credentials.
 
-Use actor session env var references:
+For a single-step smoke trace, keep the file intentionally small:
+
+- one `actor_sessions` entry using environment variable names
+- one `cases` entry
+- one `dependency_graph.planned_steps` entry for the new Browser Tool
+- `dependencies: []`
+- one `execution_schedule.waves` entry that contains only that planned step
+
+Use this skeleton and replace the tool name, inputs, and returned object key contract with the new tool's values:
 
 ```yaml
+trace_version: "0.3"
+run_id: RUN_EXAMPLE_MY_TOOL
+config_hash: example
+tool_catalog_hash: example
+trace_generator_version: 0.1.0
+llm_metadata:
+  used: false
+  seed: 1
 actor_sessions:
 - actor_session_id: example-session
   synthetic_actor_id: example_actor
@@ -93,7 +109,48 @@ actor_sessions:
   username_env_var: SAP_USER_1_UN
   password_env_var: SAP_USER_1_PW
   login_url_env_var: SAP_URL
+  success_selector: "#userActionsMenuHeaderButton"
+cases:
+- case_id: EXAMPLE_MY_TOOL_001
+  process_type: procure_to_pay
+  case_scenario_type: NORMAL
+  line_items: []
+dependency_graph:
+  planned_steps:
+  - planned_step_id: planned-step-my-tool-001
+    case_id: EXAMPLE_MY_TOOL_001
+    step_type: my_new_step
+    tool_name: fiori.my_tool
+    synthetic_actor_id: example_actor
+    technical_sap_user_id: TU_01
+    actor_session_id: example-session
+    inputs:
+      material: PUMP1902
+      quantity: 10
+    required_sap_object_keys:
+    - my_object_type.object_number
+    planned_date_inputs: {}
+    planned_synthetic_time:
+      start: "2026-05-18T08:00:00+02:00"
+      end: "2026-05-18T08:10:00+02:00"
+    labels:
+      step_label: smoke
+  dependencies: []
+execution_schedule:
+  mode: waves
+  max_parallel_actor_sessions: 1
+  waves:
+  - wave_id: W001
+    sequence_no: 1
+    planned_steps:
+    - planned_step_id: planned-step-my-tool-001
+      startup_order: 1
+validation_report:
+  errors: []
+  warnings: []
 ```
+
+If the tool requires a value from a prior SAP object, a single-step trace is not enough unless you hard-code a safe existing SAP object key in `inputs`. Use that only for local smoke testing and keep committed examples password-free and free of sensitive business data.
 
 Run a headed smoke test when SAP access is available:
 
