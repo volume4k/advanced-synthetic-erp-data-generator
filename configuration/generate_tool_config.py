@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate raw Pkl tool requirement objects from generator tools."""
+"""Generate raw Pkl tool requirement objects from executor tools."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-GENERATOR_SRC = REPO_ROOT / "generator" / "src"
+EXECUTOR_SRC = REPO_ROOT / "trace_executor" / "src"
 DEFAULT_OUTPUT = Path(__file__).resolve().parent / "generated_tool_config.pkl"
 
-if str(GENERATOR_SRC) not in sys.path:
-    sys.path.insert(0, str(GENERATOR_SRC))
+if str(EXECUTOR_SRC) not in sys.path:
+    sys.path.insert(0, str(EXECUTOR_SRC))
 
 from erp_trace_executor.registry import build_default_registry  # noqa: E402
 

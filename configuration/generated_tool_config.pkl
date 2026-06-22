@@ -301,6 +301,12 @@ toolRequirements: Mapping<String, objects.ToolRequirement> = new Mapping {
         required = true
         defaultValue = null
       }
+      new objects.ToolInputProperty {
+        name = "company_code"
+        schemaType = "string"
+        required = false
+        defaultValue = "US00"
+      }
     }
   }
   ["fiori.login"] = new objects.ToolRequirement {

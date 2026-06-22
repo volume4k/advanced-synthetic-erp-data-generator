@@ -31,13 +31,13 @@ def validate_planned_step_tool_inputs(planned_steps: list[PlannedStep]) -> None:
 
 def _build_executor_registry():
     repo_root = Path(__file__).resolve().parents[3]
-    generator_src = repo_root / "generator" / "src"
-    if str(generator_src) not in sys.path:
-        sys.path.insert(0, str(generator_src))
+    executor_src = repo_root / "trace_executor" / "src"
+    if str(executor_src) not in sys.path:
+        sys.path.insert(0, str(executor_src))
     try:
         from erp_trace_executor.registry import build_default_registry
     except ImportError as exc:
         raise TraceGenerationError(
-            "Cannot import generator tool registry for input validation; run from repository checkout"
+            "Cannot import trace executor tool registry for input validation; run from repository checkout"
         ) from exc
     return build_default_registry()
