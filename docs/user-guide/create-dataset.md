@@ -34,6 +34,11 @@ Run:
 configuration/create-config.sh
 ```
 
+The Windows equivalent is 
+```bash
+.\configuration\create-config.ps1
+```
+
 This command:
 
 - regenerates `configuration/generated_tool_config.pkl` from the Trace Executor registry
@@ -58,6 +63,11 @@ uv run --project trace_generator erp-trace-generate \
   --env-file configuration/.env
 ```
 
+WIN
+```bash
+uv run --project trace_generator erp-trace-generate configuration/build/main.yaml --out-dir trace_generator/build/RUN_EXAMPLE --run-id RUN_EXAMPLE --env-file configuration/.env
+```
+
 Expected outputs:
 
 ```text
@@ -79,6 +89,11 @@ uv run --project trace_executor erp-trace-exec \
   --log-level INFO
 ```
 
+WIN
+```bash
+uv run --project trace_executor erp-trace-exec trace_generator/build/RUN_EXAMPLE/RUN_EXAMPLE.execution-trace.yaml --env-file configuration/.env --artifact-dir trace_executor/build/RUN_EXAMPLE --log-level INFO
+```
+
 Use `--headed` while validating a run manually:
 
 ```bash
@@ -87,6 +102,11 @@ uv run --project trace_executor erp-trace-exec \
   --env-file configuration/.env \
   --artifact-dir trace_executor/build/RUN_EXAMPLE \
   --headed
+```
+
+WIN
+```bash
+uv run --project trace_executor erp-trace-exec trace_generator/build/RUN_EXAMPLE/RUN_EXAMPLE.execution-trace.yaml --env-file configuration/.env --artifact-dir trace_executor/build/RUN_EXAMPLE --headed
 ```
 
 Expected outputs:
@@ -108,6 +128,11 @@ uv run --project post_processor erp-sap-export probe \
   --env-file configuration/.env
 ```
 
+WIN
+```bash
+uv run --project post_processor erp-sap-export probe --execution-trace trace_generator/build/RUN_EXAMPLE/RUN_EXAMPLE.execution-trace.yaml --env-file configuration/.env
+```
+
 Download raw SAP exports:
 
 ```bash
@@ -123,6 +148,11 @@ uv run --project post_processor erp-sap-export download \
   --window-padding-min 30 \
   --max-keys-per-batch 20 \
   --max-runtime-min 60
+```
+
+WIN
+```bash
+uv run --project post_processor erp-sap-export download --execution-trace trace_generator/build/RUN_EXAMPLE/RUN_EXAMPLE.execution-trace.yaml --post-processing-manifest trace_generator/build/RUN_EXAMPLE/RUN_EXAMPLE.post-processing-manifest.yaml --execution-log trace_executor/build/RUN_EXAMPLE/RUN_EXAMPLE.execution-log.jsonl --object-registry trace_executor/build/RUN_EXAMPLE/RUN_EXAMPLE.object-registry.jsonl --env-file configuration/.env --out-dir post_processor/downloads/RUN_EXAMPLE --user-from LEARN-800 --user-to LEARN-899 --window-padding-min 30 --max-keys-per-batch 20 --max-runtime-min 60
 ```
 
 Expected outputs:
@@ -147,6 +177,12 @@ uv run --project post_processor erp-sap-export process \
   --post-processing-manifest trace_generator/build/RUN_EXAMPLE/RUN_EXAMPLE.post-processing-manifest.yaml \
   --execution-log trace_executor/build/RUN_EXAMPLE/RUN_EXAMPLE.execution-log.jsonl \
   --object-registry trace_executor/build/RUN_EXAMPLE/RUN_EXAMPLE.object-registry.jsonl
+```
+
+WIN
+
+```bash
+uv run --project post_processor erp-sap-export process --raw-dir post_processor/downloads/RUN_EXAMPLE --out-dir post_processor/processed/RUN_EXAMPLE --execution-trace trace_generator/build/RUN_EXAMPLE/RUN_EXAMPLE.execution-trace.yaml --post-processing-manifest trace_generator/build/RUN_EXAMPLE/RUN_EXAMPLE.post-processing-manifest.yaml --execution-log trace_executor/build/RUN_EXAMPLE/RUN_EXAMPLE.execution-log.jsonl --object-registry trace_executor/build/RUN_EXAMPLE/RUN_EXAMPLE.object-registry.jsonl
 ```
 
 Processing:
@@ -178,6 +214,11 @@ uv run --project post_processor erp-sap-export validate-processed \
   --post-processing-manifest trace_generator/build/RUN_EXAMPLE/RUN_EXAMPLE.post-processing-manifest.yaml \
   --execution-log trace_executor/build/RUN_EXAMPLE/RUN_EXAMPLE.execution-log.jsonl \
   --object-registry trace_executor/build/RUN_EXAMPLE/RUN_EXAMPLE.object-registry.jsonl
+```
+
+WIN
+```bash
+uv run --project post_processor erp-sap-export validate-processed --processed-dir post_processor/processed/RUN_EXAMPLE --raw-dir post_processor/downloads/RUN_EXAMPLE --execution-trace trace_generator/build/RUN_EXAMPLE/RUN_EXAMPLE.execution-trace.yaml --post-processing-manifest trace_generator/build/RUN_EXAMPLE/RUN_EXAMPLE.post-processing-manifest.yaml --execution-log trace_executor/build/RUN_EXAMPLE/RUN_EXAMPLE.execution-log.jsonl --object-registry trace_executor/build/RUN_EXAMPLE/RUN_EXAMPLE.object-registry.jsonl
 ```
 
 A clean validation report has no errors. Investigate warnings before using the dataset for downstream analysis.
