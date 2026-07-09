@@ -18,6 +18,7 @@ configuration/build/
 trace_executor/build/
 trace_generator/build/
 post_processor/downloads/
+post_processor/processed/TEST
 
 # Local notebooks and exploratory analysis
 analysis/
