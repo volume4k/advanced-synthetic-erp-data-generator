@@ -11,6 +11,7 @@ requires-python = ">=3.13,<4"
 dependencies = [
   "pydantic>=2.11,<3",
   "pyyaml>=6.0,<7",
+  "tzdata>=2026.2",
 ]
 
 [dependency-groups]
